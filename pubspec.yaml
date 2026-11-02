@@ -100,6 +100,7 @@ dependencies:
   # Icons ที่ดึงมาจาก Figma โดยตรง (ดูไฟล์ lib/widgets/app_icons.dart)
 
   flutter_svg: ^2.0.10+1
+  shared_preferences: ^2.5.6
 
 
 

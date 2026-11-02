@@ -189,6 +189,11 @@ class _ResetPasswordScreenState
       );
 
 
+      // session นี้มาจากลิงก์ในอีเมล ให้ login ใหม่ด้วยรหัสผ่านที่เพิ่งตั้ง
+
+      await supabase.auth.signOut();
+
+
 
 
 

@@ -3,12 +3,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 
 import 'package:test_app/screens/login_screen.dart';
+import 'package:test_app/screens/main_menu_screen.dart';
 import 'package:test_app/screens/reset_password_screen.dart';
 import 'services/notification_service.dart';
+import 'services/remember_me.dart';
 
 
 final GlobalKey<NavigatorState> navigatorKey =
 GlobalKey<NavigatorState>();
+
+// กดลิงก์รีเซ็ตรหัสผ่านตอนแอปปิดอยู่ แล้วแลก session เสร็จก่อนหน้าจอพร้อม
+bool passwordRecoveryPending = false;
 
 
 
@@ -28,7 +33,52 @@ Future<void> main() async {
   );
 
 
+  // ฟังตั้งแต่ตรงนี้ เพื่อไม่ให้พลาดกรณีเปิดแอปจากลิงก์รีเซ็ตรหัสผ่าน
+  Supabase.instance.client.auth.onAuthStateChange.listen(
+
+    (state){
+
+      if(state.event != AuthChangeEvent.passwordRecovery) return;
+
+      final navigator = navigatorKey.currentState;
+
+      if(navigator == null){
+
+        passwordRecoveryPending = true;
+
+        return;
+
+      }
+
+      navigator.pushAndRemoveUntil(
+
+        MaterialPageRoute(
+
+          builder:(_)=>
+
+          const ResetPasswordScreen(),
+
+        ),
+
+        (route)=>false,
+
+      );
+
+    },
+
+    onError:(_){},
+
+  );
+
+
   await NotificationService.init();
+
+  // ไม่ได้ติ๊ก Remember me ตอน login ครั้งก่อน ให้ล้างเซสชันที่ค้างอยู่
+  // session หายทันทีตอนเรียก ส่วนการแจ้งเซิร์ฟเวอร์ไม่ต้องรอ (ออฟไลน์ก็เปิดแอปได้)
+  if (Supabase.instance.client.auth.currentSession != null &&
+      !await RememberMe.isEnabled()) {
+    Supabase.instance.client.auth.signOut().catchError((_) {});
+  }
 
   // ถ้ามีเซสชันผู้ใช้ค้างอยู่แล้ว (เปิดแอปโดยไม่ต้อง login ใหม่) ให้ซิงก์
   // แจ้งเตือนของที่อยู่ในตู้เย็นนานทันทีตั้งแต่แอปเปิด ไม่ต้องรอให้ไปเปิดหน้าคลังก่อน
@@ -85,6 +135,8 @@ class _MyAppState extends State<MyApp> {
 
   final appLinks = AppLinks();
 
+  Uri? lastResetLink;
+
 
 
 
@@ -97,6 +149,53 @@ class _MyAppState extends State<MyApp> {
 
 
     initDeepLink();
+
+    listenForExpiredSession();
+
+
+  }
+
+
+
+
+  // เซสชันที่จำไว้ใช้ต่อไม่ได้แล้ว (เช่น token หมดอายุ) ให้กลับไปหน้า Login
+  // ส่วนการออกจากระบบเองแต่ละหน้าพาไปหน้า Login อยู่แล้ว จึงไม่ต้องจัดการที่นี่
+  void listenForExpiredSession(){
+
+
+    Supabase.instance.client.auth.onAuthStateChange.listen(
+
+      (state){
+
+
+        if(state.event == AuthChangeEvent.signedOut &&
+
+            state.signOutReason != SignOutReason.userInitiated){
+
+
+          navigatorKey.currentState?.pushAndRemoveUntil(
+
+            MaterialPageRoute(
+
+              builder:(_)=>
+
+              const LoginScreen(),
+
+            ),
+
+            (route)=>false,
+
+          );
+
+
+        }
+
+
+      },
+
+      onError:(_){},
+
+    );
 
 
   }
@@ -156,77 +255,45 @@ class _MyAppState extends State<MyApp> {
 
 
 
-    print("Deep Link : $uri");
-
-
-
-
+    // การแลก code เป็น session supabase_flutter ทำให้เองอยู่แล้ว (ห้ามเรียกซ้ำ
+    // เพราะ code ใช้ได้ครั้งเดียว) แล้วจะแจ้ง passwordRecovery มาให้ listener ใน main()
+    // ตรงนี้จึงเหลือแค่แจ้งเตือนกรณีลิงก์ใช้ไม่ได้ เช่น หมดอายุหรือเคยกดไปแล้ว
     if(uri.scheme == "smartfridge" &&
 
-        uri.host == "reset-password"){
+        uri.host == "reset-password" &&
+
+        uri != lastResetLink &&
+
+        (uri.queryParameters.containsKey("error") ||
+
+            Uri.splitQueryString(uri.fragment).containsKey("error"))){
 
 
+      lastResetLink = uri;
 
 
-
-      try{
-
+      WidgetsBinding.instance.addPostFrameCallback((_){
 
 
-        await Supabase.instance.client.auth
-            .getSessionFromUrl(uri);
+        final context = navigatorKey.currentContext;
 
 
+        if(context == null) return;
 
 
+        ScaffoldMessenger.of(context).showSnackBar(
 
-        Future.delayed(
+          const SnackBar(
 
-          const Duration(milliseconds:500),
+            content:
+            Text("ลิงก์รีเซ็ตรหัสผ่านหมดอายุหรือถูกใช้ไปแล้ว กรุณาขอลิงก์ใหม่"),
 
-              (){
-
-
-            navigatorKey.currentState
-                ?.pushReplacement(
-
-
-
-              MaterialPageRoute(
-
-
-
-                builder:(_)=>
-
-                const ResetPasswordScreen(),
-
-
-
-              ),
-
-
-
-            );
-
-
-          },
+          ),
 
         );
 
 
-
-
-
-      }catch(e){
-
-
-        print(
-            "Reset link error : $e"
-        );
-
-
-      }
-
+      });
 
 
     }
@@ -366,7 +433,11 @@ class _MyAppState extends State<MyApp> {
 
 
       home:
-      const LoginScreen(),
+      passwordRecoveryPending
+          ? const ResetPasswordScreen()
+          : Supabase.instance.client.auth.currentSession != null
+          ? const MainMenuScreen()
+          : const LoginScreen(),
 
 
 
