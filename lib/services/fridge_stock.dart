@@ -131,14 +131,16 @@ Future<void> extendShelfLife({
   };
 
   final current = shelfDaysOf(item);
-  if (current != null && item['created_at'] != null) {
-    final newDays = daysInFridge(item['created_at']) + moreDays;
+  if (current != null && storageStartOf(item) != null) {
+    final newDays = daysInFridge(storageStartOf(item)) + moreDays;
     final original = originalShelfSource(
       item['shelf_type']?.toString(),
       current,
     );
     fields[item['storage'] == storageFreezer ? 'freezer_days' : 'fridge_days'] =
         newDays;
+    // ผู้ใช้ต่อเวลาเอง ค่าที่กำหนดนี้แทนจำนวนวันที่จำไว้ตอนแช่แข็ง
+    fields['days_left_at_freeze'] = null;
     fields['shelf_type'] = (original.days != null && newDays == original.days)
         ? original.key
         : customShelfType(original.key, original.days);

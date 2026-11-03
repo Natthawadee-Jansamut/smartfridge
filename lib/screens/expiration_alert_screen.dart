@@ -440,7 +440,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   Widget _buildItemCard(Map<String, dynamic> item) {
     final left = daysLeft(item);
     final color = _daysLeftColor(left);
-    final shelf = shelfDaysOf(item);
+    final shelf = displayShelfDays(item);
     // หลอดคิดจากตัวเลขเดียวกับข้อความ "เก็บได้อีก X วัน" (วันหมดอายุตามวันใน
     // ปฏิทิน) ผ่านไปแล้ว = เก็บได้ − เก็บได้อีก ทั้งสองอย่างจะขยับไปพร้อมกัน
     final ratio = (shelf == null || left == null)
@@ -611,6 +611,27 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   }
 
   Future<void> deleteItem(Map<String, dynamic> item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("ลบวัตถุดิบ?"),
+        content: Text(
+          "ต้องการลบ \"${item['name'] ?? 'วัตถุดิบนี้'}\" ออกจากตู้เย็นใช่หรือไม่?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("ยกเลิก"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("ลบ", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     try {
       await supabase.from('fridge_items').delete().eq('item_id', item['item_id']);
       await loadItems();

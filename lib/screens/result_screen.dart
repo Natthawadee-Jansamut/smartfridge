@@ -15,7 +15,16 @@ class ResultScreen extends StatefulWidget {
   final List<dynamic> foundItems;
   final Uint8List? imageBytes;
 
-  const ResultScreen({super.key, required this.foundItems, this.imageBytes});
+  /// true = ผู้ใช้กรอกวัตถุดิบเอง (ไม่มีรูปและไม่ผ่าน AI) ใช้ฟอร์มและการบันทึก
+  /// ชุดเดียวกับผลสแกน เผื่อกล้องหรือ AI ใช้งานไม่ได้
+  final bool manual;
+
+  const ResultScreen({
+    super.key,
+    required this.foundItems,
+    this.imageBytes,
+    this.manual = false,
+  });
 
   @override
   State<ResultScreen> createState() => _ResultScreenState();
@@ -25,6 +34,10 @@ class _ResultScreenState extends State<ResultScreen> {
   @override
   void initState() {
     super.initState();
+
+    if (widget.manual && widget.foundItems.isEmpty) {
+      widget.foundItems.add(_newManualItem());
+    }
 
     // จัดกลุ่มวัตถุดิบที่สแกนเจอให้หมวดหมู่เดียวกันอยู่ติดกัน จะได้ไล่ดูง่าย
     // ใช้ index เดิมเป็นตัวตัดสินลำดับรองเพื่อให้เรียงแบบ stable (ของในหมวด
@@ -47,22 +60,69 @@ class _ResultScreenState extends State<ResultScreen> {
     // สร้างการ์ดเฉพาะชิ้นที่อยู่บนจอ) — กดบันทึกทันทีก็ยังได้ค่าที่ถูกต้อง
     for (final item in widget.foundItems) {
       if (item is! Map || item.containsKey('storage')) continue;
-      item['gemini_fridge_days'] = item['fridge_days'];
-      item['gemini_freezer_days'] = item['freezer_days'];
-      final typeKey = findShelfType(item['shelf_type']?.toString())?.key;
-      final state = defaultStateFor(typeKey);
-      final life = resolveShelfLife(
-        typeKey: typeKey,
-        state: state,
-        geminiFridgeDays: item['gemini_fridge_days'],
-        geminiFreezerDays: item['gemini_freezer_days'],
-      );
-      item['shelf_type'] = typeKey;
-      item['food_state'] = state;
-      item['storage'] = storageFridge;
-      item['fridge_days'] = life.fridgeDays;
-      item['freezer_days'] = life.freezerDays;
-      item['expiry_days'] = life.fridgeDays;
+      _prepareStorage(item);
+    }
+  }
+
+  void _prepareStorage(Map item) {
+    item['gemini_fridge_days'] = item['fridge_days'];
+    item['gemini_freezer_days'] = item['freezer_days'];
+    final typeKey = findShelfType(item['shelf_type']?.toString())?.key;
+    final state = defaultStateFor(typeKey);
+    final life = resolveShelfLife(
+      typeKey: typeKey,
+      state: state,
+      geminiFridgeDays: item['gemini_fridge_days'],
+      geminiFreezerDays: item['gemini_freezer_days'],
+    );
+    item['shelf_type'] = typeKey;
+    item['food_state'] = state;
+    item['storage'] = storageFridge;
+    item['fridge_days'] = life.fridgeDays;
+    item['freezer_days'] = life.freezerDays;
+    item['expiry_days'] = life.fridgeDays;
+  }
+
+  Map<String, dynamic> _newManualItem() => {
+    'manual': true,
+    'name': '',
+    'category': 'อื่นๆ',
+    'count_mode': 'piece',
+    'count': 1,
+    'count_unit': 'ชิ้น',
+  };
+
+  void _addManualItem() {
+    final item = _newManualItem();
+    _prepareStorage(item);
+    setState(() => widget.foundItems.add(item));
+  }
+
+  Future<void> _confirmRemoveItem(dynamic item) async {
+    final name = (item['name'] ?? '').toString().trim();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("ลบรายการนี้?"),
+        content: Text(
+          name.isEmpty
+              ? "ข้อมูลที่กรอกในรายการนี้จะหายไป"
+              : "ต้องการลบ \"$name\" ออกจากรายการใช่หรือไม่?",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("ยกเลิก"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("ลบ", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => widget.foundItems.remove(item));
     }
   }
 
@@ -73,7 +133,9 @@ class _ResultScreenState extends State<ResultScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const IngredientFlowHeader(title: "ผลลัพธ์"),
+            IngredientFlowHeader(
+              title: widget.manual ? "นำเข้าวัตถุดิบด้วยตัวเอง" : "ผลลัพธ์",
+            ),
             const SizedBox(height: 15),
 
             // --- ป้ายบอกจำนวนวัตถุดิบที่พบ ---
@@ -95,7 +157,9 @@ class _ResultScreenState extends State<ResultScreen> {
                   ],
                 ),
                 child: Text(
-                  "พบวัตถุดิบ ${widget.foundItems.length} รายการ",
+                  widget.manual
+                      ? "วัตถุดิบ ${widget.foundItems.length} รายการ"
+                      : "พบวัตถุดิบ ${widget.foundItems.length} รายการ",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 16,
@@ -107,6 +171,7 @@ class _ResultScreenState extends State<ResultScreen> {
             const SizedBox(height: 12),
 
             // --- การ์ด "รูปภาพ" (รูปจริงที่ถ่าย/เลือกมาสแกน) ---
+            if (!widget.manual) ...[
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               child: Container(
@@ -181,6 +246,7 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             ),
             const SizedBox(height: 12),
+            ],
 
             // --- รายการวัตถุดิบ (List) ---
             Expanded(
@@ -193,14 +259,41 @@ class _ResultScreenState extends State<ResultScreen> {
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(20, 5, 20, 0),
-                      itemCount: widget.foundItems.length,
+                      itemCount:
+                          widget.foundItems.length + (widget.manual ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index == widget.foundItems.length) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: OutlinedButton.icon(
+                              onPressed: _addManualItem,
+                              icon: const Icon(Icons.add),
+                              label: const Text("เพิ่มอีกรายการ"),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xff5189C9),
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 13,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+                        final item = widget.foundItems[index];
                         return IngredientCardItem(
-                          initialData:
-                              widget.foundItems[index] as Map<String, dynamic>,
+                          // ผูกการ์ดกับข้อมูลชิ้นนั้น ลบรายการแล้วค่าจะได้ไม่สลับการ์ด
+                          key: ObjectKey(item),
+                          initialData: item as Map<String, dynamic>,
                           onUpdate: (key, value) {
-                            widget.foundItems[index][key] = value;
+                            item[key] = value;
                           },
+                          onRemove:
+                              widget.manual && widget.foundItems.length > 1
+                              ? () => _confirmRemoveItem(item)
+                              : null,
                         );
                       },
                     ),
@@ -236,9 +329,9 @@ class _ResultScreenState extends State<ResultScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        child: const Text(
-                          "สแกนใหม่",
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                        child: Text(
+                          widget.manual ? "ยกเลิก" : "สแกนใหม่",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ),
@@ -293,6 +386,18 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
 
+    if (widget.foundItems.any(
+      (item) => (item['name'] ?? '').toString().trim().isEmpty,
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('กรุณากรอกชื่อวัตถุดิบให้ครบทุกรายการ'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -305,7 +410,7 @@ class _ResultScreenState extends State<ResultScreen> {
       // (แถวใหม่) เสมอ ไม่รวมเข้ากับลอตเดิม เพื่อให้แต่ละลอตมีวันที่เข้าตู้เย็น
       // และวันหมดอายุของตัวเอง ตอนทำอาหารระบบจะหักจากลอตที่ใกล้หมดอายุก่อน
       for (var item in widget.foundItems) {
-        String name = item['name'];
+        String name = item['name'].toString().trim();
         final storage = item['storage']?.toString() ?? storageFridge;
         int days = int.tryParse(item['expiry_days'].toString()) ?? 7;
         DateTime expiryDate = DateTime.now().add(Duration(days: days));
@@ -327,6 +432,9 @@ class _ResultScreenState extends State<ResultScreen> {
               1 << 30,
             );
         final stockUnit = isPiece ? rawCountUnit : 'ส่วน';
+        // กรอกเองแล้วไม่ได้เลือกประเภท ค่าวันมาจากผู้ใช้ ไม่ใช่ AI หรือตาราง
+        final isCustom = item['expiry_custom'] == true ||
+            (item['manual'] == true && item['shelf_type'] == null);
 
         await supabase.from('fridge_items').insert({
           'user_id': user.id,
@@ -345,7 +453,7 @@ class _ResultScreenState extends State<ResultScreen> {
           'freezer_days': item['freezer_days'],
           // จำไว้ว่าระยะที่เก็บได้มาจากตารางประเภทไหน (null = Gemini ประเมิน,
           // custom = ผู้ใช้แก้จำนวนวันเอง) เพื่อบอกที่มาให้ผู้ใช้เห็นในหน้าแจ้งเตือน
-          'shelf_type': item['expiry_custom'] == true
+          'shelf_type': isCustom
               ? customShelfType(
                   item['shelf_type']?.toString(),
                   storage == storageFreezer
@@ -353,7 +461,7 @@ class _ResultScreenState extends State<ResultScreen> {
                       : item['fridge_days'],
                 )
               : item['shelf_type'],
-          if (item['expiry_custom'] == true)
+          if (isCustom)
             storage == storageFreezer ? 'freezer_days' : 'fridge_days': days,
         });
       }
@@ -394,11 +502,13 @@ class _ResultScreenState extends State<ResultScreen> {
 class IngredientCardItem extends StatefulWidget {
   final Map<String, dynamic> initialData;
   final Function(String key, dynamic value) onUpdate;
+  final VoidCallback? onRemove;
 
   const IngredientCardItem({
     super.key,
     required this.initialData,
     required this.onUpdate,
+    this.onRemove,
   });
 
   @override
@@ -689,6 +799,41 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
 
   int? get _defaultDays => shelfLife.daysFor(storage);
 
+  bool get _isManual => widget.initialData['manual'] == true;
+
+  // กรอกเองไม่มี AI ช่วยเลือกประเภท ให้ผู้ใช้เลือกเพื่อใช้ค่าจากตารางอายุการเก็บรักษา
+  Widget _buildShelfTypePicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _sectionLabel("ประเภทวัตถุดิบ"),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String?>(
+          value: shelfType?.key,
+          isExpanded: true,
+          decoration: _boxDecoration(),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text("ไม่ตรงประเภทไหน (กำหนดวันเอง)"),
+            ),
+            ...shelfTypes.map(
+              (t) => DropdownMenuItem<String?>(
+                value: t.key,
+                child: Text(t.label, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+          onChanged: (key) {
+            shelfType = findShelfType(key);
+            widget.onUpdate('shelf_type', shelfType?.key);
+            _changeStorage(newState: defaultStateFor(shelfType?.key));
+          },
+        ),
+      ],
+    );
+  }
+
   bool get _isCustomDays {
     final typed = int.tryParse(expiryController.text);
     return typed != null && typed != _defaultDays;
@@ -711,6 +856,11 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       color = const Color(0xff5189C9);
       title = "คุณกำหนดเอง";
       detail = "ค่าแนะนำคือ $defaultText";
+    } else if (_isManual && shelfType == null) {
+      icon = Icons.info_outline;
+      color = const Color(0xffE67E22);
+      title = "ค่าเริ่มต้น $defaultText";
+      detail = "เลือกประเภทวัตถุดิบ หรือแก้จำนวนวันให้ตรงกับของจริง";
     } else if (shelfType != null) {
       icon = Icons.verified_outlined;
       color = const Color(0xff3F9142);
@@ -915,7 +1065,14 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
                   ),
                 ),
               ),
+              const Spacer(),
               Text(_getEmoji(category), style: const TextStyle(fontSize: 30)),
+              if (widget.onRemove != null)
+                IconButton(
+                  onPressed: widget.onRemove,
+                  tooltip: "ลบรายการนี้",
+                  icon: const Icon(Icons.close, color: Colors.black54),
+                ),
             ],
           ),
 
@@ -958,6 +1115,11 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
           _buildCountSection(),
 
           const SizedBox(height: 12),
+
+          if (_isManual) ...[
+            _buildShelfTypePicker(),
+            const SizedBox(height: 12),
+          ],
 
           // 4. ช่องที่เก็บ + สถานะ (ใช้คำนวณวันหมดอายุเริ่มต้น)
           _buildStorageSection(),

@@ -347,7 +347,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   Future<void> _selectExpiryDate() async {
     DateTime initialDate = expiryDayOf(_item!) ?? DateTime.now();
     // หมดอายุก่อนวันที่เข้าตู้เย็นไม่ได้
-    final added = parseCreatedAt(_item!['created_at']);
+    final added = parseCreatedAt(storageStartOf(_item!));
     final firstDate = added != null
         ? DateTime(added.year, added.month, added.day)
         : DateTime.now().subtract(const Duration(days: 365));
@@ -398,13 +398,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         fields['shelf_type'] = (original.days != null && days == original.days)
             ? original.key
             : customShelfType(original.key, original.days);
+        // ผู้ใช้เลือกวันเอง ค่านี้แทนจำนวนวันที่จำไว้ตอนแช่แข็ง
+        fields['days_left_at_freeze'] = null;
       }
       _updateFields(fields);
     }
   }
 
-  // --- 🚀 Popup สำหรับย้ายช่องที่เก็บ (ช่องปกติ/ช่องแช่แข็ง) — คำนวณวัน
-  // หมดอายุใหม่จากวันที่เข้าตู้เย็น + จำนวนวันที่เก็บได้ของช่องใหม่ ---
+  // --- 🚀 Popup สำหรับย้ายช่องที่เก็บ (ช่องปกติ/ช่องแช่แข็ง) — นับวันที่เก็บได้
+  // ของช่องใหม่ตั้งแต่วันที่ย้าย (ดู storageMoveFields) ---
   Future<void> _showStoragePickerDialog() async {
     final current = _item!['storage']?.toString() ?? storageFridge;
     final fridgeDays = _item!['fridge_days'];
@@ -438,7 +440,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       : Text(
                           st == storageFreezer && freezerDays == null
                               ? "ไม่ควรเก็บในช่องแช่แข็ง"
-                              : "เก็บได้ ${formatShelfDays(int.parse((st == storageFreezer ? freezerDays : fridgeDays).toString()))}",
+                              : daysLeftText(
+                                  (st == current
+                                      ? daysLeft(_item!)
+                                      : daysLeftAfterMove(_item!, st)) ??
+                                      0,
+                                ),
                         ),
                   onChanged:
                       (hasShelfData && st == storageFreezer && freezerDays == null)
@@ -463,20 +470,96 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
   }
 
-  void _changeStorage(String storage) {
-    final fields = <String, dynamic>{'storage': storage};
-    final raw = storage == storageFreezer
-        ? _item!['freezer_days']
-        : _item!['fridge_days'];
-    final days = raw == null ? null : num.tryParse(raw.toString())?.round();
-    if (days != null && _item!['created_at'] != null) {
-      final added = parseCreatedAt(_item!['created_at'])!;
-      fields['expiry_date'] = added
-          .add(Duration(days: days))
-          .toUtc()
-          .toIso8601String();
+  Future<void> _changeStorage(String storage) async {
+    final allowed = storage == storageFreezer
+        ? await _confirmFreeze()
+        : await _confirmThaw();
+    if (allowed && mounted) {
+      _updateFields(storageMoveFields(_item!, storage));
     }
-    _updateFields(fields);
+  }
+
+  // แช่แข็งไม่ทำให้ของที่เกินกำหนดกลับมาปลอดภัย และของที่เคยละลายแล้วแช่ซ้ำได้
+  // เฉพาะที่ละลายในช่องปกติมาตลอด
+  Future<bool> _confirmFreeze() async {
+    final overdue = isOverdue(_item!);
+    final thawed = _item!['thawed_at'] != null;
+    if (!overdue && !thawed) return true;
+
+    final thawedInFridge = !thawed || await _askThawedInFridge();
+    if (!thawedInFridge) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("ควรทำให้สุกก่อนแช่แข็งซ้ำ"),
+          ),
+        );
+      }
+      return false;
+    }
+    if (!overdue || !mounted) return mounted;
+
+    return _confirmMove(
+      title: "เกินกำหนดแล้ว",
+      message:
+          "การแช่แข็งไม่ทำให้ของที่เกินกำหนดกลับมาปลอดภัย "
+          "รายการนี้จะยังแสดงว่าเกินกำหนดอยู่ ต้องการย้ายใช่ไหม?",
+    );
+  }
+
+  Future<bool> _askThawedInFridge() async {
+    final answer = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("เคยละลายแล้ว"),
+        content: const Text("รายการนี้ละลายในช่องปกติมาตลอดใช่ไหม?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("ไม่ใช่"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("ใช่"),
+          ),
+        ],
+      ),
+    );
+    return answer == true;
+  }
+
+  Future<bool> _confirmThaw() {
+    final left = daysLeftAfterMove(_item!, storageFridge);
+    return _confirmMove(
+      title: "ย้ายไปช่องปกติ",
+      message:
+          "ควรละลายในช่องปกติ ไม่วางไว้นอกตู้"
+          "${left == null ? '' : '\nหลังย้าย: ${daysLeftText(left)}'}",
+    );
+  }
+
+  Future<bool> _confirmMove({
+    required String title,
+    required String message,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("ยกเลิก"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("ย้าย"),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
   }
 
   // --- 🚀 Popup สำหรับเลือกวันที่เอาเข้าตู้เย็น (ใช้แก้กรณีเพิ่มเข้าแอปช้ากว่า
@@ -535,7 +618,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       final fields = <String, dynamic>{
         'created_at': addedAt.toUtc().toIso8601String(),
       };
-      final expiryRaw = _item!['expiry_date'];
+      // ของที่เคยย้ายช่องนับวันจากวันที่ย้าย วันหมดอายุจึงไม่เกี่ยวกับวันเข้าตู้เย็น
+      final expiryRaw = _item!['storage_changed_at'] == null
+          ? _item!['expiry_date']
+          : null;
       if (expiryRaw != null) {
         final expiry = DateTime.parse(expiryRaw.toString()).toLocal();
         fields['expiry_date'] = expiry
@@ -684,7 +770,8 @@ Widget build(BuildContext context) {
                       icon: Icons.kitchen,
                       text:
                           "เก็บใน ${storageEmoji(item['storage']?.toString())} ${storageLabel(item['storage']?.toString())}"
-                          "${(item['food_state']?.toString() ?? '').isEmpty ? '' : ' · ${item['food_state']}'}",
+                          "${(item['food_state']?.toString() ?? '').isEmpty ? '' : ' · ${item['food_state']}'}"
+                          "${item['thawed_at'] == null ? '' : ' · เคยละลายแล้ว'}",
                       onEdit: _showStoragePickerDialog,
                     ),
                     const SizedBox(height: 10),

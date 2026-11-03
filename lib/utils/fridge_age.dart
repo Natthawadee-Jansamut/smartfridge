@@ -133,21 +133,80 @@ num? shelfDaysOf(Map<String, dynamic> item) {
   return (days == null || days <= 0) ? null : days;
 }
 
+/// เวลาที่เริ่มนับวันของช่องที่เก็บอยู่ตอนนี้ — ย้ายช่องแล้วนับจากวันที่ย้าย
+dynamic storageStartOf(Map<String, dynamic> item) =>
+    item['storage_changed_at'] ?? item['created_at'];
+
+/// จำนวนวันที่เหลือตอนเอาเข้าช่องแช่แข็งครั้งล่าสุด (ติดลบ = เกินกำหนดก่อนแช่)
+int? _daysLeftAtFreeze(Map<String, dynamic> item) {
+  final raw = item['days_left_at_freeze'];
+  return raw is num ? raw.toInt() : int.tryParse(raw?.toString() ?? '');
+}
+
+/// ระยะที่เก็บได้จริงในช่องปัจจุบัน — ของที่ย้ายออกจากช่องแช่แข็งเก็บได้ไม่เกิน
+/// จำนวนวันที่เหลือตอนแช่ เพราะความเย็นแค่หยุดเวลา ไม่ได้ทำให้ของกลับมาสดใหม่
+num? effectiveShelfDays(Map<String, dynamic> item) {
+  final shelf = shelfDaysOf(item);
+  if (shelf == null) return null;
+  final atFreeze = _daysLeftAtFreeze(item);
+  if (item['storage'] == 'freezer' || atFreeze == null) return shelf;
+  return shelf < atFreeze ? shelf : atFreeze;
+}
+
+/// ระยะที่เก็บได้สำหรับแสดงผล — null ถ้าไม่มีข้อมูลหรือไม่เหลือวันแล้ว
+num? displayShelfDays(Map<String, dynamic> item) {
+  final days = effectiveShelfDays(item);
+  return (days == null || days <= 0) ? null : days;
+}
+
+/// ค่าที่ต้องบันทึกเมื่อย้ายไปช่อง [target] ('fridge' หรือ 'freezer')
+Map<String, dynamic> storageMoveFields(
+  Map<String, dynamic> item,
+  String target,
+) {
+  final now = DateTime.now();
+  final fields = <String, dynamic>{
+    'storage': target,
+    'storage_changed_at': now.toUtc().toIso8601String(),
+    if (target == 'freezer')
+      'days_left_at_freeze': daysLeft(item)
+    else
+      'thawed_at': now.toUtc().toIso8601String(),
+  };
+  final moved = {...item, ...fields};
+  if (shelfDaysOf(moved) != null) {
+    fields['expiry_date'] = now
+        .add(Duration(days: daysLeft(moved)!))
+        .toUtc()
+        .toIso8601String();
+  }
+  return fields;
+}
+
+/// เก็บได้อีกกี่วันถ้าย้ายไปช่อง [target] ตอนนี้ — ใช้แสดงก่อนผู้ใช้ตัดสินใจ
+int? daysLeftAfterMove(Map<String, dynamic> item, String target) =>
+    daysLeft({...item, ...storageMoveFields(item, target)});
+
 // ---------------------------------------------------------------------------
 // นับเป็นวันอย่างเดียว (ไม่ใช้เปอร์เซ็นต์): เก็บได้อีก X วัน → ครบกำหนดวันนี้ →
 // เกินมาแล้ว X วัน ใช้เหมือนกันทุกหน้า (เมนูอาหาร แพลน แจ้งเตือน push)
 // ---------------------------------------------------------------------------
 
-/// เก็บได้อีกกี่วัน = ระยะที่เก็บได้ − จำนวนวันที่อยู่ในตู้เย็นมาแล้ว (ตามวันใน
-/// ปฏิทิน) — คำนวณจาก "วันที่เข้าตู้เย็น + ระยะที่เก็บได้" ที่เดียวเสมอ ทุกหน้า
-/// (คลัง เมนูอาหาร แพลน แจ้งเตือน) จึงตรงกัน และ "อยู่มาแล้ว + เก็บได้อีก" =
-/// "เก็บได้" เสมอ (1 = พรุ่งนี้, 0 = ครบกำหนดวันนี้, ติดลบ = เกินมาแล้ว)
+/// เก็บได้อีกกี่วัน = ระยะที่เก็บได้ − จำนวนวันที่อยู่ในช่องปัจจุบันมาแล้ว (ตาม
+/// วันในปฏิทิน) — คำนวณที่เดียวเสมอ ทุกหน้า (คลัง เมนูอาหาร แพลน แจ้งเตือน) จึง
+/// ตรงกัน (1 = พรุ่งนี้, 0 = ครบกำหนดวันนี้, ติดลบ = เกินมาแล้ว)
+/// ของที่เกินกำหนดก่อนแช่แข็งยังถือว่าเกินกำหนด การแช่แข็งไม่ทำให้กลับมาปลอดภัย
 /// ของเก่าที่ไม่มีข้อมูลระยะที่เก็บได้ ใช้วันหมดอายุที่บันทึกไว้แทน
 /// — null ถ้าไม่มีข้อมูลเลย
 int? daysLeft(Map<String, dynamic> item) {
-  final shelf = shelfDaysOf(item);
-  if (shelf != null && item['created_at'] != null) {
-    return shelf.floor() - daysInFridge(item['created_at']);
+  final atFreeze = _daysLeftAtFreeze(item);
+  if (item['storage'] == 'freezer' && atFreeze != null && atFreeze < 0) {
+    return atFreeze;
+  }
+  final shelf = effectiveShelfDays(item);
+  final start = storageStartOf(item);
+  if (shelf != null && start != null) {
+    return shelf.floor() - daysInFridge(start);
   }
   return daysUntilExpiry(item['expiry_date']);
 }

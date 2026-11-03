@@ -646,12 +646,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ),
                     ),
                   // ที่มาของระยะที่เก็บได้ + ปุ่มแก้ (เช่นกด +วันผิด จะได้แก้กลับได้)
-                  if (shelfDaysOf(item) != null)
+                  if (displayShelfDays(item) != null)
                     Row(
                       children: [
                         Expanded(
                           child: Text(
-                            "เก็บได้ ${formatShelfDays(shelfDaysOf(item)!.round())} · "
+                            "เก็บได้ ${formatShelfDays(displayShelfDays(item)!.round())} · "
                             "${shelfSourceShort(item)}",
                             style: const TextStyle(
                               fontSize: 12,

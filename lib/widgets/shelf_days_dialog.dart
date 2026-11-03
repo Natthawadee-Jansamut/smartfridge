@@ -15,7 +15,7 @@ Future<bool> editShelfDaysDialog(
 ) async {
   final current = shelfDaysOf(item);
   final original = originalShelfSource(item['shelf_type']?.toString(), current);
-  final age = daysInFridge(item['created_at']);
+  final age = daysInFridge(storageStartOf(item));
   final controller = TextEditingController(
     text: current?.toInt().toString() ?? '',
   );
@@ -42,7 +42,7 @@ Future<bool> editShelfDaysDialog(
           ),
           const SizedBox(height: 10),
           Text(
-            "อยู่ในตู้เย็นมาแล้ว $age วัน"
+            "อยู่ในช่องนี้มาแล้ว $age วัน"
             "${original.days == null ? '' : ' · ค่าแนะนำ ${formatShelfDays(original.days!)}'}",
             style: const TextStyle(fontSize: 13, color: Colors.black54),
           ),
@@ -73,7 +73,7 @@ Future<bool> editShelfDaysDialog(
   final newShelfType = (original.days != null && days == original.days)
       ? original.key
       : customShelfType(original.key, original.days);
-  final added = parseCreatedAt(item['created_at']) ?? DateTime.now();
+  final added = parseCreatedAt(storageStartOf(item)) ?? DateTime.now();
 
   try {
     await Supabase.instance.client
@@ -87,6 +87,8 @@ Future<bool> editShelfDaysDialog(
               .toUtc()
               .toIso8601String(),
           'shelf_type': newShelfType,
+          // ผู้ใช้กำหนดเอง ค่านี้แทนจำนวนวันที่จำไว้ตอนแช่แข็ง
+          'days_left_at_freeze': null,
         })
         .eq('item_id', item['item_id']);
     return true;

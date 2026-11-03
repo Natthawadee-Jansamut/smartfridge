@@ -91,8 +91,21 @@ class _ImageScanningState extends State<ImageScanning> {
     }
   }
 
+  void _openManualEntry() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ResultScreen(foundItems: [], manual: true),
+      ),
+    ).then((_) {
+      _fetchRecentItems();
+    });
+  }
+
   Future<void> _pickAndAnalyzeImage(ImageSource source) async {
     if (!mounted) return;
+    // กล้องเปิดไม่ได้จะ error ก่อนแสดงไดอะล็อก ต้องไม่ pop หน้านี้ออกไปแทน
+    bool dialogOpen = false;
     try {
       // จำกัดขนาดรูปก่อนส่งเข้า Gemini — กล้องมือถือสมัยนี้ถ่ายได้ไฟล์ใหญ่มาก
       // (10+ MB) ถ้าส่งเต็มขนาดจริงจะอัพโหลดช้าและโมเดลประมวลผลช้าตามไปด้วย
@@ -108,6 +121,7 @@ class _ImageScanningState extends State<ImageScanning> {
       if (image == null) return;
 
       if (!mounted) return;
+      dialogOpen = true;
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -192,6 +206,7 @@ class _ImageScanningState extends State<ImageScanning> {
       if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
+      dialogOpen = false;
 
       if (response.text != null) {
         String cleanJson = response.text!
@@ -233,16 +248,22 @@ class _ImageScanningState extends State<ImageScanning> {
         }
       }
     } catch (e) {
-      if (mounted && Navigator.canPop(context)) {
+      if (dialogOpen && mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             geminiErrorMessage(e, fallback: 'วิเคราะห์วัตถุดิบไม่สำเร็จ'),
           ),
           backgroundColor: Colors.red,
+          action: SnackBarAction(
+            label: 'นำเข้าเอง',
+            textColor: Colors.white,
+            onPressed: _openManualEntry,
+          ),
         ),
       );
     }
@@ -278,6 +299,13 @@ class _ImageScanningState extends State<ImageScanning> {
                       title: "เลือกจากคลังรูปภาพ",
                       subtitle: "อัพโหลดรูปภาพที่มีอยู่",
                       onTap: () => _pickAndAnalyzeImage(ImageSource.gallery),
+                    ),
+                    const SizedBox(height: 15),
+                    _IngredientOptionCard(
+                      icon: Icons.edit_note,
+                      title: "นำเข้าวัตถุดิบด้วยตัวเอง",
+                      subtitle: "กรอกชื่อและจำนวนวัตถุดิบ",
+                      onTap: _openManualEntry,
                     ),
                     const SizedBox(height: 20),
 
