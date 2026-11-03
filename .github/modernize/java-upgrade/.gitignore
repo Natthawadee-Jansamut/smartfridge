@@ -1,0 +1,3 @@
+# ซ่อนไฟล์ API Key จริงไม่ให้อัปขึ้น GitHub
+lib/config/api_keys.dart
+**/api_keys.dart
