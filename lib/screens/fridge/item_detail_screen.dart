@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../utils/category_icons.dart';
-import '../utils/fridge_age.dart';
-import '../utils/shelf_life.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/utils/category_icons.dart';
+import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/utils/shelf_life.dart';
 
 class ItemDetailScreen extends StatefulWidget {
   final String itemId; // รับไอดีจากหน้าคลัง

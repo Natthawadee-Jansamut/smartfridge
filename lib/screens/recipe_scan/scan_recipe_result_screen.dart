@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../services/recipe_repository.dart';
-import '../widgets/add_recipe_widgets.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
-import 'manual_recipe_screen.dart';
+import 'package:test_app/services/recipe_repository.dart';
+import 'package:test_app/widgets/add_recipe_widgets.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/screens/recipe_scan/manual_recipe_screen.dart';
 
 /// หน้าตรวจสอบสูตรที่ AI สแกน/สร้างมา (ตามดีไซน์ใน Figma: "สูตรเมนูอาหาร")
 /// - เทียบวัตถุดิบที่สูตรต้องใช้กับของจริงในตู้เย็น (Supabase) แบบสด

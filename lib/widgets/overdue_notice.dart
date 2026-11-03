@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../utils/shelf_life.dart';
+import 'package:test_app/utils/shelf_life.dart';
 
 /// กล่องบนการ์ดวัตถุดิบที่เกินระยะที่เก็บได้แล้ว: คำแนะนำตามชนิดของ และถ้าเป็น
 /// ของที่ตรวจด้วยตาได้ (ผัก ผลไม้ ไข่ ฯลฯ) มีปุ่ม "ตรวจแล้วยังใช้ได้ +1/+2/+3

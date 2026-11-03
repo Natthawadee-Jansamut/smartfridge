@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/category_icons.dart';
-import '../utils/shelf_life.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
-import 'inventory_screen.dart';
+import 'package:test_app/utils/category_icons.dart';
+import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/screens/fridge/inventory_screen.dart';
 
 /// หน้าผลลัพธ์หลังสแกนวัตถุดิบ (ตามดีไซน์ใน Figma: "SCAN" - ผลลัพธ์)
 /// รูปที่แสดงในการ์ด "รูปภาพ" คือรูปจริงที่ผู้ใช้ถ่าย/เลือกมา (ไม่ใช่รูป mock)

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/overdue_notice.dart';
-import '../widgets/shelf_days_dialog.dart';
-import '../services/fridge_stock.dart';
-import '../utils/category_icons.dart';
-import '../utils/fridge_age.dart';
-import '../utils/shelf_life.dart';
-import 'notification_settings_screen.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/overdue_notice.dart';
+import 'package:test_app/widgets/shelf_days_dialog.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/utils/category_icons.dart';
+import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/screens/notification/notification_settings_screen.dart';
 
 /// หน้า "แจ้งเตือน" วัตถุดิบ (ตามดีไซน์ใน Figma กลุ่ม "ALERT") — กรองตามจำนวน
 /// วันที่อยู่ในตู้เย็น (0 / 1 / 3 / 7 / 14 วัน) และทุกการ์ดแสดงตัวเลขที่ใช้ตัดสิน (อยู่มาแล้วกี่วัน เทียบกับ

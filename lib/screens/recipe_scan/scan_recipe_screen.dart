@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../services/recipe_ai_service.dart';
-import '../widgets/add_recipe_widgets.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
-import 'saved_recipes_screen.dart';
-import 'scan_recipe_result_screen.dart';
+import 'package:test_app/services/recipe_ai_service.dart';
+import 'package:test_app/widgets/add_recipe_widgets.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/screens/recipe_scan/saved_recipes_screen.dart';
+import 'package:test_app/screens/recipe_scan/scan_recipe_result_screen.dart';
 
 /// ทางลัด "สแกนสูตรอาหาร" จากเมนูหลัก -> เปิดหน้าคลังสูตรอาหารก่อน
 /// (สแกนสูตรใหม่ได้จากปุ่ม + ในหน้าคลังสูตร)

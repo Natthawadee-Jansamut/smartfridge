@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'item_detail_screen.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../utils/category_icons.dart';
-import '../utils/fridge_age.dart';
-import '../utils/shelf_life.dart';
-import '../widgets/overdue_notice.dart';
-import '../widgets/shelf_days_dialog.dart';
-import '../services/fridge_stock.dart';
-import '../services/notification_service.dart';
+import 'package:test_app/screens/fridge/item_detail_screen.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/utils/category_icons.dart';
+import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/widgets/overdue_notice.dart';
+import 'package:test_app/widgets/shelf_days_dialog.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/notification_service.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});

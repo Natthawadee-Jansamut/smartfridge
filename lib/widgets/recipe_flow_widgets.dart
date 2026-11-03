@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'app_icons.dart';
-import '../utils/fridge_age.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 /// วิดเจ็ตที่ใช้ร่วมกันในกลุ่มหน้า "สแกนสูตรอาหาร" ทั้ง 3 หน้า
 /// (คลังสูตรอาหาร / สแกนสูตรอาหาร / ผลการสแกนสูตรอาหาร)

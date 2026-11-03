@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../services/fridge_stock.dart';
-import '../utils/fridge_age.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 /// วัตถุดิบ 1 รายการที่สูตรบอกว่าต้องใช้ พร้อมปริมาณที่สูตรแนะนำ
 class DeductRequest {

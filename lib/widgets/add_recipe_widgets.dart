@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'app_icons.dart';
+import 'package:test_app/widgets/app_icons.dart';
 
 /// สีหลักของฟีเจอร์สูตรอาหาร (ตรงกับดีไซน์ใน Figma)
 const kRecipeBg = Color(0xFFD8EEFF);

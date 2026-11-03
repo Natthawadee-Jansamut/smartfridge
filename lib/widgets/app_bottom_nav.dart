@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../screens/main_menu_screen.dart';
-import '../screens/scan_menu_screen.dart';
-import '../screens/inventory_screen.dart';
-import '../screens/ai_recipe_screen.dart';
-import '../screens/expiration_alert_screen.dart';
-import '../screens/plan_menu_screen.dart';
-import 'app_icons.dart';
+import 'package:test_app/screens/home/main_menu_screen.dart';
+import 'package:test_app/screens/home/scan_menu_screen.dart';
+import 'package:test_app/screens/fridge/inventory_screen.dart';
+import 'package:test_app/screens/menu_generator/ai_recipe_screen.dart';
+import 'package:test_app/screens/notification/expiration_alert_screen.dart';
+import 'package:test_app/screens/meal_plan/plan_menu_screen.dart';
+import 'package:test_app/widgets/app_icons.dart';
 
 /// แท็บทั้งหมดที่มีอยู่ใน Bottom Navigation ของแอป
 /// (อ้างอิงตามดีไซน์ใหม่ใน Figma: หน้าหลัก / สแกน / คลัง / เมนูอาหาร / แจ้งเตือน / แพลน)

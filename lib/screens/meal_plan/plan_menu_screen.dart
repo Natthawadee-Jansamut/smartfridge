@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'meal_plan_screen.dart';
-import 'my_plan_screen.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
+import 'package:test_app/screens/meal_plan/meal_plan_screen.dart';
+import 'package:test_app/screens/meal_plan/my_plan_screen.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
 
 /// หน้า "แพลนเมนูอาหาร" (ตามดีไซน์ใน Figma: กลุ่ม "PLANNING" เฟรมแรก)
 /// เป็นหน้า root ของแท็บ "แพลน" ในแถบเมนูด้านล่าง จึงไม่มีปุ่มย้อนกลับ

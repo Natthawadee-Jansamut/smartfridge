@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'ImageScanning.dart';
-import 'saved_recipes_screen.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
+import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart';
+import 'package:test_app/screens/recipe_scan/saved_recipes_screen.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
 
 /// หน้าเลือกว่าจะ "สแกน" อะไร (ตามดีไซน์ใน Figma: เฟรม "SCAN" ตัวบนสุด)
 /// เข้าถึงได้จากแท็บ "สแกน" ที่แถบเมนูด้านล่าง

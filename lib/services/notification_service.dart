@@ -5,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-import '../utils/fridge_age.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 /// บริการแจ้งเตือนวัตถุดิบที่ใกล้ครบอายุการเก็บรักษา — อ่านค่า "แจ้งเตือน
 /// ล่วงหน้ากี่วันก่อนครบอายุการเก็บรักษา" (notify_days) ที่ผู้ใช้ตั้งไว้ในหน้า

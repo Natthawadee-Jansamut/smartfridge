@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'weekly_plan_screen.dart';
+import 'package:test_app/screens/meal_plan/weekly_plan_screen.dart';
 
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
 
 class MyPlanScreen extends StatefulWidget {
   const MyPlanScreen({super.key});

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:app_links/app_links.dart';
 
-import 'package:test_app/screens/login_screen.dart';
-import 'package:test_app/screens/main_menu_screen.dart';
-import 'package:test_app/screens/reset_password_screen.dart';
-import 'services/notification_service.dart';
-import 'services/remember_me.dart';
+import 'package:test_app/screens/auth/login_screen.dart';
+import 'package:test_app/screens/home/main_menu_screen.dart';
+import 'package:test_app/screens/auth/reset_password_screen.dart';
+import 'package:test_app/services/notification_service.dart';
+import 'package:test_app/services/remember_me.dart';
 
 
 final GlobalKey<NavigatorState> navigatorKey =

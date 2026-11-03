@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
-import '../config/api_keys.dart';
+import 'package:test_app/config/api_keys.dart';
 
 /// ข้อผิดพลาดที่ตั้งใจแสดงให้ผู้ใช้เห็นตรงๆ
 class RecipeAiException implements Exception {

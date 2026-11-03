@@ -5,14 +5,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/category_icons.dart';
-import '../utils/shelf_life.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
-import 'result_screen.dart';
-import '../config/api_keys.dart';
-import '../services/gemini_retry.dart';
+import 'package:test_app/utils/category_icons.dart';
+import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/screens/ingredient_scan/result_screen.dart';
+import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/services/gemini_retry.dart';
 
 /// หน้าถ่ายรูปวัตถุดิบเพื่อสแกนเข้าตู้เย็น (ตามดีไซน์ใน Figma: "SCAN")
 /// รายการ "วัตถุดิบที่เพิ่มล่าสุด" ดึงจาก Supabase จริงเสมอ (ไม่ใช้ตัวเลข mock ของ Figma)

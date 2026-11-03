@@ -1,7 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/fridge_age.dart';
-import '../utils/shelf_life.dart';
+import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/utils/shelf_life.dart';
 
 /// ผลการหักวัตถุดิบ 1 รายการ
 class DeductResult {

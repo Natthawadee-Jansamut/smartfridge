@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
-import '../widgets/deduct_confirm_sheet.dart';
-import '../services/fridge_stock.dart';
-import '../services/recipe_repository.dart';
-import '../widgets/add_recipe_widgets.dart';
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/widgets/deduct_confirm_sheet.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/recipe_repository.dart';
+import 'package:test_app/widgets/add_recipe_widgets.dart';
 
 /// หน้ารายละเอียดสูตรอาหารที่บันทึกไว้ (ตามดีไซน์ใน Figma: "Smart Recipe" หน้าเมนู)
 /// เปิดจากการกดเลือกสูตรในหน้าคลังสูตรอาหาร

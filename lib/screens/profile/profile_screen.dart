@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'edit_profile_screen.dart';
-import 'change_password_screen.dart';
-import 'delete_account_screen.dart';
-import 'login_screen.dart';
+import 'package:test_app/screens/profile/edit_profile_screen.dart';
+import 'package:test_app/screens/profile/change_password_screen.dart';
+import 'package:test_app/screens/profile/delete_account_screen.dart';
+import 'package:test_app/screens/auth/login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'profile_screen.dart';
-import 'ImageScanning.dart';
-import 'inventory_screen.dart';
-import 'ai_recipe_screen.dart';
-import 'scan_recipe_result_screen.dart';
-import 'weekly_plan_screen.dart';
-import 'meal_plan_screen.dart';
-import 'plan_menu_screen.dart';
-import 'expiration_alert_screen.dart';
-import 'scan_recipe_screen.dart';
-import '../utils/fridge_age.dart';
+import 'package:test_app/screens/profile/profile_screen.dart';
+import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart';
+import 'package:test_app/screens/fridge/inventory_screen.dart';
+import 'package:test_app/screens/menu_generator/ai_recipe_screen.dart';
+import 'package:test_app/screens/recipe_scan/scan_recipe_result_screen.dart';
+import 'package:test_app/screens/meal_plan/weekly_plan_screen.dart';
+import 'package:test_app/screens/meal_plan/meal_plan_screen.dart';
+import 'package:test_app/screens/meal_plan/plan_menu_screen.dart';
+import 'package:test_app/screens/notification/expiration_alert_screen.dart';
+import 'package:test_app/screens/recipe_scan/scan_recipe_screen.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});

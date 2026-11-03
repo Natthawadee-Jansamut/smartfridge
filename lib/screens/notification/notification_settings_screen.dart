@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:permission_handler/permission_handler.dart';
-import '../services/notification_service.dart';
-import '../widgets/app_icons.dart';
-import '../utils/fridge_age.dart';
+import 'package:test_app/services/notification_service.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 /// หน้า "ตั้งค่า" การแจ้งเตือน (ตามดีไซน์ใน Figma กลุ่ม "ALERT") — เก็บค่า
 /// "แจ้งเตือนล่วงหน้ากี่วันก่อนครบอายุการเก็บรักษา" ไว้ใน user_metadata ของ Supabase Auth

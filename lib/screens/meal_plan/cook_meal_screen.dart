@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../services/fridge_stock.dart';
-import '../widgets/deduct_confirm_sheet.dart';
-import '../widgets/app_icons.dart';
-import '../widgets/recipe_flow_widgets.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/widgets/deduct_confirm_sheet.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
 
 /// หน้า "ทำอาหาร" ของมื้ออาหารหนึ่งมื้อ (ตามดีไซน์ Figma กลุ่ม PLANNING)
 /// ใช้ลวดลายการ์ดเดียวกับหน้า "สูตรอาหารที่บันทึกไว้" (recipe_detail_screen.dart)

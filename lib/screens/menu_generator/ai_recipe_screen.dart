@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'recipe_detail_screen.dart'; // ✅ นำเข้าหน้าใหม่
-import '../widgets/app_bottom_nav.dart';
-import '../widgets/app_icons.dart';
-import '../config/api_keys.dart';
-import '../services/fridge_stock.dart';
-import '../services/gemini_retry.dart';
-import '../utils/fridge_age.dart';
+import 'package:test_app/screens/shared/recipe_detail_screen.dart'; // ✅ นำเข้าหน้าใหม่
+import 'package:test_app/widgets/app_bottom_nav.dart';
+import 'package:test_app/widgets/app_icons.dart';
+import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 class AiRecipeScreen extends StatefulWidget {
   const AiRecipeScreen({super.key});
