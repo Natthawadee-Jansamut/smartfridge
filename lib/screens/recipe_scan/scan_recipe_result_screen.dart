@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:test_app/services/recipe_repository.dart';
@@ -18,11 +20,15 @@ class ScanRecipeResultScreen extends StatefulWidget {
   final bool isAiGenerated;
   final String retryLabel;
 
+  /// รูปสูตรที่ผู้ใช้อัปโหลด — แสดงด้านบนให้เทียบกับผลที่ AI อ่านได้
+  final Uint8List? imageBytes;
+
   const ScanRecipeResultScreen({
     super.key,
     required this.recipe,
     this.isAiGenerated = true,
     this.retryLabel = 'สแกนใหม่',
+    this.imageBytes,
   });
 
   @override
@@ -67,6 +73,7 @@ class _ScanRecipeResultScreenState extends State<ScanRecipeResultScreen> {
           initialRecipe: _recipe,
           mode: RecipeFormMode.reviewDraft,
           showAiDisclaimer: widget.isAiGenerated,
+          referenceImage: widget.imageBytes,
         ),
       ),
     );
@@ -129,6 +136,11 @@ class _ScanRecipeResultScreenState extends State<ScanRecipeResultScreen> {
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                       children: [
+                        // รูปสูตรที่ผู้ใช้อัปโหลด (แตะเพื่อขยาย/ซูมดูตัวหนังสือ)
+                        if (widget.imageBytes != null) ...[
+                          ScannedImagePreview(bytes: widget.imageBytes!),
+                          const SizedBox(height: 16),
+                        ],
                         // ชื่อเมนู
                         Container(
                           width: double.infinity,

@@ -12,7 +12,7 @@ import 'package:test_app/screens/recipe_scan/scan_recipe_screen.dart';
 /// หน้าคลังสูตรอาหาร (ตามดีไซน์ใน Figma: "สูตรอาหาร")
 /// ทุกสูตร + ความครบของวัตถุดิบ (X/Y) ดึงมาจาก Supabase จริงเสมอ
 /// ปุ่ม + มุมขวาล่าง -> Bottom Sheet 2 ทางเลือก: สแกน / เขียนเอง
-/// ปุ่ม "แก้ไข" บนการ์ด -> ฟอร์มแก้ไขสูตร, ปัดซ้าย -> ลบสูตร
+/// กดการ์ด -> หน้ารายละเอียด (แก้ไขวัตถุดิบ/ขั้นตอนได้ในหน้านั้น), ปัดซ้าย -> ลบสูตร
 class SavedRecipesScreen extends StatefulWidget {
   const SavedRecipesScreen({super.key});
 
@@ -102,21 +102,6 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
       return;
     }
     _fetchData();
-  }
-
-  // ---------------------------------------------------------------- Edit
-
-  Future<void> _editRecipe(Map<String, dynamic> recipe) async {
-    final saved = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ManualRecipeScreen(
-          initialRecipe: recipe,
-          mode: RecipeFormMode.editSaved,
-        ),
-      ),
-    );
-    if (saved == true && mounted) _fetchData();
   }
 
   // -------------------------------------------------------------- Delete
@@ -250,33 +235,26 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                   borderRadius: BorderRadius.circular(20),
                   splashColor: kRecipeBlue.withOpacity(0.12),
                   onTap: () async {
-                    final result = await Navigator.push(
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => RecipeDetailScreen(
                           recipe: recipe,
                           inventory: _inventory,
+                          // แก้ไขวัตถุดิบ/ขั้นตอนได้ในหน้ารายละเอียดของแต่ละเมนู
+                          canEdit: true,
                         ),
                       ),
                     );
-                    if (result == true) _fetchData();
+                    // รีเฟรชเสมอ: อาจแก้ไขสูตร ทำอาหาร(หักวัตถุดิบ) หรือลบสูตรมา
+                    if (mounted) _fetchData();
                   },
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: RecipeStatusBar(
-                            label: recipeName,
-                            have: have,
-                            total: total,
-                          ),
-                        ),
-                        if (recipe['id'] != null) ...[
-                          const SizedBox(width: 10),
-                          EditPill(onTap: () => _editRecipe(recipe)),
-                        ],
-                      ],
+                    padding: const EdgeInsets.all(16),
+                    child: RecipeStatusBar(
+                      label: recipeName,
+                      have: have,
+                      total: total,
                     ),
                   ),
                 ),

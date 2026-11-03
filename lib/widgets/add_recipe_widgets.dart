@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'package:test_app/widgets/app_icons.dart';
@@ -270,13 +273,15 @@ class AiChip extends StatelessWidget {
 class RecipeStepsView extends StatelessWidget {
   final List<String> steps;
   final Set<int> aiIndexes;
+  final double fontSize;
+  final double spacing;
 
   const RecipeStepsView({
     super.key,
     required this.steps,
     this.aiIndexes = const {},
-    required int fontSize,
-    required int spacing,
+    this.fontSize = 14,
+    this.spacing = 8,
   });
 
   @override
@@ -287,7 +292,7 @@ class RecipeStepsView extends StatelessWidget {
         if (aiIndexes.isNotEmpty) const AiStepsNote(),
         for (var i = 0; i < steps.length; i++)
           Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 8),
+            padding: EdgeInsets.only(left: 8, bottom: spacing),
             child: Text.rich(
               TextSpan(
                 text: '${i + 1}. ${steps[i]}',
@@ -302,7 +307,7 @@ class RecipeStepsView extends StatelessWidget {
                 ],
               ),
               style: TextStyle(
-                fontSize: 14,
+                fontSize: fontSize,
                 height: 1.5,
                 color: aiIndexes.contains(i) ? kAiRed : Colors.black87,
               ),
@@ -547,4 +552,568 @@ VoidCallback showBlockingLoader(BuildContext context, String message) {
       navigator.pop();
     }
   };
+}
+
+// ---------------------------------------------------------------------------
+// หน่วยครัว + ปุ่มบวก/ลบตัวเลข (กันผู้ใช้พิมพ์ตัวหนังสือลงช่องตัวเลข)
+// ---------------------------------------------------------------------------
+
+/// หน่วยครัวที่เลือกได้ — รองรับทั้งน้ำหนัก, ช้อน/ถ้วย, นับชิ้น/ส่วน
+/// และ "%" สำหรับกะด้วยสายตา (เช่น ใช้นม 50% ของขวด)
+const kRecipeUnits = <String>[
+  'กรัม',
+  'กิโลกรัม',
+  'มิลลิลิตร',
+  'ลิตร',
+  'ช้อนโต๊ะ',
+  'ช้อนชา',
+  'ถ้วย',
+  'ฟอง',
+  'ชิ้น',
+  'ลูก',
+  'หัว',
+  'กลีบ',
+  'เม็ด',
+  'ต้น',
+  'กำ',
+  'แพ็ค',
+  'ส่วน',
+  '%',
+];
+
+/// กดบวก/ลบครั้งละเท่าไหร่ ตามหน่วย
+/// เช่น กรัม +10, ช้อนโต๊ะ +0.5, ฟอง +1, หัวกะหล่ำ +0.5 (ครึ่งหัว)
+num stepForUnit(String? unit) {
+  switch ((unit ?? '').trim()) {
+    case 'กรัม':
+    case 'มิลลิลิตร':
+    case '%':
+      return 10;
+    case 'กิโลกรัม':
+    case 'ลิตร':
+      return 0.25;
+    case 'ช้อนโต๊ะ':
+    case 'ช้อนชา':
+    case 'ถ้วย':
+    case 'ลูก':
+    case 'หัว':
+    case 'แพ็ค':
+    case 'ส่วน':
+      return 0.5;
+    default: // ฟอง ชิ้น กลีบ เม็ด ต้น กำ และหน่วยอื่นๆ
+      return 1;
+  }
+}
+
+/// ค่าสูงสุดตามหน่วย (% ไม่เกิน 100)
+num maxForUnit(String? unit) => (unit ?? '').trim() == '%' ? 100 : 9999;
+
+/// ปุ่ม [−] ค่า [+] สำหรับค่าตัวเลขทุกช่อง (จำนวนวัตถุดิบ, เวลาทำ, จำนวนที่)
+/// - ค่า 0 / null แสดงเป็น [emptyLabel] และถือว่า "ไม่ได้ระบุ"
+/// - กดค้างเพื่อเพิ่ม/ลดต่อเนื่อง
+class NumberStepper extends StatefulWidget {
+  final num? value;
+  final ValueChanged<num?> onChanged;
+  final num step;
+  final num min;
+  final num max;
+  final String? suffix;
+  final String emptyLabel;
+  final bool compact;
+
+  const NumberStepper({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.step = 1,
+    this.min = 0,
+    this.max = 9999,
+    this.suffix,
+    this.emptyLabel = '—',
+    this.compact = false,
+  });
+
+  @override
+  State<NumberStepper> createState() => _NumberStepperState();
+}
+
+class _NumberStepperState extends State<NumberStepper> {
+  Timer? _repeat;
+  num? _current;
+
+  num get _v => _current ?? widget.value ?? 0;
+
+  @override
+  void didUpdateWidget(covariant NumberStepper old) {
+    super.didUpdateWidget(old);
+    if (_repeat == null) _current = null;
+  }
+
+  @override
+  void dispose() {
+    _repeat?.cancel();
+    super.dispose();
+  }
+
+  void _bump(int dir) {
+    // ปัดให้ตรงจังหวะ step เสมอ (กันเลขทศนิยมเพี้ยน เช่น 0.30000000004)
+    final raw = _v + dir * widget.step;
+    final snapped = (raw / widget.step).round() * widget.step;
+    final next = snapped.clamp(widget.min, widget.max);
+    final clean = double.parse(next.toStringAsFixed(2));
+    final value = clean == clean.roundToDouble() ? clean.toInt() : clean;
+    if (value == _v) return;
+    _current = value;
+    widget.onChanged(value == 0 ? null : value);
+  }
+
+  void _startRepeat(int dir) {
+    _repeat?.cancel();
+    _repeat = Timer.periodic(
+      const Duration(milliseconds: 110),
+      (_) => _bump(dir),
+    );
+  }
+
+  void _stopRepeat() {
+    _repeat?.cancel();
+    _repeat = null;
+    _current = null;
+  }
+
+  String _label() {
+    final v = _v;
+    if (v == 0) return widget.emptyLabel;
+    final n = v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+    return widget.suffix == null ? n : '$n ${widget.suffix}';
+  }
+
+  Widget _button(IconData icon, int dir, bool enabled) {
+    final size = widget.compact ? 30.0 : 36.0;
+    return GestureDetector(
+      onLongPressStart: enabled ? (_) => _startRepeat(dir) : null,
+      onLongPressEnd: enabled ? (_) => _stopRepeat() : null,
+      onLongPressCancel: _stopRepeat,
+      child: Material(
+        color: enabled ? kRecipeYellow : Colors.grey.shade200,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: enabled ? () => _bump(dir) : null,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(
+              icon,
+              size: widget.compact ? 18 : 20,
+              color: enabled ? Colors.black87 : Colors.black26,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = _v;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _button(Icons.remove_rounded, -1, v > widget.min),
+        ConstrainedBox(
+          constraints: BoxConstraints(minWidth: widget.compact ? 52 : 70),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              _label(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: widget.compact ? 13 : 14,
+                fontWeight: FontWeight.w600,
+                color: v == 0 ? Colors.black38 : Colors.black87,
+              ),
+            ),
+          ),
+        ),
+        _button(Icons.add_rounded, 1, v < widget.max),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// รูปสูตรที่ผู้ใช้อัปโหลด (ให้เทียบว่า AI อ่านถูกไหม) — แตะเพื่อขยาย/ซูม
+// ---------------------------------------------------------------------------
+
+class ScannedImagePreview extends StatelessWidget {
+  final Uint8List bytes;
+  final double height;
+
+  const ScannedImagePreview({
+    super.key,
+    required this.bytes,
+    this.height = 200,
+  });
+
+  void _openFullScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _FullScreenImage(bytes: bytes),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'รูปสูตรที่คุณอัปโหลด',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => _openFullScreen(context),
+            child: Stack(
+              children: [
+                Container(
+                  height: height,
+                  width: double.infinity,
+                  color: const Color(0xFFF3F6FA),
+                  child: Image.memory(bytes, fit: BoxFit.contain),
+                ),
+                Positioned(
+                  right: 10,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.zoom_in_rounded, size: 16, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'แตะเพื่อขยาย',
+                          style: TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 6),
+          child: Text(
+            'เทียบกับข้อมูลด้านล่างว่า AI อ่านถูกต้องหรือไม่',
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FullScreenImage extends StatelessWidget {
+  final Uint8List bytes;
+  const _FullScreenImage({required this.bytes});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('รูปสูตรที่อัปโหลด', style: TextStyle(fontSize: 16)),
+      ),
+      body: InteractiveViewer(
+        minScale: 1,
+        maxScale: 5,
+        child: Center(child: Image.memory(bytes, fit: BoxFit.contain)),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// แถวแก้ไขวัตถุดิบ / ขั้นตอน (ใช้ร่วมกัน: หน้าเขียนสูตร + หน้ารายละเอียดสูตร)
+// ---------------------------------------------------------------------------
+
+InputDecoration recipeBoxDecoration(
+  String hint, {
+  Widget? prefix,
+  Widget? suffix,
+  bool isAi = false,
+}) {
+  final radius = BorderRadius.circular(10);
+  return InputDecoration(
+    isDense: true,
+    filled: isAi,
+    fillColor: isAi ? kAiRedBg : null,
+    hintText: hint,
+    hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    prefixIcon: prefix,
+    prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+    suffixIcon: suffix,
+    suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(
+        color: isAi ? kAiRed.withOpacity(0.5) : Colors.grey.shade400,
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: radius,
+      borderSide: BorderSide(color: isAi ? kAiRed : kRecipeBlue, width: 1.5),
+    ),
+  );
+}
+
+Widget _removeIcon(VoidCallback? onTap) => SizedBox(
+  width: 28,
+  child: onTap == null
+      ? null
+      : IconButton(
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          tooltip: 'ลบ',
+          icon: Icon(Icons.close, size: 18, color: Colors.grey.shade500),
+          onPressed: onTap,
+        ),
+);
+
+/// บรรทัด "ชื่อ ........ [−] ค่า [+]" เช่น เวลาทำ / จำนวนที่
+class StepperLine extends StatelessWidget {
+  final String label;
+  final Widget stepper;
+  const StepperLine({super.key, required this.label, required this.stepper});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+          stepper,
+        ],
+      ),
+    );
+  }
+}
+
+/// แถวแก้ไขวัตถุดิบ 2 บรรทัด:
+///   [เลข] [ชื่อวัตถุดิบ.........] [x]
+///         [−] จำนวน [+]  [หน่วย ▾]
+/// จำนวนปรับได้ด้วยปุ่ม +/− เท่านั้น (พิมพ์ตัวหนังสือไม่ได้)
+class IngredientEditRow extends StatelessWidget {
+  final int index;
+  final TextEditingController nameController;
+  final num? qty;
+  final String? unit;
+  final ValueChanged<num?> onQtyChanged;
+  final ValueChanged<String?> onUnitChanged;
+  final VoidCallback? onRemove;
+
+  const IngredientEditRow({
+    super.key,
+    required this.index,
+    required this.nameController,
+    required this.qty,
+    required this.unit,
+    required this.onQtyChanged,
+    required this.onUnitChanged,
+    this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final units = <String>{
+      ...kRecipeUnits,
+      if (unit != null && unit!.isNotEmpty) unit!,
+    }.toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 2, 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 18,
+                child: Text(
+                  '${index + 1}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: TextField(
+                  controller: nameController,
+                  textInputAction: TextInputAction.next,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: recipeBoxDecoration('ชื่อวัตถุดิบ'),
+                ),
+              ),
+              _removeIcon(onRemove),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 24, right: 28),
+            child: Row(
+              children: [
+                NumberStepper(
+                  value: qty,
+                  step: stepForUnit(unit),
+                  max: maxForUnit(unit),
+                  compact: true,
+                  onChanged: onQtyChanged,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    height: 38,
+                    padding: const EdgeInsets.only(left: 8, right: 2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.grey.shade400),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: (unit == null || unit!.isEmpty) ? null : unit,
+                        isExpanded: true,
+                        isDense: true,
+                        hint: Text(
+                          'หน่วย',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 18,
+                        ),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Colors.black87,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        menuMaxHeight: 320,
+                        items: units
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(u, overflow: TextOverflow.ellipsis),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: onUnitChanged,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ช่องแก้ไขขั้นตอน 1 ข้อ (ขั้นตอนที่ AI คิดเพิ่ม = ตัวหนังสือสีแดง + ป้าย AI)
+class StepEditRow extends StatelessWidget {
+  final int index;
+  final TextEditingController controller;
+  final bool isAi;
+  final VoidCallback? onRemove;
+
+  const StepEditRow({
+    super.key,
+    required this.index,
+    required this.controller,
+    this.isAi = false,
+    this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isAi ? kAiRed : Colors.black87;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              minLines: 1,
+              maxLines: 4,
+              textInputAction: TextInputAction.newline,
+              style: TextStyle(fontSize: 13, height: 1.4, color: color),
+              decoration: recipeBoxDecoration(
+                'อธิบายขั้นตอน',
+                isAi: isAi,
+                prefix: Padding(
+                  padding: const EdgeInsets.only(left: 10, right: 4),
+                  child: Text(
+                    '${index + 1}.',
+                    style: TextStyle(fontSize: 13, color: color),
+                  ),
+                ),
+                suffix: isAi
+                    ? const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: AiChip(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          _removeIcon(onRemove),
+        ],
+      ),
+    );
+  }
 }
