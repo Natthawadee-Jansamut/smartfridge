@@ -57,6 +57,42 @@ class RecipeRepository {
     return total;
   }
 
+  /// ดึงตัวเลขตัวแรกจากข้อความ เช่น "2 ที่" -> 2, "1/2" -> 0.5 (ไม่มี -> null)
+  static num? leadingNumber(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    final text = v.toString();
+    final frac = RegExp(r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)').firstMatch(text);
+    if (frac != null) {
+      final a = num.parse(frac.group(1)!);
+      final b = num.parse(frac.group(2)!);
+      return b == 0 ? null : a / b;
+    }
+    final m = RegExp(r'\d+(?:\.\d+)?').firstMatch(text);
+    return m == null ? null : num.parse(m.group(0)!);
+  }
+
+  /// เวลาทำเป็นนาที รองรับ "45 นาที", "1 ชั่วโมง 30 นาที", "1.5 ชม."
+  static int? minutesOf(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.round();
+    final text = v.toString();
+    final hour = RegExp(r'(\d+(?:\.\d+)?)\s*(?:ชั่วโมง|ชม)').firstMatch(text);
+    final minute = RegExp(r'(\d+)\s*(?:นาที|น\.)').firstMatch(text);
+    if (hour == null && minute == null) return leadingNumber(text)?.round();
+    final h = hour == null ? 0 : num.parse(hour.group(1)!);
+    final m = minute == null ? 0 : int.parse(minute.group(1)!);
+    return (h * 60 + m).round();
+  }
+
+  /// นาที -> ข้อความที่เก็บลงฐานข้อมูล (null/0 = ไม่ได้ระบุ)
+  static String? minutesText(num? minutes) =>
+      (minutes == null || minutes <= 0) ? null : '${minutes.round()} นาที';
+
+  /// จำนวนที่ -> ข้อความที่เก็บลงฐานข้อมูล (null/0 = ไม่ได้ระบุ)
+  static String? servingsText(num? servings) =>
+      (servings == null || servings <= 0) ? null : '${formatNum(servings)} ที่';
+
   /// แสดงตัวเลขสวยๆ: 2.0 -> "2", 0.5 -> "0.5"
   static String formatNum(dynamic v) {
     if (v == null) return '';

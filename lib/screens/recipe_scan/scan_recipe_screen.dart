@@ -93,7 +93,13 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
 
       final saved = await Navigator.push<bool>(
         context,
-        MaterialPageRoute(builder: (_) => ScanRecipeResultScreen(recipe: recipe)),
+        MaterialPageRoute(
+          // ส่งรูปที่อัปโหลดไปด้วย ให้ผู้ใช้เทียบว่า AI อ่านสูตรถูกไหม
+          builder: (_) => ScanRecipeResultScreen(
+            recipe: recipe,
+            imageBytes: bytes,
+          ),
+        ),
       );
       if (!mounted) return;
       if (saved == true) {

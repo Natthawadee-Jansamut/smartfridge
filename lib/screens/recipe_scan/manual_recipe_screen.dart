@@ -8,30 +8,6 @@ import 'package:test_app/widgets/add_recipe_widgets.dart';
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
 
-/// หน่วยครัวที่เลือกได้ — รองรับทั้งน้ำหนัก, ช้อน/ถ้วย, นับชิ้น/ส่วน
-/// และ "%" สำหรับกะด้วยสายตา (เช่น ใช้นม 50% ของขวด)
-/// สัดส่วนอย่าง "ครึ่งหัว" ให้พิมพ์จำนวนเป็น 1/2 แล้วเลือกหน่วย "หัว"
-const kRecipeUnits = <String>[
-  'กรัม',
-  'กิโลกรัม',
-  'มิลลิลิตร',
-  'ลิตร',
-  'ช้อนโต๊ะ',
-  'ช้อนชา',
-  'ถ้วย',
-  'ฟอง',
-  'ชิ้น',
-  'ลูก',
-  'หัว',
-  'กลีบ',
-  'เม็ด',
-  'ต้น',
-  'กำ',
-  'แพ็ค',
-  'ส่วน',
-  '%',
-];
-
 /// โหมดของฟอร์มสูตรอาหาร
 enum RecipeFormMode {
   /// เขียนสูตรใหม่ -> insert ลง Supabase แล้ว pop(true)
@@ -51,11 +27,15 @@ class ManualRecipeScreen extends StatefulWidget {
   final RecipeFormMode mode;
   final bool showAiDisclaimer;
 
+  /// รูปสูตรที่ผู้ใช้สแกน (โหมด reviewDraft) — แสดงไว้ด้านบนให้เทียบตอนแก้
+  final Uint8List? referenceImage;
+
   const ManualRecipeScreen({
     super.key,
     this.initialRecipe,
     this.mode = RecipeFormMode.create,
     this.showAiDisclaimer = false,
+    this.referenceImage,
   }) : assert(
          mode == RecipeFormMode.create || initialRecipe != null,
          'โหมดแก้ไขต้องส่ง initialRecipe มาด้วย',
@@ -67,17 +47,13 @@ class ManualRecipeScreen extends StatefulWidget {
 
 class _IngredientRow {
   final TextEditingController name;
-  final TextEditingController qty;
+  num? qty; // ปรับด้วยปุ่ม +/− เท่านั้น (null = ไม่ได้ระบุ)
   String? unit;
 
-  _IngredientRow({String name = '', String qty = '', this.unit})
-    : name = TextEditingController(text: name),
-      qty = TextEditingController(text: qty);
+  _IngredientRow({String name = '', this.qty, this.unit})
+    : name = TextEditingController(text: name);
 
-  void dispose() {
-    name.dispose();
-    qty.dispose();
-  }
+  void dispose() => name.dispose();
 }
 
 /// ช่องขั้นตอน 1 ช่อง — จำได้ว่าเป็นขั้นตอนที่ AI คิดเพิ่มหรือไม่
@@ -106,8 +82,8 @@ class _StepRow {
 class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
   final _picker = ImagePicker();
   final _nameCtrl = TextEditingController();
-  final _timeCtrl = TextEditingController();
-  final _servingsCtrl = TextEditingController();
+  int? _minutes; // เวลาทำ (นาที) — ปุ่ม +/−
+  num? _servings; // จำนวนที่ — ปุ่ม +/−
   final List<_IngredientRow> _ingredients = [];
   final List<_StepRow> _steps = [];
 
@@ -134,14 +110,15 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
     final r = widget.initialRecipe;
     if (r != null) {
       _nameCtrl.text = (r['recipe_name'] ?? '').toString();
-      _timeCtrl.text = (r['time'] ?? '').toString();
-      _servingsCtrl.text = (r['servings'] ?? '').toString();
+      _minutes = RecipeRepository.minutesOf(r['time']);
+      _servings = RecipeRepository.leadingNumber(r['servings']);
       for (final ing in RecipeRepository.ingredientsOf(r)) {
         final unit = (ing['unit'] ?? '').toString().trim();
         _ingredients.add(
           _IngredientRow(
             name: (ing['name'] ?? '').toString(),
-            qty: RecipeRepository.formatNum(ing['use_quantity']),
+            qty: RecipeRepository.parseQuantity(ing['use_quantity']) ??
+                RecipeRepository.leadingNumber(ing['use_quantity']),
             unit: unit.isEmpty ? null : unit,
           ),
         );
@@ -168,8 +145,6 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _timeCtrl.dispose();
-    _servingsCtrl.dispose();
     for (final r in _ingredients) {
       r.dispose();
     }
@@ -261,15 +236,9 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
     for (final row in _ingredients) {
       final ingName = row.name.text.trim();
       if (ingName.isEmpty) continue;
-      final qtyText = row.qty.text.trim();
-      final qty = RecipeRepository.parseQuantity(qtyText);
-      if (qtyText.isNotEmpty && qty == null) {
-        _snack('จำนวนของ "$ingName" ไม่ถูกต้อง (ใช้ตัวเลข เช่น 2, 0.5 หรือ 1/2)');
-        return null;
-      }
       ingredients.add({
         'name': ingName,
-        'use_quantity': qty,
+        'use_quantity': row.qty,
         'unit': row.unit ?? '',
       });
     }
@@ -279,13 +248,12 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
     }
 
     final steps = _steps.where((s) => s.ctrl.text.trim().isNotEmpty).toList();
-    String? orNull(String s) => s.trim().isEmpty ? null : s.trim();
 
     return {
       ...?widget.initialRecipe,
       'recipe_name': name,
-      'time': orNull(_timeCtrl.text),
-      'servings': orNull(_servingsCtrl.text),
+      'time': RecipeRepository.minutesText(_minutes),
+      'servings': RecipeRepository.servingsText(_servings),
       'ingredients_used': ingredients.map((e) => e['name']).toList(),
       'detailed_ingredients': ingredients,
       'instructions': [
@@ -365,6 +333,13 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
                   children: [
+                    if (_isDraft && widget.referenceImage != null) ...[
+                      ScannedImagePreview(
+                        bytes: widget.referenceImage!,
+                        height: 170,
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     if (widget.showAiDisclaimer || _hasAiSteps) ...[
                       const AiDisclaimerBanner(),
                       const SizedBox(height: 14),
@@ -376,28 +351,39 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
                     _label('ชื่อเมนู'),
                     _plainField(_nameCtrl, 'เช่น ผัดกะเพราไก่'),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _label('เวลาทำ'),
-                              _plainField(_timeCtrl, 'เช่น 15 นาที'),
-                            ],
+                    // เวลาทำ / จำนวนที่ — ปรับด้วยปุ่ม +/− เท่านั้น
+                    RecipeSectionCard(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      child: Column(
+                        children: [
+                          _stepperLine(
+                            'เวลาทำ',
+                            NumberStepper(
+                              value: _minutes,
+                              step: 5,
+                              max: 600,
+                              suffix: 'นาที',
+                              emptyLabel: 'ไม่ระบุ',
+                              onChanged: (v) =>
+                                  setState(() => _minutes = v?.round()),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _label('จำนวนที่'),
-                              _plainField(_servingsCtrl, 'เช่น 1 ที่'),
-                            ],
+                          const Divider(height: 8),
+                          _stepperLine(
+                            'จำนวนที่',
+                            NumberStepper(
+                              value: _servings,
+                              max: 50,
+                              suffix: 'ที่',
+                              emptyLabel: 'ไม่ระบุ',
+                              onChanged: (v) => setState(() => _servings = v),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 18),
                     _label('วัตถุดิบที่ต้องใช้'),
@@ -580,198 +566,47 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
     );
   }
 
-  InputDecoration _boxDecoration(
-    String hint, {
-    Widget? prefix,
-    Widget? suffix,
-    bool isAi = false,
-  }) {
-    final radius = BorderRadius.circular(10);
-    return InputDecoration(
-      isDense: true,
-      filled: isAi,
-      fillColor: isAi ? kAiRedBg : null,
-      suffixIcon: suffix,
-      suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-      hintText: hint,
-      hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      prefixIcon: prefix,
-      prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(
-          color: isAi ? kAiRed.withOpacity(0.5) : Colors.grey.shade400,
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: radius,
-        borderSide: BorderSide(
-          color: isAi ? kAiRed : kRecipeBlue,
-          width: 1.5,
-        ),
-      ),
-    );
-  }
-
-  Widget _removeButton(VoidCallback? onTap) {
-    return SizedBox(
-      width: 28,
-      child: onTap == null
-          ? null
-          : IconButton(
-              padding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
-              tooltip: 'ลบ',
-              icon: Icon(Icons.close, size: 18, color: Colors.grey.shade500),
-              onPressed: onTap,
-            ),
-    );
-  }
+  Widget _stepperLine(String label, Widget stepper) =>
+      StepperLine(label: label, stepper: stepper);
 
   Widget _buildIngredientRow(int i) {
     final row = _ingredients[i];
-    final units = <String>{
-      ...kRecipeUnits,
-      if (row.unit != null && row.unit!.isNotEmpty) row.unit!,
-    }.toList();
-
-    return Padding(
+    return IngredientEditRow(
       key: ObjectKey(row),
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 18,
-            child: Text(
-              '${i + 1}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.black87),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 5,
-            child: TextField(
-              controller: row.name,
-              textInputAction: TextInputAction.next,
-              style: const TextStyle(fontSize: 13),
-              decoration: _boxDecoration('ชื่อวัตถุดิบ'),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 2,
-            child: TextField(
-              controller: row.qty,
-              // ใช้คีย์บอร์ดตัวอักษรเพื่อให้พิมพ์เศษส่วน เช่น 1/2 ได้
-              keyboardType: TextInputType.text,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13),
-              decoration: _boxDecoration('จำนวน'),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            flex: 3,
-            child: Container(
-              height: 40,
-              padding: const EdgeInsets.only(left: 8, right: 2),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.grey.shade400),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: (row.unit == null || row.unit!.isEmpty)
-                      ? null
-                      : row.unit,
-                  isExpanded: true,
-                  isDense: true,
-                  hint: Text(
-                    'หน่วย',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-                  ),
-                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
-                  borderRadius: BorderRadius.circular(12),
-                  menuMaxHeight: 320,
-                  items: units
-                      .map(
-                        (u) => DropdownMenuItem(
-                          value: u,
-                          child: Text(u, overflow: TextOverflow.ellipsis),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => row.unit = v),
-                ),
-              ),
-            ),
-          ),
-          _removeButton(
-            _ingredients.length > 1
-                ? () => setState(() {
-                    _ingredients.removeAt(i);
-                    // dispose หลังเฟรมนี้ ไม่งั้น TextField ที่ยังค้างอยู่จะใช้ controller ที่ถูกทำลายแล้ว
-                    WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => row.dispose(),
-                    );
-                  })
-                : null,
-          ),
-        ],
-      ),
+      index: i,
+      nameController: row.name,
+      qty: row.qty,
+      unit: row.unit,
+      onQtyChanged: (v) => setState(() => row.qty = v),
+      onUnitChanged: (v) => setState(() {
+        row.unit = v;
+        // เปลี่ยนเป็น % แล้วค่าเกิน 100 -> ปัดลง
+        final max = maxForUnit(v);
+        if (row.qty != null && row.qty! > max) row.qty = max;
+      }),
+      onRemove: _ingredients.length > 1
+          ? () => setState(() {
+              _ingredients.removeAt(i);
+              // dispose หลังเฟรมนี้ ไม่งั้น TextField ที่ยังค้างอยู่จะใช้ controller ที่ถูกทำลายแล้ว
+              WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+            })
+          : null,
     );
   }
 
   Widget _buildStepRow(int i) {
     final row = _steps[i];
-    final color = row.isAi ? kAiRed : Colors.black87;
-    return Padding(
+    return StepEditRow(
       key: ObjectKey(row),
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: TextField(
-              controller: row.ctrl,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.newline,
-              style: TextStyle(fontSize: 13, height: 1.4, color: color),
-              decoration: _boxDecoration(
-                'อธิบายขั้นตอน',
-                isAi: row.isAi,
-                prefix: Padding(
-                  padding: const EdgeInsets.only(left: 10, right: 4),
-                  child: Text(
-                    '${i + 1}.',
-                    style: TextStyle(fontSize: 13, color: color),
-                  ),
-                ),
-                suffix: row.isAi
-                    ? const Padding(
-                        padding: EdgeInsets.only(right: 8),
-                        child: AiChip(),
-                      )
-                    : null,
-              ),
-            ),
-          ),
-          _removeButton(
-            _steps.length > 1
-                ? () => setState(() {
-                    _steps.removeAt(i);
-                    WidgetsBinding.instance.addPostFrameCallback(
-                      (_) => row.dispose(),
-                    );
-                  })
-                : null,
-          ),
-        ],
-      ),
+      index: i,
+      controller: row.ctrl,
+      isAi: row.isAi,
+      onRemove: _steps.length > 1
+          ? () => setState(() {
+              _steps.removeAt(i);
+              WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+            })
+          : null,
     );
   }
 

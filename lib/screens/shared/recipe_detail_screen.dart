@@ -20,20 +20,210 @@ class RecipeDetailScreen extends StatefulWidget {
   // ให้ตรงกับดีไซน์ Figma ของแต่ละที่มา
   final String headerTitle;
 
+  /// แก้ไขวัตถุดิบ/ขั้นตอนได้ในหน้านี้ (เฉพาะสูตรที่บันทึกไว้ในคลังแล้ว)
+  /// หน้า "เมนูแนะนำ" จาก AI ยังไม่ได้บันทึก จึงปิดไว้
+  final bool canEdit;
+
   const RecipeDetailScreen({
     super.key,
     required this.recipe,
     required this.inventory,
     this.headerTitle = "สูตรเมนูอาหาร",
+    this.canEdit = false,
   });
 
   @override
   State<RecipeDetailScreen> createState() => _RecipeDetailScreenState();
 }
 
+/// ข้อมูลร่างของวัตถุดิบ 1 แถว ตอนกด "แก้ไข"
+class _IngDraft {
+  final TextEditingController name;
+  num? qty; // ปรับด้วยปุ่ม +/− เท่านั้น
+  String? unit;
+
+  _IngDraft({String name = '', this.qty, this.unit})
+    : name = TextEditingController(text: name);
+
+  void dispose() => name.dispose();
+}
+
+/// ข้อมูลร่างของขั้นตอน 1 ข้อ — ถ้าแก้ข้อความของขั้นตอนที่ AI คิด
+/// จะถือว่าผู้ใช้ตรวจแล้ว กลายเป็นขั้นตอนของผู้ใช้ (หายจากสีแดง)
+class _StepDraft {
+  final TextEditingController ctrl;
+  final String _aiText;
+  bool isAi;
+
+  _StepDraft({String text = '', this.isAi = false})
+    : ctrl = TextEditingController(text: text),
+      _aiText = text.trim();
+
+  bool syncAiFlag() {
+    if (isAi && ctrl.text.trim() != _aiText) {
+      isAi = false;
+      return true;
+    }
+    return false;
+  }
+
+  void dispose() => ctrl.dispose();
+}
+
 class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   bool _isCooking = false;
   bool _isDeleting = false;
+
+  // สำเนาสูตรที่แก้ไขได้ (อัปเดตหลังบันทึกการแก้ไขสำเร็จ)
+  late Map<String, dynamic> _recipe = Map<String, dynamic>.from(widget.recipe);
+
+  // ----- โหมดแก้ไข (ทีละส่วน: วัตถุดิบ หรือ ขั้นตอน)
+  bool _editingIngredients = false;
+  bool _editingSteps = false;
+  bool _isSavingEdit = false;
+  List<_IngDraft> _ingDrafts = [];
+  List<_StepDraft> _stepDrafts = [];
+  num? _servingsDraft;
+  int? _minutesDraft;
+
+  bool get _canEdit => widget.canEdit && widget.recipe['id'] != null;
+  bool get _isEditing => _editingIngredients || _editingSteps;
+
+  @override
+  void dispose() {
+    for (final d in _ingDrafts) {
+      d.dispose();
+    }
+    for (final d in _stepDrafts) {
+      d.dispose();
+    }
+    super.dispose();
+  }
+
+  void _snack(String text, Color color) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(text), backgroundColor: color));
+  }
+
+  /// dispose controller หลังเฟรมนี้ (TextField ที่ยังค้างอยู่จะได้ไม่ใช้ของที่ถูกทำลาย)
+  void _disposeLater(List<void Function()> disposers) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      for (final d in disposers) {
+        d();
+      }
+    });
+  }
+
+  _StepDraft _newStep({String text = '', bool isAi = false}) {
+    final d = _StepDraft(text: text, isAi: isAi);
+    d.ctrl.addListener(() {
+      if (d.syncAiFlag() && mounted) setState(() {});
+    });
+    return d;
+  }
+
+  void _beginEditIngredients() {
+    _ingDrafts = [
+      for (final ing in RecipeRepository.ingredientsOf(_recipe))
+        _IngDraft(
+          name: (ing['name'] ?? '').toString(),
+          qty:
+              RecipeRepository.parseQuantity(ing['use_quantity']) ??
+              RecipeRepository.leadingNumber(ing['use_quantity']),
+          unit: (ing['unit'] ?? '').toString().trim().isEmpty
+              ? null
+              : ing['unit'].toString().trim(),
+        ),
+    ];
+    if (_ingDrafts.isEmpty) _ingDrafts.add(_IngDraft());
+    _servingsDraft = RecipeRepository.leadingNumber(_recipe['servings']);
+    setState(() => _editingIngredients = true);
+  }
+
+  void _beginEditSteps() {
+    final texts = RecipeRepository.stepTextsOf(_recipe);
+    final ai = RecipeRepository.aiStepIndexesOf(_recipe);
+    _stepDrafts = [
+      for (var i = 0; i < texts.length; i++)
+        _newStep(text: texts[i], isAi: ai.contains(i)),
+    ];
+    if (_stepDrafts.isEmpty) _stepDrafts.add(_newStep());
+    _minutesDraft = RecipeRepository.minutesOf(_recipe['time']);
+    setState(() => _editingSteps = true);
+  }
+
+  void _endEdit() {
+    FocusScope.of(context).unfocus();
+    final old = [..._ingDrafts.map((d) => d.dispose), ..._stepDrafts.map((d) => d.dispose)];
+    setState(() {
+      _editingIngredients = false;
+      _editingSteps = false;
+      _ingDrafts = [];
+      _stepDrafts = [];
+    });
+    _disposeLater(old);
+  }
+
+  Future<void> _saveEdit() async {
+    final updated = Map<String, dynamic>.from(_recipe);
+    if (_editingIngredients) {
+      final list = <Map<String, dynamic>>[
+        for (final d in _ingDrafts)
+          if (d.name.text.trim().isNotEmpty)
+            {
+              'name': d.name.text.trim(),
+              'use_quantity': d.qty,
+              'unit': d.unit ?? '',
+            },
+      ];
+      if (list.isEmpty) {
+        _snack('ต้องมีวัตถุดิบอย่างน้อย 1 รายการ', Colors.red);
+        return;
+      }
+      updated['detailed_ingredients'] = list;
+      updated['ingredients_used'] = list.map((e) => e['name']).toList();
+      updated['servings'] = RecipeRepository.servingsText(_servingsDraft);
+    } else {
+      final filled = _stepDrafts
+          .where((d) => d.ctrl.text.trim().isNotEmpty)
+          .toList();
+      updated['instructions'] = [
+        for (var i = 0; i < filled.length; i++)
+          '${i + 1}. ${filled[i].ctrl.text.trim()}',
+      ];
+      updated['ai_step_indexes'] = [
+        for (var i = 0; i < filled.length; i++)
+          if (filled[i].isAi) i,
+      ];
+      updated['time'] = RecipeRepository.minutesText(_minutesDraft);
+    }
+
+    FocusScope.of(context).unfocus();
+    setState(() => _isSavingEdit = true);
+    try {
+      final warnings = await RecipeRepository.updateRecipe(
+        widget.recipe['id'] as Object,
+        updated,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recipe = updated;
+        _isSavingEdit = false;
+      });
+      _endEdit();
+      _snack(
+        warnings.isEmpty
+            ? 'บันทึกการแก้ไขเรียบร้อยแล้ว ✏️'
+            : 'บันทึกแล้ว แต่${warnings.join(' และ')}',
+        warnings.isEmpty ? Colors.green : Colors.orange,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingEdit = false);
+      _snack('บันทึกไม่สำเร็จ: $e', Colors.red);
+    }
+  }
 
   // แปลงค่าจำนวนให้เป็นตัวเลขแบบทนทาน เผื่อ AI ตอบ use_quantity มาเป็น
   // ข้อความปนหน่วย (เช่น "1 ลูก") หรือเป็นเศษส่วน (เช่น "1/2") แทนที่จะเป็น
@@ -86,7 +276,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   // ฟังก์ชันหักวัตถุดิบออกจาก Supabase
   Future<void> _startCooking() async {
     List<dynamic> detailedIngredients =
-        widget.recipe['detailed_ingredients'] ?? [];
+        _recipe['detailed_ingredients'] ?? [];
 
     // ให้ผู้ใช้ยืนยันก่อนว่าใช้ไปเท่าไหร่จริง (กดเลือกแบบกะด้วยตา ไม่ต้องชั่ง)
     // ค่าเริ่มต้นตามที่สูตรบอก — กดยกเลิกก็ไม่หักอะไรเลย
@@ -255,7 +445,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final recipe = widget.recipe;
+    final recipe = _recipe;
+    final servingsText = (recipe['servings'] ?? '').toString().trim();
+    final timeText = (recipe['time'] ?? '').toString().trim();
     // ขั้นตอนการทำ + ตำแหน่งขั้นตอนที่ AI คิดเพิ่ม (แสดงเป็นสีแดง)
     final steps = RecipeRepository.stepTextsOf(recipe);
     final aiSteps = RecipeRepository.aiStepIndexesOf(recipe);
@@ -347,10 +539,16 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   ),
                                 ),
                               ),
-                              const EditPillButton(),
+                              if (_canEdit && !_isEditing)
+                                EditPillButton(onTap: _beginEditIngredients),
                             ],
                           ),
                           const SizedBox(height: 14),
+                          if (_editingIngredients)
+                            ..._buildIngredientEditor()
+                          else ...[
+                          if (servingsText.isNotEmpty)
+                            _infoLine(Icons.restaurant_outlined, 'สำหรับ $servingsText'),
                           ...detailedIngredients.map((ing) {
                             final ingMap = Map<String, dynamic>.from(ing);
                             final available = _isIngredientAvailable(ingMap);
@@ -388,6 +586,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               ),
                             );
                           }),
+                          ],
                         ],
                       ),
                     ),
@@ -432,17 +631,27 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                                   ),
                                 ),
                               ),
-                              const EditPillButton(),
+                              if (_canEdit && !_isEditing)
+                                EditPillButton(onTap: _beginEditSteps),
                             ],
                           ),
                           const SizedBox(height: 14),
-                          // ขั้นตอนที่ AI คิดเพิ่ม = ตัวหนังสือสีแดง + ป้าย "AI"
-                          RecipeStepsView(
-                            steps: steps,
-                            aiIndexes: aiSteps,
-                            fontSize: 15,
-                            spacing: 12,
-                          ),
+                          if (_editingSteps)
+                            ..._buildStepsEditor()
+                          else ...[
+                            if (timeText.isNotEmpty)
+                              _infoLine(
+                                Icons.timer_outlined,
+                                'ใช้เวลาประมาณ $timeText',
+                              ),
+                            // ขั้นตอนที่ AI คิดเพิ่ม = ตัวหนังสือสีแดง + ป้าย "AI"
+                            RecipeStepsView(
+                              steps: steps,
+                              aiIndexes: aiSteps,
+                              fontSize: 15,
+                              spacing: 12,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -499,7 +708,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     child: SizedBox(
                       height: 55,
                       child: ElevatedButton(
-                        onPressed: _isCooking ? null : _startCooking,
+                        // ระหว่างแก้ไข ให้บันทึก/ยกเลิกก่อน ค่อยกดทำอาหาร
+                        onPressed: (_isCooking || _isEditing)
+                            ? null
+                            : _startCooking,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFFF7D0),
                           foregroundColor: const Color(0xff5189C9),
@@ -538,6 +750,180 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------ Edit UI
+
+  Widget _infoLine(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.black54),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildIngredientEditor() {
+    return [
+      StepperLine(
+        label: 'จำนวนที่',
+        stepper: NumberStepper(
+          value: _servingsDraft,
+          max: 50,
+          suffix: 'ที่',
+          emptyLabel: 'ไม่ระบุ',
+          onChanged: (v) => setState(() => _servingsDraft = v),
+        ),
+      ),
+      const Divider(height: 16),
+      for (var i = 0; i < _ingDrafts.length; i++)
+        IngredientEditRow(
+          key: ObjectKey(_ingDrafts[i]),
+          index: i,
+          nameController: _ingDrafts[i].name,
+          qty: _ingDrafts[i].qty,
+          unit: _ingDrafts[i].unit,
+          onQtyChanged: (v) => setState(() => _ingDrafts[i].qty = v),
+          onUnitChanged: (v) => setState(() {
+            final d = _ingDrafts[i];
+            d.unit = v;
+            final max = maxForUnit(v);
+            if (d.qty != null && d.qty! > max) d.qty = max;
+          }),
+          onRemove: _ingDrafts.length > 1
+              ? () {
+                  final d = _ingDrafts[i];
+                  setState(() => _ingDrafts.removeAt(i));
+                  _disposeLater([d.dispose]);
+                }
+              : null,
+        ),
+      _addRowButton(
+        'เพิ่มวัตถุดิบ',
+        () => setState(() => _ingDrafts.add(_IngDraft())),
+      ),
+      _editActions(),
+    ];
+  }
+
+  List<Widget> _buildStepsEditor() {
+    return [
+      StepperLine(
+        label: 'เวลาทำ',
+        stepper: NumberStepper(
+          value: _minutesDraft,
+          step: 5,
+          max: 600,
+          suffix: 'นาที',
+          emptyLabel: 'ไม่ระบุ',
+          onChanged: (v) => setState(() => _minutesDraft = v?.round()),
+        ),
+      ),
+      const Divider(height: 16),
+      if (_stepDrafts.any((d) => d.isAi))
+        const AiStepsNote(
+          text:
+              'ข้อความสีแดง = ขั้นตอนที่ AI คิดเพิ่มให้ ถ้าแก้ไขข้อความ จะถือว่าเป็นขั้นตอนของคุณ',
+        ),
+      for (var i = 0; i < _stepDrafts.length; i++)
+        StepEditRow(
+          key: ObjectKey(_stepDrafts[i]),
+          index: i,
+          controller: _stepDrafts[i].ctrl,
+          isAi: _stepDrafts[i].isAi,
+          onRemove: _stepDrafts.length > 1
+              ? () {
+                  final d = _stepDrafts[i];
+                  setState(() => _stepDrafts.removeAt(i));
+                  _disposeLater([d.dispose]);
+                }
+              : null,
+        ),
+      _addRowButton(
+        'เพิ่มขั้นตอน',
+        () => setState(() => _stepDrafts.add(_newStep())),
+      ),
+      _editActions(),
+    ];
+  }
+
+  Widget _addRowButton(String label, VoidCallback onTap) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onTap,
+        icon: const Icon(Icons.add, size: 18),
+        label: Text(label),
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.black87,
+          textStyle: const TextStyle(fontSize: 13),
+        ),
+      ),
+    );
+  }
+
+  /// ปุ่ม ยกเลิก / บันทึก ท้ายการ์ดที่กำลังแก้ไข
+  Widget _editActions() {
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: OutlinedButton(
+                onPressed: _isSavingEdit ? null : _endEdit,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.black87,
+                  side: BorderSide(color: Colors.grey.shade400),
+                  shape: shape,
+                ),
+                child: const Text('ยกเลิก'),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: ElevatedButton.icon(
+                onPressed: _isSavingEdit ? null : _saveEdit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kRecipeLightBlue,
+                  foregroundColor: Colors.black87,
+                  elevation: 0,
+                  shape: shape,
+                ),
+                icon: _isSavingEdit
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: kRecipeBlue,
+                        ),
+                      )
+                    : const Icon(Icons.check_rounded, size: 18),
+                label: const Text(
+                  'บันทึก',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
