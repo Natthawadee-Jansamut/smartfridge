@@ -77,6 +77,9 @@ dependencies:
 
   flutter_svg: ^2.0.10+1
 
+  # sha256 ของรูปที่สแกน ใช้หา cache ในคลังสูตรกลาง (ดู lib/services/global_recipe_service.dart)
+  crypto: ^3.0.7
+
 
 
 

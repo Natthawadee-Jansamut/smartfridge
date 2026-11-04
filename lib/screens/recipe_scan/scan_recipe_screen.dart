@@ -7,6 +7,7 @@ import 'package:test_app/widgets/add_recipe_widgets.dart';
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
+import 'package:test_app/services/global_recipe_service.dart';
 import 'package:test_app/screens/recipe_scan/saved_recipes_screen.dart';
 import 'package:test_app/screens/recipe_scan/scan_recipe_result_screen.dart';
 
@@ -84,10 +85,38 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         'AI กำลังอ่านสูตรอาหารจากรูป...',
       );
       final bytes = await image.readAsBytes();
-      final recipe = await RecipeAiService.scanRecipeImage(
-        bytes,
-        mimeType: image.mimeType ?? 'image/jpeg',
-      );
+
+      // รูปนี้เคยสแกนแล้ว (ไฟล์เดียวกันเป๊ะ) -> ใช้สูตรจากคลังกลาง ไม่ต้องเรียก Gemini
+      final hash = GlobalRecipeService.imageHash(bytes);
+      final cached = await GlobalRecipeService.findByImageHash(hash);
+      final Map<String, dynamic> recipe;
+      if (cached != null) {
+        recipe = cached;
+        GlobalRecipeService.log(
+          eventType: 'scan_recipe',
+          result: 'cache_hit',
+          recipeId: recipe['global_recipe_id']?.toString(),
+          imageHash: hash,
+        );
+      } else {
+        recipe = await RecipeAiService.scanRecipeImage(
+          bytes,
+          mimeType: image.mimeType ?? 'image/jpeg',
+        );
+        GlobalRecipeService.log(
+          eventType: 'scan_recipe',
+          result: 'gemini',
+          imageHash: hash,
+        );
+        // สูตรจากตำรา/ลายมือของผู้ใช้ -> เก็บเป็นส่วนตัว (is_public: false)
+        // ไม่เปิดให้คนอื่นเห็นโดยไม่ได้ขออนุญาต แต่สแกนรูปเดิมซ้ำจะไม่เปลือง token
+        GlobalRecipeService.cacheRecipe(
+          recipe,
+          source: 'scanned',
+          imageHash: hash,
+          isPublic: false,
+        );
+      }
       closeLoader();
       if (!mounted) return;
 
