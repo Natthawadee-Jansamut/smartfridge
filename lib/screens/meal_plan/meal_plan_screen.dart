@@ -11,6 +11,8 @@ import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/services/global_recipe_service.dart';
+import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/utils/fridge_age.dart';
 
 
@@ -203,6 +205,43 @@ class _MealPlanScreenState
           continue;
         }
         libraryByName[name] = Map<String, dynamic>.from(m);
+      }
+
+      // เพิ่มเมนูจากคลังสูตรกลาง (แพลนของผู้ใช้คนอื่น / เมนูที่ AI เคยสร้าง) ที่
+      // วัตถุดิบครบและตรงข้อจำกัดอาหาร — เรียก Gemini น้อยลงอีก
+      // (ข้อจำกัดอาหารอื่นที่ไม่ใช่ "ไม่มี" จะได้เฉพาะเมนูที่ติดป้ายนั้นไว้เท่านั้น)
+      final globalMeals = await GlobalRecipeService.matchByIngredients(
+        GlobalRecipeService.fridgeNames(
+          List<Map<String, dynamic>>.from(fridgeItems)
+              .where((e) => !isOverdue(e) && !isUsedUp(e)),
+        ),
+        maxMissing: 0,
+        minMatchRatio: 1,
+        dietTags: diet == "ไม่มี" ? null : [diet],
+        limit: 30,
+      );
+      for (final r in globalMeals) {
+        final name = (r['recipe_name'] ?? '').toString().trim();
+        if (name.isEmpty || libraryByName.containsKey(name)) continue;
+        final ingredients = [
+          for (final ing in (r['detailed_ingredients'] as List? ?? []))
+            {
+              'name': ing['name'],
+              'quantity': [
+                RecipeRepository.formatNum(ing['use_quantity']),
+                (ing['unit'] ?? '').toString(),
+              ].where((s) => s.trim().isNotEmpty).join(' '),
+            },
+        ];
+        final steps = RecipeRepository.stepTextsOf(r);
+        if (ingredients.isEmpty || steps.isEmpty) continue;
+        libraryByName[name] = {
+          'food_name': name,
+          'calories': r['calories_per_serving'],
+          'protein': r['protein_per_serving'],
+          'ingredients': ingredients,
+          'steps': steps,
+        };
       }
       final library = libraryByName.values.toList();
 
@@ -546,6 +585,20 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
 
 
       geminiMeals = jsonDecode(json);
+
+      // เก็บเมนูใหม่เข้าคลังกลาง (ติดป้ายข้อจำกัดอาหารที่สั่ง Gemini ไว้)
+      GlobalRecipeService.cacheRecipesInBackground(
+        geminiMeals.whereType<Map>().map(Map<String, dynamic>.from),
+        source: 'ai_generated',
+        dietTags: diet == "ไม่มี" ? const [] : [diet],
+      );
+      GlobalRecipeService.log(
+        eventType: 'meal_plan',
+        result: 'gemini',
+        usage: result.usageMetadata,
+      );
+      } else {
+        GlobalRecipeService.log(eventType: 'meal_plan', result: 'cache_hit');
       }
 
       // รวมเมนูที่หยิบจากคลังเก่า (ประหยัด token) กับเมนูใหม่จาก Gemini

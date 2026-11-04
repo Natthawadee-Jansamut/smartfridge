@@ -415,10 +415,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
     setState(() => _isDeleting = true);
     try {
-      await Supabase.instance.client
-          .from('scanned_recipes')
-          .delete()
-          .eq('id', widget.recipe['id']);
+      await RecipeRepository.deleteSavedRecipe(widget.recipe['id'] as Object);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

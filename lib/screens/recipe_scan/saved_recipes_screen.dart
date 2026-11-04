@@ -44,16 +44,12 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
         return;
       }
 
-      final recipesRes = await Supabase.instance.client
-          .from('scanned_recipes')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false);
+      final recipes = await RecipeRepository.fetchSavedRecipes();
       final inventory = await RecipeRepository.fetchInventory();
 
       if (mounted) {
         setState(() {
-          _recipes = List<Map<String, dynamic>>.from(recipesRes);
+          _recipes = recipes;
           _inventory = inventory;
           _isLoading = false;
         });
@@ -130,10 +126,7 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
 
   Future<void> _deleteRecipe(Map<String, dynamic> recipe) async {
     try {
-      await Supabase.instance.client
-          .from('scanned_recipes')
-          .delete()
-          .eq('id', recipe['id']);
+      await RecipeRepository.deleteSavedRecipe(recipe['id'] as Object);
       if (mounted) {
         setState(() => _recipes.remove(recipe));
         _showSnack('ลบสูตรอาหารเรียบร้อยแล้ว', Colors.green);

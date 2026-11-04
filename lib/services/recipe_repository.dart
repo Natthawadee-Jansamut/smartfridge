@@ -169,15 +169,28 @@ class RecipeRepository {
         .toSet();
   }
 
-  // -------------------------------------------------------------------- Save
+  // ------------------------------------------------------------ Saved recipes
+  //
+  // สูตรที่ผู้ใช้บันทึกไว้อยู่ในคลังสูตรกลาง (recipes) + Bookmark ของผู้ใช้
+  // (user_saved_recipes) — ดู supabase/migrations/20261104000000_global_recipes.sql
+  // แผนที่ส่งให้หน้าจอยังเป็นรูปแบบเดิม โดย 'id' = id ของ Bookmark (ใช้แก้ไข/ลบ)
 
-  /// คอลัมน์เสริมที่อาจยังไม่ได้สร้างใน Supabase -> ถ้าไม่มี จะบันทึกส่วนอื่นต่อได้
-  /// พร้อมคำเตือนที่จะแสดงให้ผู้ใช้เห็น
-  static const _optionalColumns = {
-    'image_url': 'ยังไม่ได้เพิ่มคอลัมน์ image_url ใน Supabase จึงไม่ได้บันทึกรูป',
-    'ai_step_indexes':
-        'ยังไม่ได้เพิ่มคอลัมน์ ai_step_indexes ใน Supabase จึงไม่ได้จำว่าขั้นตอนไหน AI คิดเพิ่ม',
-  };
+  /// สูตรที่ผู้ใช้บันทึกไว้ ใหม่สุดก่อน ([limit] = เอาแค่กี่รายการ)
+  static Future<List<Map<String, dynamic>>> fetchSavedRecipes({
+    int? limit,
+  }) async {
+    if (_db.auth.currentUser == null) return [];
+    final rows = await _db.rpc('my_saved_recipes');
+    final list = (rows as List).whereType<Map>().map((row) {
+      final recipe = Map<String, dynamic>.from(row['recipe'] as Map);
+      recipe['id'] = row['saved_id'];
+      recipe['global_recipe_id'] = row['recipe_id'];
+      recipe['is_favorite'] = row['is_favorite'];
+      recipe['created_at'] = row['saved_at'];
+      return recipe;
+    }).toList();
+    return limit == null ? list : list.take(limit).toList();
+  }
 
   static Map<String, dynamic> _rowFrom(Map<String, dynamic> recipe) {
     final ingredients = ingredientsOf(recipe);
@@ -195,42 +208,21 @@ class RecipeRepository {
     };
   }
 
-  /// เขียนลง Supabase ถ้าเจอ error "ไม่พบคอลัมน์" (PGRST204) ของคอลัมน์เสริม
-  /// จะตัดคอลัมน์นั้นออกแล้วลองใหม่ คืนรายการคำเตือน (ว่าง = สำเร็จครบ)
-  static Future<List<String>> _writeWithFallback(
-    Map<String, dynamic> row,
-    Future<void> Function(Map<String, dynamic> data) write,
-  ) async {
-    final data = Map<String, dynamic>.from(row);
-    final warnings = <String>[];
-    while (true) {
-      try {
-        await write(data);
-        return warnings;
-      } on PostgrestException catch (e) {
-        if (e.code != 'PGRST204') rethrow;
-        final missing = _optionalColumns.keys
-            .where((c) => data.containsKey(c) && e.message.contains("'$c'"))
-            .firstOrNull;
-        if (missing == null) rethrow;
-        final value = data.remove(missing);
-        final hadData = value != null && !(value is List && value.isEmpty);
-        if (hadData) warnings.add(_optionalColumns[missing]!);
-        debugPrint('ไม่พบคอลัมน์ $missing ใน scanned_recipes — บันทึกโดยไม่มีคอลัมน์นี้');
-      }
-    }
-  }
-
-  /// เพิ่มสูตรใหม่ลงตาราง scanned_recipes — คืนรายการคำเตือน (ว่าง = สำเร็จครบ)
+  /// บันทึกสูตรใหม่ (เข้าคลังกลางแบบส่วนตัว + Bookmark ให้ผู้ใช้)
+  /// คืนรายการคำเตือน (ว่าง = สำเร็จครบ)
+  /// [source]: 'scanned' (สแกนจากรูป) | 'manual' (เขียนเอง)
   static Future<List<String>> saveRecipe(
     Map<String, dynamic> recipe, {
     Uint8List? imageBytes,
+    String source = 'manual',
   }) async {
     final user = _db.auth.currentUser;
     if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
 
     final warnings = <String>[];
-    final row = {'user_id': user.id, ..._rowFrom(recipe)};
+    final row = _rowFrom(recipe);
+    final minutes = minutesOf(row['time']);
+    if (minutes != null) row['time_minutes'] = minutes;
     if (imageBytes != null) {
       final url = await _uploadImage(user.id, imageBytes);
       if (url == null) {
@@ -240,19 +232,22 @@ class RecipeRepository {
       }
     }
 
-    warnings.addAll(
-      await _writeWithFallback(
-        row,
-        (data) async {
-          await _db.from('scanned_recipes').insert(data);
-        },
-      ),
+    // สูตรจากตำรา/ที่เขียนเองเป็นของผู้ใช้ -> ไม่เปิดให้คนอื่นเห็น (is_public: false)
+    await _db.rpc(
+      'save_recipe',
+      params: {
+        'p_recipe': row,
+        'p_source': source,
+        'p_is_public': false,
+        'p_bookmark': true,
+      },
     );
     return warnings;
   }
 
-  /// แก้ไขสูตรที่บันทึกไว้แล้ว — คืนรายการคำเตือน (ว่าง = สำเร็จครบ)
-  /// [imageBytes] = รูปใหม่ที่จะแทนรูปเดิม, [removeImage] = ลบรูปเดิมออก
+  /// แก้ไขสูตรที่บันทึกไว้แล้ว — เก็บเป็นส่วนที่แก้ของผู้ใช้คนนี้ (overrides)
+  /// สูตรกลางไม่เปลี่ยน คืนรายการคำเตือน (ว่าง = สำเร็จครบ)
+  /// [id] = id ของ Bookmark, [imageBytes] = รูปใหม่, [removeImage] = ลบรูปเดิมออก
   static Future<List<String>> updateRecipe(
     Object id,
     Map<String, dynamic> recipe, {
@@ -275,21 +270,43 @@ class RecipeRepository {
       row['image_url'] = null;
     }
 
-    warnings.addAll(
-      await _writeWithFallback(row, (data) async {
-        final updated = await _db
-            .from('scanned_recipes')
-            .update(data)
-            .eq('id', id)
-            .eq('user_id', user.id)
-            .select('id');
-        // RLS บล็อกการแก้ไขจะไม่ error แต่ได้แถวกลับมา 0 แถว
-        if (updated.isEmpty) {
-          throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข (เช็ค RLS policy ของ UPDATE)';
-        }
-      }),
-    );
+    // รวมกับที่เคยแก้ไว้ (เช่น รูปที่เปลี่ยนไปก่อนหน้า) ไม่ให้หายเมื่อแก้รอบใหม่
+    final current = await _db
+        .from('user_saved_recipes')
+        .select('overrides')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+    if (current == null) {
+      throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข';
+    }
+    final overrides = {
+      ...Map<String, dynamic>.from((current['overrides'] as Map?) ?? const {}),
+      ...row,
+    };
+
+    final updated = await _db
+        .from('user_saved_recipes')
+        .update({'overrides': overrides})
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select('id');
+    // RLS บล็อกการแก้ไขจะไม่ error แต่ได้แถวกลับมา 0 แถว
+    if (updated.isEmpty) {
+      throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข';
+    }
     return warnings;
+  }
+
+  /// ลบสูตรออกจากรายการที่บันทึกไว้ของผู้ใช้ (สูตรในคลังกลางยังอยู่)
+  static Future<void> deleteSavedRecipe(Object id) async {
+    final user = _db.auth.currentUser;
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    await _db
+        .from('user_saved_recipes')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
   }
 
   static Future<String?> _uploadImage(String uid, Uint8List bytes) async {

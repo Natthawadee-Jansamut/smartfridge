@@ -237,10 +237,8 @@ class _ImageScanningState extends State<ImageScanning> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ResultScreen(
-                foundItems: itemsList,
-                imageBytes: imageBytes,
-              ),
+              builder: (context) =>
+                  ResultScreen(foundItems: itemsList, imageBytes: imageBytes),
             ),
           ).then((_) {
             _fetchRecentItems();

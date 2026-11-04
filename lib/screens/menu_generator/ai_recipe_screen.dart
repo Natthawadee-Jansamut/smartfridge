@@ -8,6 +8,7 @@ import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/services/global_recipe_service.dart';
 import 'package:test_app/utils/fridge_age.dart';
 
 class AiRecipeScreen extends StatefulWidget {
@@ -29,6 +30,12 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   List<Map<String, dynamic>> _fridgeByAge = [];
   int _aheadDays = defaultOldItemDays;
   List<dynamic> _generatedRecipes = []; // เก็บเมนูที่ AI สร้างให้
+
+  // เมนูที่แสดงอยู่มาจากคลังสูตรกลาง (ไม่ได้เรียก Gemini) — ใช้แสดงป้าย + ปุ่มให้ AI คิดใหม่
+  bool _fromLibrary = false;
+
+  // เจอเมนูในคลังกลางอย่างน้อยเท่านี้ถึงจะใช้แทน Gemini (เท่ากับจำนวนที่ขอ Gemini)
+  static const _libraryMenuCount = 3;
 
   // ตัวแปรสำหรับ Filter
   String _selectedCategory = 'ทั้งหมด';
@@ -56,6 +63,59 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
       default:
         return 'เท่าไหร่ก็ได้';
     }
+  }
+
+  // ตัวกรองชุดเดียวกับที่บอก Gemini แต่ใช้ค้นในคลังสูตรกลาง
+  int? _maxMinutesForFilter() {
+    switch (_selectedTime) {
+      case '< 15 นาที':
+        return 15;
+      case '< 30 นาที':
+        return 30;
+      case '< 1 ชั่วโมง':
+        return 60;
+      default:
+        return null;
+    }
+  }
+
+  List<String> _dietTagsForFilter() =>
+      _selectedCategory == 'ทั้งหมด' ? const [] : [_selectedCategory];
+
+  // ค้นเมนูจากคลังสูตรกลางก่อน — เจอพอ (>= _libraryMenuCount) คืนเมนูที่จะแสดง
+  // ไม่พอคืน null แล้วค่อยเรียก Gemini (ใช้ของที่ควรใช้ก่อนขึ้นก่อน)
+  Future<List<Map<String, dynamic>>?> _findInLibrary(
+    List<Map<String, dynamic>> usable,
+  ) async {
+    final dietTags = _dietTagsForFilter();
+    final found = await GlobalRecipeService.matchByIngredients(
+      GlobalRecipeService.fridgeNames(usable),
+      maxMissing: 1,
+      minMatchRatio: 0.6,
+      maxMinutes: _maxMinutesForFilter(),
+      dietTags: dietTags.isEmpty ? null : dietTags,
+    );
+    if (found.length < _libraryMenuCount) return null;
+
+    final useFirstNames = _oldItems
+        .map((e) => (e['name'] ?? '').toString().trim().toLowerCase())
+        .where((n) => n.isNotEmpty)
+        .toList();
+    bool usesOldItem(Map<String, dynamic> recipe) =>
+        (recipe['detailed_ingredients'] as List? ?? []).any((ing) {
+          final name = (ing['name'] ?? '').toString().trim().toLowerCase();
+          return name.isNotEmpty &&
+              useFirstNames.any((o) => o.contains(name) || name.contains(o));
+        });
+
+    // sort ของ Dart ไม่ stable -> ใส่ลำดับเดิม (ขาดของน้อยก่อน) เป็นตัวตัดสินรอง
+    final indexed = found.asMap().entries.toList()
+      ..sort((a, b) {
+        final byOld =
+            (usesOldItem(a.value) ? 0 : 1).compareTo(usesOldItem(b.value) ? 0 : 1);
+        return byOld != 0 ? byOld : a.key.compareTo(b.key);
+      });
+    return indexed.take(_libraryMenuCount).map((e) => e.value).toList();
   }
 
   @override
@@ -118,8 +178,9 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
     return const Color(0xff3F9142);
   }
 
-  // 2. ส่งข้อมูลให้ Gemini คิดเมนู
-  Future<void> _generateRecipes() async {
+  // 2. หาเมนูจากคลังสูตรกลางก่อน ไม่พอค่อยส่งข้อมูลให้ Gemini คิดเมนู
+  //    [forceAi] = ผู้ใช้กด "ให้ AI คิดเมนูใหม่" (ข้ามคลังกลาง)
+  Future<void> _generateRecipes({bool forceAi = false}) async {
     if (_inventory.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -132,9 +193,28 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
     setState(() {
       _isGenerating = true;
       _generatedRecipes = []; // เคลียร์ของเก่า
+      _fromLibrary = false;
     });
 
     try {
+      if (!forceAi) {
+        final usable = _inventory
+            .where((e) => !isOverdue(e) && !isUsedUp(e))
+            .toList();
+        final fromLibrary = await _findInLibrary(usable);
+        if (fromLibrary != null) {
+          setState(() {
+            _generatedRecipes = fromLibrary;
+            _fromLibrary = true;
+          });
+          GlobalRecipeService.log(
+            eventType: 'generate_menu',
+            result: 'cache_hit',
+          );
+          return;
+        }
+      }
+
       // ⚠️ ใส่ API Key ของคุณที่นี่
       final String apiKey = ApiKeys.aiRecipeScreen;
 
@@ -206,7 +286,19 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
             _generatedRecipes = [decoded];
           }
         });
+
+        // เก็บเมนูใหม่เข้าคลังกลาง ให้ครั้งถัดไป (และผู้ใช้คนอื่น) ไม่ต้องเรียก Gemini ซ้ำ
+        GlobalRecipeService.cacheRecipesInBackground(
+          _generatedRecipes.whereType<Map>().map(Map<String, dynamic>.from),
+          source: 'ai_generated',
+          dietTags: _dietTagsForFilter(),
+        );
       }
+      GlobalRecipeService.log(
+        eventType: 'generate_menu',
+        result: 'gemini',
+        usage: response.usageMetadata,
+      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -533,6 +625,29 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                             fontSize: 18,
                           ),
                         ),
+                        if (_fromLibrary && _generatedRecipes.isNotEmpty)
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  "เมนูจากคลังสูตรที่ทำได้จากของในตู้เย็น",
+                                  style: TextStyle(
+                                    color: Colors.grey.shade700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _isGenerating
+                                    ? null
+                                    : () => _generateRecipes(forceAi: true),
+                                child: const Text(
+                                  "ให้ AI คิดเมนูใหม่",
+                                  style: TextStyle(color: Color(0xff5189C9)),
+                                ),
+                              ),
+                            ],
+                          ),
                         const SizedBox(height: 10),
                       ],
                     ),
@@ -612,6 +727,8 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   // Widget การ์ดเมนูอาหาร — ตรงกับดีไซน์ Figma (avatar กลม + tag แบบขอบ)
   Widget _buildRecipeCard(Map<String, dynamic> recipe) {
     List<dynamic> tags = recipe['ingredients_used'] ?? [];
+    // เมนูจากคลังกลางอาจขาดวัตถุดิบได้ 1 อย่าง — บอกให้ผู้ใช้รู้ก่อนกดเข้าไป
+    final List<dynamic> missing = recipe['missing_ingredients'] ?? [];
 
     return GestureDetector(
       onTap: () async {
@@ -694,6 +811,16 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                       ),
                     ],
                   ),
+                  if (missing.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      "ขาด: ${missing.join(', ')}",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade800,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   // Tags วัตถุดิบ
                   Wrap(
