@@ -83,7 +83,10 @@ class _ScanRecipeResultScreenState extends State<ScanRecipeResultScreen> {
   Future<void> _saveRecipe() async {
     setState(() => _isSaving = true);
     try {
-      final warnings = await RecipeRepository.saveRecipe(_recipe);
+      final warnings = await RecipeRepository.saveRecipe(
+        _recipe,
+        source: 'scanned',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

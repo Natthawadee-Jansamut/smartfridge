@@ -8,6 +8,7 @@ import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
 import 'package:test_app/services/global_recipe_service.dart';
+import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/screens/recipe_scan/saved_recipes_screen.dart';
 import 'package:test_app/screens/recipe_scan/scan_recipe_result_screen.dart';
 
@@ -51,12 +52,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         if (mounted) setState(() => _isLoadingRecent = false);
         return;
       }
-      final response = await Supabase.instance.client
-          .from('scanned_recipes')
-          .select()
-          .eq('user_id', user.id)
-          .order('created_at', ascending: false)
-          .limit(3);
+      final response = await RecipeRepository.fetchSavedRecipes(limit: 3);
       if (mounted) {
         setState(() {
           _recentRecipes = List<Map<String, dynamic>>.from(response);
