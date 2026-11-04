@@ -43,7 +43,8 @@ parallel safe
 set search_path = ''
 as $$
   select nullif(
-    regexp_replace(lower(normalize(coalesce(p, ''), 'NFKC')), '[[:space:][:punct:]]+', '', 'g'),
+    -- NFKC ต้องเป็น keyword ไม่ใช่ string ('NFKC') ตาม syntax ของ normalize()
+    regexp_replace(lower(normalize(coalesce(p, ''), NFKC)), '[[:space:][:punct:]]+', '', 'g'),
     ''
   );
 $$;
