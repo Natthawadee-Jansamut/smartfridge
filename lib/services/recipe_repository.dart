@@ -316,7 +316,9 @@ class RecipeRepository {
   /// เจอหลายสูตร -> เลือกสูตรที่มาจากรูปจริง (AI แต่งน้อยสุด) ก่อน
   /// แล้วค่อยดูว่ามีคนใช้มากที่สุด, ไม่เจอ -> null
   /// Map ที่คืนมามี 'recipe_id' = id ของสูตรในตาราง recipes
-  static Future<Map<String, dynamic>?> findRecipeByName(String name) async {
+  static Future<Map<String, dynamic>?> _findRecipeByNameDirect(
+    String name,
+  ) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return null;
     // escape ตัวอักษรพิเศษของ ILIKE ให้เป็นการเทียบชื่อตรงตัว
@@ -375,7 +377,7 @@ class RecipeRepository {
   /// -> เจอ "ก๋วยเตี๋ยวคั่วไก่กระทะร้อน"
   /// เรียงจากชื่อที่ยาวใกล้เคียงที่สุด แล้วสูตรจากรูปจริงก่อนสูตรที่ AI แต่ง
   /// คืนไม่เกิน [limit] สูตร (ไม่มี = list ว่าง)
-  static Future<List<Map<String, dynamic>>> findSimilarRecipesByName(
+  static Future<List<Map<String, dynamic>>> _findSimilarRecipesDirect(
     String name, {
     int limit = 3,
   }) async {
@@ -424,6 +426,98 @@ class RecipeRepository {
       return byAi != 0 ? byAi : order[a]!.compareTo(order[b]!);
     });
     return matches.take(limit).toList();
+  }
+
+  /// เก็บผลสแกนเข้าคลังกลางแบบส่วนตัวทันที (ยังไม่เข้าคลังของผู้ใช้) พร้อม image_hash
+  /// ตามแนวทางของทีม: สแกนรูปเดิมซ้ำจะเจอจาก hash ไม่ต้องเรียก Gemini อีก แม้ยัง
+  /// ไม่ได้กดบันทึก — ทำเบื้องหลัง ไม่สำเร็จก็ไม่กระทบการสแกน
+  static void cacheScanPrivately(
+    Map<String, dynamic> recipe,
+    String? imageHash,
+  ) {
+    if (imageHash == null || imageHash.isEmpty) return;
+    final steps = stepTextsOf(recipe).length;
+    final aiSteps = aiStepIndexesOf(recipe).length;
+    // รูปมีแค่ชื่อเมนู (AI แต่งขั้นตอนเองทั้งหมด) = ai_generated, นอกนั้น = scanned
+    final source = steps > 0 && aiSteps >= steps ? 'ai_generated' : 'scanned';
+    GlobalRecipeService.cacheRecipe(
+      recipe,
+      source: source,
+      imageHash: imageHash,
+      isPublic: false,
+    );
+  }
+
+  // --------------------------------------------- Name search (team function)
+  //
+  // ใช้ public.search_recipes_by_name() ของทีม: ชื่อตรง (score 1) -> ชื่อมีคำค้น
+  // อยู่ข้างใน (>= 0.8) -> ชื่อสะกดคล้าย (trigram similarity) จึงเจอแม้สะกดต่าง
+  // เช่น "กะเพรา" กับ "กระเพรา" ถ้าเรียกฟังก์ชันไม่ได้ จะใช้วิธีค้นเดิมในแอปแทน
+
+  /// คืน [(score, สูตร)] เรียงคะแนนมากก่อน (สูตรมี 'recipe_id')
+  static Future<List<(double, Map<String, dynamic>)>> _searchByNameRpc(
+    String name, {
+    int limit = 10,
+  }) async {
+    final rows = await _db.rpc(
+      'search_recipes_by_name',
+      params: {'p_query': name.trim(), 'p_limit': limit},
+    );
+    if (rows is! List) return [];
+    return [
+      for (final row in rows.whereType<Map>())
+        if (row['recipe'] is Map)
+          (
+            toNum(row['score']).toDouble(),
+            {
+              ...Map<String, dynamic>.from(row['recipe'] as Map),
+              'recipe_id': row['recipe_id'],
+            },
+          ),
+    ];
+  }
+
+  /// ค้นสูตรที่ชื่อตรงกันทั้งชื่อ (ไม่สนช่องว่าง ตัวพิมพ์ ลำดับวรรณยุกต์)
+  /// เจอหลายสูตร -> เลือกสูตรที่มาจากรูปจริง (AI แต่งน้อยสุด) ก่อน แล้วค่อยดูคนใช้เยอะ
+  /// Map ที่คืนมามี 'recipe_id' = id ของสูตรในตาราง recipes, ไม่เจอ -> null
+  static Future<Map<String, dynamic>?> findRecipeByName(String name) async {
+    if (name.trim().isEmpty) return null;
+    try {
+      final exact = [
+        for (final (score, r) in await _searchByNameRpc(name))
+          if (score >= 0.999 || isSameRecipeName(r['recipe_name'], name)) r,
+      ];
+      if (exact.isEmpty) return null;
+      final order = {for (var i = 0; i < exact.length; i++) exact[i]: i};
+      exact.sort((a, b) {
+        final byAi = aiStepRatio(a).compareTo(aiStepRatio(b));
+        return byAi != 0 ? byAi : order[a]!.compareTo(order[b]!);
+      });
+      return exact.first;
+    } catch (e) {
+      debugPrint('search_recipes_by_name ใช้ไม่ได้ (ใช้วิธีค้นเดิม): $e');
+      return _findRecipeByNameDirect(name);
+    }
+  }
+
+  /// ค้นสูตรที่ชื่อคล้ายกัน: มีคำค้นอยู่ในชื่อ หรือสะกดคล้าย (ไม่รวมชื่อที่ตรงกันทั้งชื่อ)
+  /// เช่น "ก๋วยเตี๋ยวคั่วไก่" -> "ก๋วยเตี๋ยวคั่วไก่กระทะร้อน", "กะเพราหมู" -> "กระเพราหมู"
+  /// เรียงคะแนนความคล้ายมากก่อน คืนไม่เกิน [limit] สูตร
+  static Future<List<Map<String, dynamic>>> findSimilarRecipesByName(
+    String name, {
+    int limit = 3,
+  }) async {
+    if (_nameForMatch(name).length < 3) return [];
+    try {
+      final results = await _searchByNameRpc(name, limit: limit + 5);
+      return [
+        for (final (score, r) in results)
+          if (score < 0.999 && !isSameRecipeName(r['recipe_name'], name)) r,
+      ].take(limit).toList();
+    } catch (e) {
+      debugPrint('search_recipes_by_name ใช้ไม่ได้ (ใช้วิธีค้นเดิม): $e');
+      return _findSimilarRecipesDirect(name, limit: limit);
+    }
   }
 
   // ---------------------------------------------------- Shared recipe library

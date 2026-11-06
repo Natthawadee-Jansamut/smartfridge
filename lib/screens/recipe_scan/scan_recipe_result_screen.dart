@@ -253,6 +253,7 @@ class _ScanRecipeResultScreenState extends State<ScanRecipeResultScreen> {
         bytes,
         imageHash: widget.imageHash,
       );
+      RecipeRepository.cacheScanPrivately(recipe, widget.imageHash);
       closeLoader();
       if (!mounted) return;
       _aiRecipe = recipe;

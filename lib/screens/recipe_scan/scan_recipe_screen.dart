@@ -98,14 +98,17 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
 
       // ขั้นตอนอ่านสูตรเต็ม (ขั้นที่ 2) — ใช้ token มากที่สุด เรียกเฉพาะตอนจำเป็น
       final mimeType = image.mimeType ?? 'image/jpeg';
-      Future<Map<String, dynamic>> readFullRecipe(String message) {
+      Future<Map<String, dynamic>> readFullRecipe(String message) async {
         closeLoader?.call();
         closeLoader = showBlockingLoader(context, message);
-        return RecipeAiService.scanRecipeImage(
+        final recipe = await RecipeAiService.scanRecipeImage(
           bytes,
           mimeType: mimeType,
           imageHash: imageHash,
         );
+        // เก็บผลสแกนแบบส่วนตัวไว้เลย สแกนรูปเดิมซ้ำจะไม่ต้องเรียก AI อีก
+        RecipeRepository.cacheScanPrivately(recipe, imageHash);
+        return recipe;
       }
 
       Map<String, dynamic>? scanned;
