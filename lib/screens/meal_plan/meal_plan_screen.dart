@@ -211,15 +211,15 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       // เผื่อปัดเศษตัวเลขจาก AI เล็กน้อย (เช่น เพดาน 500 ตอบ 505)
       final mealCalCap = perMealCal * 1.02;
 
-      // แคลอรี 75%-100% ของเพดานต่อมื้อ (ไม่ให้เมนูเล็กเกิน เช่น ไข่ 1/4 ฟอง
-      // 28 kcal และไม่ให้เกินเพดาน) และโปรตีนไม่ต่ำกว่า 60% ของเป้าต่อมื้อ
+      // ขอบล่าง: แคลอรี >= 85% ของเพดานต่อมื้อ และโปรตีน >= 80% ของเป้าต่อมื้อ
+      // (ไม่ให้วันไหนขาดเป้ามาก) ขอบบน: ไม่เกินเพดาน
       bool fitsMealTarget(dynamic calories, dynamic protein) {
         final cal = RecipeRepository.toNum(calories);
         final pro = RecipeRepository.toNum(protein);
-        if (perMealCal > 0 && (cal < perMealCal * 0.75 || cal > mealCalCap)) {
+        if (perMealCal > 0 && (cal < perMealCal * 0.85 || cal > mealCalCap)) {
           return false;
         }
-        if (perMealProtein > 0 && pro < perMealProtein * 0.6) return false;
+        if (perMealProtein > 0 && pro < perMealProtein * 0.8) return false;
         return true;
       }
 
@@ -525,11 +525,31 @@ $extraRule
       if (remainingSlots.isNotEmpty) {
         geminiMeals = await askGemini(remainingSlots);
 
-        // ตรวจเพดาน: มื้อจาก AI ที่แคลอรีเกินเพดานต่อมื้อ ขอให้ทำใหม่ 1 รอบ
-        // (ใช้ผลใหม่เฉพาะเมื่อแคลอรีลดลงจริง) — ยังเกินอยู่หน้าแพลนจะขึ้นเตือน "เกิน"
+        // ตรวจผล: มื้อจาก AI ที่เกินเพดาน หรือต่ำกว่าเป้ามาก (แคลอรี < 80% /
+        // โปรตีน < 70% ของเป้าต่อมื้อ) ขอให้ทำใหม่ 1 รอบ แล้วใช้ผลที่ใกล้เป้ากว่า
+        // ยังไม่ผ่านอีก หน้าแพลนจะขึ้น "เกิน"/"ขาด" ให้เห็น
+        bool offTarget(Map m) {
+          final cal = RecipeRepository.toNum(m['calories']);
+          final pro = RecipeRepository.toNum(m['protein']);
+          return cal > mealCalCap ||
+              cal < perMealCal * 0.8 ||
+              pro < perMealProtein * 0.7;
+        }
+
+        // ระยะห่างจากเป้า (เกินเพดานถือว่าแย่กว่าขาดเท่ากัน 3 เท่า)
+        num distance(Map m) {
+          final cal = RecipeRepository.toNum(m['calories']);
+          final pro = RecipeRepository.toNum(m['protein']);
+          final calGap = cal > perMealCal
+              ? (cal - perMealCal) * 3
+              : perMealCal - cal;
+          final proGap = pro < perMealProtein ? (perMealProtein - pro) * 10 : 0;
+          return calGap + proGap;
+        }
+
         final over = [
           for (final m in geminiMeals.whereType<Map>())
-            if (RecipeRepository.toNum(m['calories']) > mealCalCap) m,
+            if (offTarget(m)) m,
         ];
         if (over.isNotEmpty && perMealCal > 0) {
           try {
@@ -542,8 +562,9 @@ $extraRule
                   },
               ],
               extraRule:
-                  '- รอบนี้เป็นการแก้มื้อที่เกินเพดาน (เดิม: ${over.map((m) => '${m['food_name']} ${m['calories']} kcal').join(', ')}) '
-                  'ต้องไม่เกิน ${perMealCal.floor()} kcal ต่อมื้อ ลดปริมาณหรือเปลี่ยนเมนู',
+                  '- รอบนี้เป็นการแก้มื้อที่ไม่ตรงเป้า (เดิม: ${over.map((m) => '${m['food_name']} ${m['calories']} kcal โปรตีน ${m['protein']} g').join(', ')}) '
+                  'แต่ละมื้อต้องอยู่ ${(perMealCal * 0.85).round()}-${perMealCal.floor()} kcal '
+                  'และโปรตีนราว ${perMealProtein.round()} g ปรับปริมาณหรือเปลี่ยนเมนู',
             );
             for (final f in fixed.whereType<Map>()) {
               final i = geminiMeals.indexWhere(
@@ -552,9 +573,7 @@ $extraRule
                     m['day'] == f['day'] &&
                     m['meal_type'] == f['meal_type'],
               );
-              if (i >= 0 &&
-                  RecipeRepository.toNum(f['calories']) <
-                      RecipeRepository.toNum(geminiMeals[i]['calories'])) {
+              if (i >= 0 && distance(f) < distance(geminiMeals[i] as Map)) {
                 geminiMeals[i] = f;
               }
             }
