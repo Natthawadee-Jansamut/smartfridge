@@ -201,20 +201,22 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         });
       }
 
-      // เป้าต่อมื้อ = เป้าต่อวัน / จำนวนมื้อ ใช้คัดเมนูจากคลัง (ไม่ให้เมนูเล็กเกิน
-      // เช่น ไข่ 1/4 ฟอง 28 kcal หลุดเข้าแพลน) และบอก AI ให้ทำแต่ละมื้อให้ถึง
-      final targetCal = int.tryParse(calorieController.text) ?? 0;
-      final targetProtein = int.tryParse(proteinController.text) ?? 0;
+      // เป้าแคลอรีต่อวันคือ "เพดาน" ที่ผู้ใช้ตั้ง (ห้ามเกิน) แบ่งเท่ากันทุกมื้อ
+      // ทุกมื้อไม่เกินเพดานต่อมื้อ -> ทั้งวันไม่เกินเป้าแน่นอน
+      // ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
+      final targetCal = int.tryParse(calorieController.text) ?? 2000;
+      final targetProtein = int.tryParse(proteinController.text) ?? 100;
       final perMealCal = meals > 0 ? targetCal / meals : 0;
       final perMealProtein = meals > 0 ? targetProtein / meals : 0;
+      // เผื่อปัดเศษตัวเลขจาก AI เล็กน้อย (เช่น เพดาน 500 ตอบ 505)
+      final mealCalCap = perMealCal * 1.02;
 
-      // แคลอรีอยู่ในช่วง 75%-125% ของเป้าต่อมื้อ และโปรตีนไม่ต่ำกว่า 60% ของเป้าต่อมื้อ
-      // (ไม่ได้ตั้งเป้าไว้ -> ไม่คัด)
+      // แคลอรี 75%-100% ของเพดานต่อมื้อ (ไม่ให้เมนูเล็กเกิน เช่น ไข่ 1/4 ฟอง
+      // 28 kcal และไม่ให้เกินเพดาน) และโปรตีนไม่ต่ำกว่า 60% ของเป้าต่อมื้อ
       bool fitsMealTarget(dynamic calories, dynamic protein) {
         final cal = RecipeRepository.toNum(calories);
         final pro = RecipeRepository.toNum(protein);
-        if (perMealCal > 0 &&
-            (cal < perMealCal * 0.75 || cal > perMealCal * 1.25)) {
+        if (perMealCal > 0 && (cal < perMealCal * 0.75 || cal > mealCalCap)) {
           return false;
         }
         if (perMealProtein > 0 && pro < perMealProtein * 0.6) return false;
@@ -373,15 +375,19 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       List<dynamic> geminiMeals = [];
 
-      if (remainingSlots.isNotEmpty) {
-        final slotsJson = remainingSlots
+      final usedNames = [...reusedMeals, ...libraryMeals]
+          .map((m) => m['food_name']?.toString() ?? '')
+          .where((n) => n.isNotEmpty)
+          .join(", ");
+
+      // ให้ Gemini สร้างเมนูสำหรับช่องที่กำหนด [extraRule] ใช้ตอนขอแก้มื้อที่เกินเพดาน
+      Future<List<dynamic>> askGemini(
+        List<Map<String, String>> slots, {
+        String extraRule = '',
+      }) async {
+        final slotsJson = slots
             .map((s) => '{"day":"${s['day']}","meal_type":"${s['meal_type']}"}')
             .join(",\n");
-
-        final usedNames = [...reusedMeals, ...libraryMeals]
-            .map((m) => m['food_name']?.toString() ?? '')
-            .where((n) => n.isNotEmpty)
-            .join(", ");
 
         final prompt =
             """
@@ -412,13 +418,13 @@ $goal
 
 Calories:
 
-${calorieController.text} kcal ต่อวัน (ประมาณ ${perMealCal.round()} kcal ต่อมื้อ)
+ไม่เกิน $targetCal kcal ต่อวัน = ไม่เกิน ${perMealCal.floor()} kcal ต่อมื้อ (เป็นเพดานที่ผู้ใช้ตั้ง ห้ามเกิน)
 
 
 
 Protein:
 
-${proteinController.text} g ต่อวัน (ประมาณ ${perMealProtein.round()} g ต่อมื้อ)
+$targetProtein g ต่อวัน (ประมาณ ${perMealProtein.round()} g ต่อมื้อ)
 
 
 
@@ -428,7 +434,7 @@ $diet
 
 
 
-สร้างเมนูเฉพาะสำหรับช่องต่อไปนี้เท่านั้น จำนวน ${remainingSlots.length} มื้อ
+สร้างเมนูเฉพาะสำหรับช่องต่อไปนี้เท่านั้น จำนวน ${slots.length} มื้อ
 (ระบุ day และ meal_type ให้ตรงกับที่กำหนดมาเป๊ะๆ ห้ามเพิ่มหรือลดจำนวน):
 
 [
@@ -463,9 +469,12 @@ ${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่
   (พยายามเลือกเมนู/ปริมาณให้ใกล้เป้าที่สุดเท่าที่วัตถุดิบจริงทำได้)
 - แต่ละมื้อต้องเป็นมื้ออาหารเต็มมื้อ ไม่ใช่ของว่างเล็กๆ (เช่น ไข่ 1/4 ฟอง + ผลไม้ 1/4 ลูก ไม่นับเป็นมื้อ)
   มีแหล่งโปรตีน (เนื้อสัตว์ ไข่ เต้าหู้ ถั่ว ฯลฯ) และแหล่งพลังงาน (ข้าว เส้น ขนมปัง ฯลฯ) ทุกมื้อ
-${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงเป้า ให้ใช้ปริมาณมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- แคลอรีและโปรตีนแต่ละมื้อต้องอยู่ราว 85%-115% ของเป้าต่อมื้อ ถ้าของในตู้ไม่พอ
-  ให้ซื้อเพิ่ม (โดยเฉพาะแหล่งโปรตีน เช่น อกไก่ ไข่ไก่ เต้าหู้ หมูสับ) ใส่ "to_buy": true
-  และเพิ่มปริมาณให้ถึงเป้า ห้ามปล่อยมื้อให้ขาดเป้ามากเพียงเพราะไม่อยากซื้อของ'''}
+- แคลอรีแต่ละมื้อห้ามเกิน ${perMealCal.floor()} kcal เด็ดขาด (เป้าต่อวันเป็นเพดาน)
+  ให้อยู่ราว ${(perMealCal * 0.85).round()}-${perMealCal.floor()} kcal ถ้าเกินให้ลดปริมาณข้าว/น้ำมัน/ของทอด
+  หรือเปลี่ยนเป็นเนื้อสัตว์ไขมันต่ำ (อกไก่ ปลา ไข่ขาว เต้าหู้) แทน
+${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงเป้าโปรตีน ให้ใช้แหล่งโปรตีนที่มีมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- โปรตีนแต่ละมื้อให้ใกล้เป้าต่อมื้อ ถ้าของในตู้ไม่พอ ให้ซื้อแหล่งโปรตีนเพิ่ม
+  (เช่น อกไก่ ไข่ไก่ เต้าหู้ ปลา) ใส่ "to_buy": true ห้ามปล่อยมื้อให้ขาดเป้ามากเพียงเพราะไม่อยากซื้อของ'''}
+$extraRule
 - ระบุ steps เป็นขั้นตอนการทำอาหารแบบละเอียด เรียงเป็นข้อๆ (array ของ string ภาษาไทย)
 - ส่งออก JSON เท่านั้น
 
@@ -510,7 +519,49 @@ ${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงเ
             .replaceAll("```", "")
             .trim();
 
-        geminiMeals = jsonDecode(json);
+        return jsonDecode(json) as List<dynamic>;
+      }
+
+      if (remainingSlots.isNotEmpty) {
+        geminiMeals = await askGemini(remainingSlots);
+
+        // ตรวจเพดาน: มื้อจาก AI ที่แคลอรีเกินเพดานต่อมื้อ ขอให้ทำใหม่ 1 รอบ
+        // (ใช้ผลใหม่เฉพาะเมื่อแคลอรีลดลงจริง) — ยังเกินอยู่หน้าแพลนจะขึ้นเตือน "เกิน"
+        final over = [
+          for (final m in geminiMeals.whereType<Map>())
+            if (RecipeRepository.toNum(m['calories']) > mealCalCap) m,
+        ];
+        if (over.isNotEmpty && perMealCal > 0) {
+          try {
+            final fixed = await askGemini(
+              [
+                for (final m in over)
+                  {
+                    'day': m['day'].toString(),
+                    'meal_type': m['meal_type'].toString(),
+                  },
+              ],
+              extraRule:
+                  '- รอบนี้เป็นการแก้มื้อที่เกินเพดาน (เดิม: ${over.map((m) => '${m['food_name']} ${m['calories']} kcal').join(', ')}) '
+                  'ต้องไม่เกิน ${perMealCal.floor()} kcal ต่อมื้อ ลดปริมาณหรือเปลี่ยนเมนู',
+            );
+            for (final f in fixed.whereType<Map>()) {
+              final i = geminiMeals.indexWhere(
+                (m) =>
+                    m is Map &&
+                    m['day'] == f['day'] &&
+                    m['meal_type'] == f['meal_type'],
+              );
+              if (i >= 0 &&
+                  RecipeRepository.toNum(f['calories']) <
+                      RecipeRepository.toNum(geminiMeals[i]['calories'])) {
+                geminiMeals[i] = f;
+              }
+            }
+          } catch (e) {
+            debugPrint('แก้มื้อที่เกินเพดานไม่สำเร็จ (ใช้ผลเดิม): $e');
+          }
+        }
 
         // เก็บเมนูใหม่จาก AI ลงคลังสูตรกลาง ครั้งหน้า (ของผู้ใช้คนไหนก็ได้) จะได้
         // หยิบจากคลังแทนการเรียก AI

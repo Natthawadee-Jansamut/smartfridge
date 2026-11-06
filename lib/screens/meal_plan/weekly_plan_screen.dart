@@ -180,7 +180,8 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         ),
       );
     }
-    // warnOver: แคลอรีเกินเป้าเกิน 15% ก็เตือน (โปรตีนเกินไม่เป็นไร)
+    // warnOver: เป้าแคลอรีเป็นเพดานต่อวัน เกินเมื่อไรก็เตือน (เผื่อปัดเศษ 2%)
+    // โปรตีนเกินเป้าไม่เป็นไร
     Widget row(
       String label,
       num value,
@@ -193,7 +194,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
       final ratio = (value / target).clamp(0.0, 1.0).toDouble();
       final gap = target - value;
       final reached = value >= target * ShoppingSuggestion.shortfallRatio;
-      final over = warnOver && value > target * 1.15;
+      final over = warnOver && value > target * 1.02;
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Column(
