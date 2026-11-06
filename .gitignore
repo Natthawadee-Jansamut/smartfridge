@@ -46,3 +46,4 @@ app.*.map.json
 explained/
 *.bak
 lib/config/api_keys.dart
+lib/config/supabase_config.dart

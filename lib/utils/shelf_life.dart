@@ -90,12 +90,16 @@ bool isCustomShelfType(String? value) =>
 
 /// ที่มาเดิมก่อนผู้ใช้แก้ — key = ประเภทเดิม (null = AI ประเมิน), days =
 /// จำนวนวันเดิม (null = ไม่รู้) — ถ้าไม่ใช่ค่า custom คืนตัวเดิมกลับไป
-({String? key, int? days}) originalShelfSource(String? value, num? currentDays) {
+({String? key, int? days}) originalShelfSource(
+  String? value,
+  num? currentDays,
+) {
   if (!isCustomShelfType(value)) {
     return (key: value, days: currentDays?.round());
   }
   final parts = value!.split(':');
-  String? at(int i) => parts.length > i && parts[i].isNotEmpty ? parts[i] : null;
+  String? at(int i) =>
+      parts.length > i && parts[i].isNotEmpty ? parts[i] : null;
   return (key: at(1), days: int.tryParse(at(2) ?? ''));
 }
 

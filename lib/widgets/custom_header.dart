@@ -26,10 +26,7 @@ class CustomHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors:[
-        const Color(0xff5189C9),
-        Color.fromARGB(255, 37, 113, 237),
-]
+          colors: [const Color(0xff5189C9), Color.fromARGB(255, 37, 113, 237)],
         ),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(30),

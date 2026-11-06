@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:google_generative_ai/google_generative_ai.dart';
 
+import 'package:test_app/services/ai_request_log.dart';
+
 /// error ฝั่งเซิร์ฟเวอร์ของ Gemini ที่เกิดจากโมเดลมีคนใช้งานพร้อมกันเยอะชั่วคราว
 /// (503 / UNAVAILABLE / high demand) — ไม่ใช่บั๊กของแอป รอแป๊บนึงแล้วลองใหม่
 /// มักจะผ่าน
@@ -14,18 +16,44 @@ bool isGeminiOverloaded(Object e) {
 
 /// เรียก generateContent แล้วลองใหม่อัตโนมัติถ้า Gemini ตอบว่าคนใช้เยอะชั่วคราว
 /// (รอ 2 วินาที แล้ว 4 วินาที) ก่อนจะโยน error ให้หน้าจอแสดงให้ผู้ใช้เห็นจริงๆ
+///
+/// [logEvent] = ประเภทงานใน AiEvent -> บันทึกผลลง ai_request_logs ให้อัตโนมัติ
+/// (สำเร็จ = 'gemini', ไม่สำเร็จ = 'failed') ถ้าไม่ส่งมาจะไม่บันทึก
 Future<GenerateContentResponse> generateContentWithRetry(
   GenerativeModel model,
   List<Content> content, {
   int maxAttempts = 3,
   Duration timeout = const Duration(seconds: 30),
+  String? logEvent,
+  String? logImageHash,
 }) async {
   for (int attempt = 1; ; attempt++) {
     try {
-      return await model.generateContent(content).timeout(timeout);
+      final res = await model.generateContent(content).timeout(timeout);
+      if (logEvent != null) {
+        logAiRequest(
+          event: logEvent,
+          result: AiResult.gemini,
+          model: geminiModel,
+          usage: res.usageMetadata,
+          imageHash: logImageHash,
+        );
+      }
+      return res;
     } catch (e) {
-      if (!isGeminiOverloaded(e) || attempt >= maxAttempts) rethrow;
-      await Future.delayed(Duration(seconds: 2 * attempt));
+      if (isGeminiOverloaded(e) && attempt < maxAttempts) {
+        await Future.delayed(Duration(seconds: 2 * attempt));
+        continue;
+      }
+      if (logEvent != null) {
+        logAiRequest(
+          event: logEvent,
+          result: AiResult.failed,
+          model: geminiModel,
+          imageHash: logImageHash,
+        );
+      }
+      rethrow;
     }
   }
 }
@@ -40,13 +68,19 @@ Future<GenerateContentResponse> generateGemini({
   required List<Content> content,
   GenerationConfig? generationConfig,
   Duration timeout = const Duration(seconds: 30),
+  String? logEvent,
 }) {
   final model = GenerativeModel(
     model: geminiModel,
     apiKey: apiKey,
     generationConfig: generationConfig,
   );
-  return generateContentWithRetry(model, content, timeout: timeout);
+  return generateContentWithRetry(
+    model,
+    content,
+    timeout: timeout,
+    logEvent: logEvent,
+  );
 }
 
 /// ใช้ AI ครบโควตาแล้ว (429 / RESOURCE_EXHAUSTED / exceeded your current quota)
@@ -62,8 +96,9 @@ bool isGeminiQuotaExceeded(Object e) {
 /// ดึงเวลาที่ต้องรอจากข้อความ error ("Please retry in 7h29m27.79s") มาบอก
 /// ผู้ใช้เป็นภาษาไทย เช่น "7 ชั่วโมง 29 นาที" — null ถ้าไม่มีข้อมูล
 String? _retryAfterText(Object e) {
-  final m = RegExp(r'retry in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?')
-      .firstMatch(e.toString());
+  final m = RegExp(
+    r'retry in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?',
+  ).firstMatch(e.toString());
   if (m == null) return null;
   final h = int.tryParse(m.group(1) ?? '') ?? 0;
   final min = int.tryParse(m.group(2) ?? '') ?? 0;

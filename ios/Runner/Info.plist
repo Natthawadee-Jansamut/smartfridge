@@ -36,7 +36,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>แอปต้องการใช้กล้องเพื่อถ่ายรูปวัตถุดิบ</string>
+	<string>แอปต้องการใช้กล้องเพื่อถ่ายภาพวัตถุดิบ</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>แอปต้องการบันทึกรูปภาพ</string>
 	<key>NSPhotoLibraryUsageDescription</key>

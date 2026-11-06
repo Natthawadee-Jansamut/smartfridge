@@ -1,11 +1,11 @@
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show VoidCallback, debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
-import '../utils/fridge_age.dart';
+import 'package:test_app/utils/fridge_age.dart';
 
 /// บริการแจ้งเตือนวัตถุดิบที่ใกล้ครบอายุการเก็บรักษา — อ่านค่า "แจ้งเตือน
 /// ล่วงหน้ากี่วันก่อนครบอายุการเก็บรักษา" (notify_days) ที่ผู้ใช้ตั้งไว้ในหน้า
@@ -30,6 +30,21 @@ class NotificationService {
 
   static bool _initialized = false;
 
+  /// เรียกเมื่อผู้ใช้กดแจ้งเตือนตอนแอปเปิดอยู่/อยู่เบื้องหลัง — main.dart ตั้งให้
+  /// เปิดหน้าแจ้งเตือน (ExpirationAlertScreen)
+  static VoidCallback? onOpenAlerts;
+
+  /// แอปถูกเปิดขึ้นมาจากการกดแจ้งเตือน (ตอนแอปปิดอยู่) — หน้าเมนูหลักจะเช็ก
+  /// แล้วพาไปหน้าแจ้งเตือนครั้งเดียว ผ่าน takeOpenAlertsOnLaunch()
+  static bool _openAlertsOnLaunch = false;
+
+  /// คืน true ครั้งเดียวถ้าแอปถูกเปิดจากการกดแจ้งเตือน (เรียกซ้ำได้ false)
+  static bool takeOpenAlertsOnLaunch() {
+    final value = _openAlertsOnLaunch;
+    _openAlertsOnLaunch = false;
+    return value;
+  }
+
   static Future<void> init() async {
     if (_initialized) return;
 
@@ -44,7 +59,23 @@ class NotificationService {
       ),
     );
 
-    await notifications.initialize(settings);
+    await notifications.initialize(
+      settings,
+      // กดแจ้งเตือนตอนแอปเปิดอยู่หรืออยู่เบื้องหลัง -> ไปหน้าแจ้งเตือน
+      onDidReceiveNotificationResponse: (_) => onOpenAlerts?.call(),
+    );
+
+    // กดแจ้งเตือนตอนแอปปิดอยู่ -> จำไว้ ให้หน้าเมนูหลักพาไปหน้าแจ้งเตือน
+    try {
+      final launch = await notifications.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp ?? false) {
+        _openAlertsOnLaunch = true;
+      }
+    } catch (e) {
+      debugPrint(
+        '[NotificationService] อ่านข้อมูลการเปิดแอปจากแจ้งเตือนไม่สำเร็จ: $e',
+      );
+    }
 
     // Android 13 (API 33) ขึ้นไปต้องขอสิทธิ์แจ้งเตือนแบบ runtime permission
     // เหมือนสิทธิ์อื่นๆ (กล้อง/แกลเลอรี) ไม่ได้ขอผ่าน manifest อย่างเดียวแล้ว
@@ -63,33 +94,6 @@ class NotificationService {
       1,
       "🔔 SmartFridge",
       message,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'expiry_channel',
-          'แจ้งเตือนวัตถุดิบในตู้เย็น',
-          channelDescription: 'แจ้งเตือนเมื่อวัตถุดิบอยู่ในตู้เย็นนานแล้ว',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
-        ),
-      ),
-    );
-  }
-
-  static Future<void> showNotification({
-    required String title,
-    required String body,
-  }) async {
-    await notifications.show(
-      DateTime.now().millisecondsSinceEpoch ~/ 1000 % 100000,
-      title,
-      body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'expiry_channel',
@@ -133,6 +137,7 @@ class NotificationService {
     await init();
 
     final notifyDays = readOldItemDays(user);
+    final notifyTime = readNotifyTime(user);
 
     List<Map<String, dynamic>> items;
     try {
@@ -159,11 +164,7 @@ class NotificationService {
 
       final addedDate = parseCreatedAt(createdRaw);
       if (addedDate == null) continue;
-      final addedDay = DateTime(
-        addedDate.year,
-        addedDate.month,
-        addedDate.day,
-      );
+      final addedDay = DateTime(addedDate.year, addedDate.month, addedDate.day);
 
       final name = item['name']?.toString() ?? 'วัตถุดิบ';
       final itemId = item['item_id']?.toString() ?? name;
@@ -171,15 +172,20 @@ class NotificationService {
       // นับถอยหลัง: เตือนล่วงหน้า notifyDays วันก่อนครบอายุการเก็บรักษาของชิ้นนั้น
       final remaining = daysLeft(item);
       if (remaining == null) continue; // ไม่มีข้อมูลอายุการเก็บรักษา
-      final shelfEndDay = DateTime(now.year, now.month, now.day)
-          .add(Duration(days: remaining.floor()));
+      final shelfEndDay = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).add(Duration(days: remaining.floor()));
       final triggerDay = shelfEndDay.subtract(Duration(days: notifyDays));
       final ageAtTrigger = triggerDay.difference(addedDay).inDays;
       final triggerTime = DateTime(
         triggerDay.year,
         triggerDay.month,
         triggerDay.day,
-        9, // เตือนตอน 9 โมงเช้าของแต่ละวัน
+        // เวลาที่ผู้ใช้ตั้งไว้ในหน้าตั้งค่าแจ้งเตือน (ค่าเริ่มต้น 09:00)
+        notifyTime.hour,
+        notifyTime.minute,
       );
 
       // ตั้งล่วงหน้าได้เฉพาะเวลาที่ยังไม่ผ่านไปเท่านั้น (ตั้งเวลาย้อนอดีตไม่ได้)
@@ -196,7 +202,8 @@ class NotificationService {
               android: AndroidNotificationDetails(
                 'expiry_channel',
                 'แจ้งเตือนวัตถุดิบในตู้เย็น',
-                channelDescription: 'แจ้งเตือนเมื่อวัตถุดิบอยู่ในตู้เย็นนานแล้ว',
+                channelDescription:
+                    'แจ้งเตือนเมื่อวัตถุดิบอยู่ในตู้เย็นนานแล้ว',
                 importance: Importance.high,
                 priority: Priority.high,
               ),
@@ -211,7 +218,9 @@ class NotificationService {
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           );
         } catch (e) {
-          debugPrint('[NotificationService] ตั้งแจ้งเตือนของ "$name" ไม่สำเร็จ: $e');
+          debugPrint(
+            '[NotificationService] ตั้งแจ้งเตือนของ "$name" ไม่สำเร็จ: $e',
+          );
           // ข้ามรายการนี้ไปถ้าตั้งไม่สำเร็จ (เช่น iOS เต็มโควตา 64 รายการ)
           // ไม่ให้กระทบรายการอื่น
         }
@@ -250,13 +259,27 @@ class NotificationService {
             .eq('user_id', user.id);
         fridgeItems = List<Map<String, dynamic>>.from(response);
       } catch (e) {
-        debugPrint('[NotificationService] ดึงข้อมูล fridge_items ไม่สำเร็จ: $e');
+        debugPrint(
+          '[NotificationService] ดึงข้อมูล fridge_items ไม่สำเร็จ: $e',
+        );
         return;
       }
     }
 
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
+
+    // ยังไม่ถึงเวลาที่ผู้ใช้ตั้งไว้ของวันนี้ -> ยังไม่เตือน (แจ้งเตือนที่ตั้งเวลา
+    // ล่วงหน้าไว้จะเด้งเองตอนถึงเวลา หรือเปิดแอปหลังเวลานั้นค่อยเช็กอีกรอบ)
+    final notifyTime = readNotifyTime(user);
+    final notifyAt = DateTime(
+      today.year,
+      today.month,
+      today.day,
+      notifyTime.hour,
+      notifyTime.minute,
+    );
+    if (now.isBefore(notifyAt)) return;
 
     final List<String> oldItemNames = [];
     for (final item in fridgeItems) {
@@ -269,8 +292,8 @@ class NotificationService {
 
     final todayKey =
         "${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
-    final lastNotified =
-        user.userMetadata?['last_expiry_notify_date']?.toString();
+    final lastNotified = user.userMetadata?['last_expiry_notify_date']
+        ?.toString();
     if (lastNotified == todayKey) return; // วันนี้เตือนไปแล้ว ไม่เตือนซ้ำ
 
     final String message = oldItemNames.length == 1
@@ -287,7 +310,9 @@ class NotificationService {
         UserAttributes(data: {"last_expiry_notify_date": todayKey}),
       );
     } catch (e) {
-      debugPrint('[NotificationService] บันทึกวันที่แจ้งเตือนล่าสุดไม่สำเร็จ: $e');
+      debugPrint(
+        '[NotificationService] บันทึกวันที่แจ้งเตือนล่าสุดไม่สำเร็จ: $e',
+      );
       // อัปเดตวันที่แจ้งเตือนล่าสุดไม่สำเร็จ (เช่นออฟไลน์) ไม่เป็นไร รอบหน้า
       // จะลองใหม่ — อย่างมากคือแจ้งเตือนซ้ำอีกครั้งถ้าเปิดแอปวันเดียวกัน
     }

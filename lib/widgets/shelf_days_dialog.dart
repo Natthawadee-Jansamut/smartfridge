@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../utils/fridge_age.dart';
-import '../utils/shelf_life.dart';
+import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/utils/shelf_life.dart';
 
 /// หน้าต่าง "แก้ระยะที่เก็บได้" ใช้ร่วมกันในหน้าคลังและหน้าแจ้งเตือน — แก้ได้ทั้ง
 /// พิมพ์จำนวนวันเอง และกด "ใช้ค่าแนะนำ" เพื่อคืนค่าเดิม (เช่นกด +วันผิด)
@@ -36,7 +36,8 @@ Future<bool> editShelfDaysDialog(
             keyboardType: TextInputType.number,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: "เก็บใน${storageLabel(item['storage']?.toString())}ได้",
+              labelText:
+                  "เก็บใน${storageLabel(item['storage']?.toString())}ได้",
               suffixText: "วัน",
             ),
           ),

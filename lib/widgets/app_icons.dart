@@ -10,7 +10,11 @@ class ViewfinderIcon extends StatelessWidget {
   final double size;
   final Color color;
 
-  const ViewfinderIcon({super.key, this.size = 24, this.color = Colors.black87});
+  const ViewfinderIcon({
+    super.key,
+    this.size = 24,
+    this.color = Colors.black87,
+  });
 
   static const String _svg = '''
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -29,7 +33,7 @@ class ViewfinderIcon extends StatelessWidget {
   }
 }
 
-/// ไอคอน "ถ่ายรูปวัตถุดิบ" (กรอบมุม viewfinder + รูปแอปเปิ้ล) ตรงตัวจาก Figma
+/// ไอคอน "ถ่ายภาพวัตถุดิบ" (กรอบมุม viewfinder + รูปแอปเปิ้ล) ตรงตัวจาก Figma
 /// (ต้นฉบับชื่อ hugeicons:meal-scan) — วางไว้ในหน้าเลือกสแกน
 class MealScanIcon extends StatelessWidget {
   final double size;
@@ -62,7 +66,11 @@ class DocumentScannerRawIcon extends StatelessWidget {
   final double size;
   final Color color;
 
-  const DocumentScannerRawIcon({super.key, this.size = 60, this.color = Colors.black87});
+  const DocumentScannerRawIcon({
+    super.key,
+    this.size = 60,
+    this.color = Colors.black87,
+  });
 
   static const String _svg = '''
 <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -137,7 +145,11 @@ class NotificationIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset('assets/icons/notification.png', width: size, height: size);
+    return Image.asset(
+      'assets/icons/notification.png',
+      width: size,
+      height: size,
+    );
   }
 }
 

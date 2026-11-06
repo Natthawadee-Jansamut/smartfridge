@@ -1,47 +1,53 @@
 # แผนที่หน้าจอ (Screens Map) - SmartFridge.AI
 
-เอกสารนี้สรุปว่าไฟล์ไหนใน `lib/screens/` เป็นของเมนู/ฟีเจอร์ไหน จัดกลุ่มตามการใช้งานจริง
-(ไม่ได้ย้ายไฟล์จริง แค่ทำเป็นแผนที่ไว้อ้างอิง ไฟล์ยังอยู่ที่เดิมทุกไฟล์)
+ไฟล์ใน `lib/screens/` แยกโฟลเดอร์ตามเมนูในหน้า Home
 
-## 🔐 ระบบสมาชิก (Auth)
-- `login_screen.dart` — หน้าล็อกอิน
-- `register.dart` — หน้าสมัครสมาชิก
-- `verify_email_otp_screen.dart` — ยืนยัน OTP ทางอีเมลหลังสมัคร
-- `forgot_password_screen.dart` — ขอลิงก์รีเซ็ตรหัสผ่าน
-- `reset_password_screen.dart` — ตั้งรหัสผ่านใหม่ (จากลิงก์อีเมล)
-- `change_password_screen.dart` — เปลี่ยนรหัสผ่าน (ตอนล็อกอินอยู่)
+## 🏠 `home/` — หน้าหลักและหน้ารวมเมนู
+- `main_menu_screen.dart` — หน้าเมนูหลัก มีปุ่มลิงก์ไปทุกฟีเจอร์
+- `scan_menu_screen.dart` — แท็บ "สแกน" ใน bottom nav (เปิดได้ทั้งฟีเจอร์ 1 และ 5)
 
-## 🏠 หน้าหลัก (Main Navigation)
-- `main_menu_screen.dart` — หน้าเมนูหลัก มีแท็บ/ปุ่มลิงก์ไปทุกฟีเจอร์
-
-## 🧊 คลังวัตถุดิบ (Inventory)
-- `inventory_screen.dart` — รายการวัตถุดิบทั้งหมดในตู้เย็น
-- `item_detail_screen.dart` — รายละเอียด/แก้ไขวัตถุดิบทีละชิ้น
-- `expiration_alert_screen.dart` — แจ้งเตือนวัตถุดิบใกล้หมดอายุ
-- `notification_settings_screen.dart` — ตั้งค่าการแจ้งเตือน
-
-## 📷 สแกน/ถ่ายรูป (Scanning)
-- `scan_menu_screen.dart` — เมนูเลือกว่าจะสแกนอะไร (วัตถุดิบ/สูตรอาหาร)
-- `ImageScanning.dart` — ถ่ายรูปวัตถุดิบ วิเคราะห์ด้วย Gemini
+## 📷 `ingredient_scan/` — 1. ถ่ายภาพวัตถุดิบ
+- `image_scanning_screen.dart` — ถ่ายภาพวัตถุดิบ วิเคราะห์ด้วย Gemini (เดิมชื่อ `ImageScanning.dart`)
 - `result_screen.dart` — ผลลัพธ์วัตถุดิบที่สแกนได้ (ก่อนบันทึกเข้าคลัง)
-- `scan_recipe_screen.dart` — ถ่ายรูปสูตรอาหาร วิเคราะห์ด้วย Gemini
-- `scan_recipe_result_screen.dart` — ผลลัพธ์สูตรอาหารที่สแกนได้ เทียบกับของในตู้เย็น
 
-## 🍳 สูตรอาหาร & AI แนะนำเมนู (Recipes / AI)
-- `ai_recipe_screen.dart` — ให้ AI แนะนำเมนูจากวัตถุดิบที่มี
-- `recipe_detail_screen.dart` — รายละเอียดสูตรอาหาร + ปุ่มเริ่มทำ (หักวัตถุดิบ)
-- `saved_recipes_screen.dart` — สูตรอาหารที่บันทึกไว้
-- `cook_meal_screen.dart` — หน้าทำอาหารตามสูตร ทีละขั้นตอน
-
-## 📅 วางแผนมื้ออาหาร (Meal Planning)
+## 📅 `meal_plan/` — 2. แพลนอาหาร
 - `plan_menu_screen.dart` — เมนูเลือกว่าจะวางแผนแบบไหน
 - `meal_plan_screen.dart` — สร้างแผนมื้ออาหารรายสัปดาห์ด้วย AI
-- `weekly_plan_screen.dart` — ดูแผนมื้ออาหารที่สร้างไว้รายสัปดาห์
 - `my_plan_screen.dart` — แผนมื้ออาหารของฉัน (ภาพรวม)
+- `weekly_plan_screen.dart` — ดูแผนมื้ออาหารที่สร้างไว้รายสัปดาห์
+- `cook_meal_screen.dart` — หน้าทำอาหารตามสูตร ทีละขั้นตอน
 
-## 👤 โปรไฟล์ & ตั้งค่าบัญชี (Profile / Account)
+## 🔔 `notification/` — 3. แจ้งเตือน
+- `expiration_alert_screen.dart` — แจ้งเตือนวัตถุดิบที่อยู่ในตู้เย็นนาน
+- `notification_settings_screen.dart` — ตั้งค่าการแจ้งเตือน
+
+## 🧊 `fridge/` — 4. เช็คตู้เย็น
+- `inventory_screen.dart` — รายการวัตถุดิบทั้งหมดในตู้เย็น
+- `item_detail_screen.dart` — รายละเอียด/แก้ไขวัตถุดิบทีละชิ้น
+
+## 📖 `recipe_scan/` — 5. สแกนสูตรอาหาร
+- `scan_recipe_screen.dart` — ถ่ายภาพสูตรอาหาร วิเคราะห์ด้วย Gemini
+- `scan_recipe_result_screen.dart` — ผลลัพธ์สูตรที่สแกนได้ เทียบกับรูปต้นฉบับ
+- `saved_recipes_screen.dart` — คลังสูตรอาหารที่บันทึกไว้
+- `manual_recipe_screen.dart` — เขียนสูตรเอง / แก้สูตรจาก AI
+
+## 🍳 `menu_generator/` — 6. สร้างเมนูอาหาร
+- `ai_recipe_screen.dart` — ให้ AI แนะนำเมนูจากวัตถุดิบที่มี
+
+## 🔗 `shared/` — หน้าที่หลายฟีเจอร์ใช้ร่วมกัน
+- `recipe_detail_screen.dart` — รายละเอียดสูตร + แก้ไข + ปุ่มเริ่มทำ (ฟีเจอร์ 5 และ 6)
+
+## 🔐 `auth/` — ระบบสมาชิก
+- `login_screen.dart` — หน้าล็อกอิน (มี Remember me)
+- `register_screen.dart` — หน้าสมัครสมาชิก (เดิมชื่อ `register.dart`)
+- `forgot_password_screen.dart` — ขอลิงก์รีเซ็ตรหัสผ่าน
+- `reset_password_screen.dart` — ตั้งรหัสผ่านใหม่ (จากลิงก์อีเมล)
+- `verify_email_otp_screen.dart` — ยืนยัน OTP ทางอีเมลหลังสมัคร
+
+## 👤 `profile/` — โปรไฟล์ & ตั้งค่าบัญชี
 - `profile_screen.dart` — หน้าโปรไฟล์ผู้ใช้
 - `edit_profile_screen.dart` — แก้ไขข้อมูลโปรไฟล์
+- `change_password_screen.dart` — เปลี่ยนรหัสผ่าน (ตอนล็อกอินอยู่)
 - `delete_account_screen.dart` — ลบบัญชี
 
 ---
@@ -49,6 +55,7 @@
 - `lib/main.dart` — จุดเริ่มต้นแอป
 - `lib/services/notification_service.dart` — จัดการแจ้งเตือน local notification
 - `lib/config/api_keys.dart` — เก็บ API Key (ไม่ขึ้น git)
+- `lib/config/supabase_config.dart` — URL และ anon key ของ Supabase (ไม่ขึ้น git, ดูตัวอย่างที่ `supabase_config.example.dart`)
 - `lib/widgets/` — widget ที่ใช้ซ้ำหลายหน้า (bottom nav, header, icons)
 - `lib/utils/category_icons.dart` — ไอคอนตามหมวดหมู่วัตถุดิบ
 - `lib/utils/fridge_age.dart` — คำนวณว่าอยู่ในตู้เย็นมาแล้วกี่วัน / เหลืออีกกี่วันหมดอายุ / ลำดับ FIFO
