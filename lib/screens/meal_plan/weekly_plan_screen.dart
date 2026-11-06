@@ -180,11 +180,20 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         ),
       );
     }
-    Widget row(String label, num value, num target, String unit, Color color) {
+    // warnOver: แคลอรีเกินเป้าเกิน 15% ก็เตือน (โปรตีนเกินไม่เป็นไร)
+    Widget row(
+      String label,
+      num value,
+      num target,
+      String unit,
+      Color color, {
+      bool warnOver = false,
+    }) {
       if (target <= 0) return const SizedBox.shrink();
       final ratio = (value / target).clamp(0.0, 1.0).toDouble();
       final gap = target - value;
       final reached = value >= target * ShoppingSuggestion.shortfallRatio;
+      final over = warnOver && value > target * 1.15;
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Column(
@@ -203,13 +212,17 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                   ),
                 ),
                 Text(
-                  reached
+                  over
+                      ? "เกิน ${_fmt(-gap)} $unit"
+                      : reached
                       ? (gap > 0 ? "ใกล้ถึงเป้า" : "ถึงเป้า ✓")
                       : "ขาด ${_fmt(gap)} $unit",
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: reached
+                    color: over
+                        ? const Color(0xffE07B00)
+                        : reached
                         ? const Color(0xff3F9142)
                         : const Color(0xffD64545),
                   ),
@@ -241,7 +254,14 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
             color: Color(0xff5189C9),
           ),
         ),
-        row("พลังงาน", calories, targetCalories, "kcal", Colors.orange),
+        row(
+          "พลังงาน",
+          calories,
+          targetCalories,
+          "kcal",
+          Colors.orange,
+          warnOver: true,
+        ),
         row("โปรตีน", protein, targetProtein, "g", Colors.blue),
       ],
     );

@@ -201,10 +201,34 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         });
       }
 
-      // เมนูเก่าที่วัตถุดิบครบพอใช้ได้เลยตอนนี้ — สุ่มลำดับก่อน แล้วเอาเมนูที่
-      // ใช้ของที่อยู่ในตู้เย็นนานขึ้นก่อน เพื่อความหลากหลายและช่วยเคลียร์ของเก่า
+      // เป้าต่อมื้อ = เป้าต่อวัน / จำนวนมื้อ ใช้คัดเมนูจากคลัง (ไม่ให้เมนูเล็กเกิน
+      // เช่น ไข่ 1/4 ฟอง 28 kcal หลุดเข้าแพลน) และบอก AI ให้ทำแต่ละมื้อให้ถึง
+      final targetCal = int.tryParse(calorieController.text) ?? 0;
+      final targetProtein = int.tryParse(proteinController.text) ?? 0;
+      final perMealCal = meals > 0 ? targetCal / meals : 0;
+      final perMealProtein = meals > 0 ? targetProtein / meals : 0;
+
+      // แคลอรีอยู่ในช่วง 75%-125% ของเป้าต่อมื้อ และโปรตีนไม่ต่ำกว่า 60% ของเป้าต่อมื้อ
+      // (ไม่ได้ตั้งเป้าไว้ -> ไม่คัด)
+      bool fitsMealTarget(dynamic calories, dynamic protein) {
+        final cal = RecipeRepository.toNum(calories);
+        final pro = RecipeRepository.toNum(protein);
+        if (perMealCal > 0 &&
+            (cal < perMealCal * 0.75 || cal > perMealCal * 1.25)) {
+          return false;
+        }
+        if (perMealProtein > 0 && pro < perMealProtein * 0.6) return false;
+        return true;
+      }
+
+      // เมนูเก่าที่วัตถุดิบครบพอใช้ได้เลยตอนนี้ และขนาดมื้อใกล้เป้า — สุ่มลำดับก่อน
+      // แล้วเอาเมนูที่ใช้ของที่อยู่ในตู้เย็นนานขึ้นก่อน เพื่อความหลากหลายและช่วยเคลียร์ของเก่า
       final matched = library
-          .where((m) => allIngredientsAvailable(m['ingredients'] as List))
+          .where(
+            (m) =>
+                fitsMealTarget(m['calories'], m['protein']) &&
+                allIngredientsAvailable(m['ingredients'] as List),
+          )
           .toList();
       matched.shuffle();
       matched.sort((a, b) {
@@ -258,8 +282,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       final libraryMeals = <Map<String, dynamic>>[];
       if (reuseCount < slotGrid.length) {
         try {
-          final targetCal = int.tryParse(calorieController.text) ?? 0;
-          final perMeal = meals > 0 ? targetCal / meals : 0;
           final candidates = await RecipeRepository.findRecipesForFridge(
             fridgeItems: List<Map<String, dynamic>>.from(
               fridgeItems,
@@ -278,9 +300,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             if (diet != 'ไม่มี' && !(r['diet_tags'] as List).contains(diet)) {
               return false;
             }
-            final cal = RecipeRepository.toNum(r['calories']);
-            return perMeal <= 0 ||
-                (cal >= perMeal * 0.5 && cal <= perMeal * 1.6);
+            return fitsMealTarget(r['calories'], r['protein']);
           }).toList();
           for (
             var i = reuseCount;
@@ -392,13 +412,13 @@ $goal
 
 Calories:
 
-${calorieController.text} kcal
+${calorieController.text} kcal ต่อวัน (ประมาณ ${perMealCal.round()} kcal ต่อมื้อ)
 
 
 
 Protein:
 
-${proteinController.text} g
+${proteinController.text} g ต่อวัน (ประมาณ ${perMealProtein.round()} g ต่อมื้อ)
 
 
 
@@ -441,6 +461,11 @@ ${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่
   (เช่น ไข่ไก่ 1 ฟอง ≈ 70 kcal / โปรตีน 6 g) ห้ามเอาเป้าต่อวันมาหารแบ่งเป็นค่าต่อมื้อ
   และห้ามปั้นตัวเลขให้ถึงเป้า ถ้าวัตถุดิบไม่พอถึงเป้า ให้ตอบตัวเลขต่ำตามจริง
   (พยายามเลือกเมนู/ปริมาณให้ใกล้เป้าที่สุดเท่าที่วัตถุดิบจริงทำได้)
+- แต่ละมื้อต้องเป็นมื้ออาหารเต็มมื้อ ไม่ใช่ของว่างเล็กๆ (เช่น ไข่ 1/4 ฟอง + ผลไม้ 1/4 ลูก ไม่นับเป็นมื้อ)
+  มีแหล่งโปรตีน (เนื้อสัตว์ ไข่ เต้าหู้ ถั่ว ฯลฯ) และแหล่งพลังงาน (ข้าว เส้น ขนมปัง ฯลฯ) ทุกมื้อ
+${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงเป้า ให้ใช้ปริมาณมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- แคลอรีและโปรตีนแต่ละมื้อต้องอยู่ราว 85%-115% ของเป้าต่อมื้อ ถ้าของในตู้ไม่พอ
+  ให้ซื้อเพิ่ม (โดยเฉพาะแหล่งโปรตีน เช่น อกไก่ ไข่ไก่ เต้าหู้ หมูสับ) ใส่ "to_buy": true
+  และเพิ่มปริมาณให้ถึงเป้า ห้ามปล่อยมื้อให้ขาดเป้ามากเพียงเพราะไม่อยากซื้อของ'''}
 - ระบุ steps เป็นขั้นตอนการทำอาหารแบบละเอียด เรียงเป็นข้อๆ (array ของ string ภาษาไทย)
 - ส่งออก JSON เท่านั้น
 
