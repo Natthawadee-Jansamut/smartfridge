@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/services/meal_nutrition.dart';
+import 'package:test_app/services/plan_allocation.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/widgets/deduct_confirm_sheet.dart';
 import 'package:test_app/widgets/app_icons.dart';
@@ -18,7 +19,14 @@ import 'package:test_app/widgets/recipe_flow_widgets.dart';
 class CookMealScreen extends StatefulWidget {
   final String mealId;
 
-  const CookMealScreen({super.key, required this.mealId});
+  /// true = เปิดดูก่อนบันทึกแพลน: ดู/แก้สูตรได้ แต่ไม่มีปุ่ม "ทำแล้ว" (ยังไม่หักของ)
+  final bool previewOnly;
+
+  const CookMealScreen({
+    super.key,
+    required this.mealId,
+    this.previewOnly = false,
+  });
 
   @override
   State<CookMealScreen> createState() => _CookMealScreenState();
@@ -71,14 +79,59 @@ class _CookMealScreenState extends State<CookMealScreen> {
       if (ingredientsList.isNotEmpty) {
         final user = supabase.auth.currentUser;
         if (user != null) {
-          final fridgeItems = await supabase
-              .from('fridge_items')
-              .select()
-              .eq('user_id', user.id);
-          ingredientsList = _withRealAvailability(
-            ingredientsList,
-            List<Map<String, dynamic>>.from(fridgeItems),
+          final fridgeItems = List<Map<String, dynamic>>.from(
+            await supabase.from('fridge_items').select().eq('user_id', user.id),
           );
+          // จองของในตู้ให้มื้อที่ใกล้ถึงก่อน (ทั้งแพลน) แล้วติ๊กตามผลของมื้อนี้
+          // สถานะจะตรงกับหน้าแผนรายสัปดาห์ และไม่ติ๊กของที่จองให้มื้อก่อนหน้าไปแล้ว
+          final planId = loadedMeal['plan_id'];
+          Map<String, List<IngredientStatus>>? allocation;
+          if (planId != null) {
+            try {
+              final planMeals = await supabase
+                  .from('weekly_meals')
+                  .select()
+                  .eq('plan_id', planId);
+              final plan = await supabase
+                  .from('meal_plans')
+                  .select('created_at')
+                  .eq('id', planId)
+                  .maybeSingle();
+              allocation = PlanAllocation.allocate(
+                meals: planMeals,
+                fridgeItems: fridgeItems,
+                planStart: DateTime.tryParse(
+                  plan?['created_at']?.toString() ?? '',
+                )?.toLocal(),
+              );
+            } catch (e) {
+              debugPrint('จองวัตถุดิบทั้งแพลนไม่สำเร็จ (เช็กเฉพาะมื้อนี้): $e');
+            }
+          }
+          final statuses = allocation?[widget.mealId];
+          if (statuses != null) {
+            ingredientsList = [
+              for (final ing in ingredientsList)
+                {
+                  ...ing,
+                  'checked':
+                      statuses
+                          .where(
+                            (st) =>
+                                st.name ==
+                                (ing['name'] ?? '').toString().trim(),
+                          )
+                          .firstOrNull
+                          ?.have ??
+                      false,
+                },
+            ];
+          } else {
+            ingredientsList = _withRealAvailability(
+              ingredientsList,
+              fridgeItems,
+            );
+          }
           loadedMeal['ingredients'] = ingredientsList;
         }
       }
@@ -720,7 +773,9 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
-                                    "ทำอาหาร $mealType $dayLabel",
+                                    widget.previewOnly
+                                        ? "ดูสูตร $mealType $dayLabel"
+                                        : "ทำอาหาร $mealType $dayLabel",
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w500,
@@ -967,7 +1022,8 @@ class _CookMealScreenState extends State<CookMealScreen> {
                 ],
               ),
       ),
-      bottomNavigationBar: loading
+      // ดูสูตรก่อนบันทึกแพลน -> ไม่มีปุ่ม "ทำแล้ว" (กลับด้วยปุ่มย้อนกลับด้านบน)
+      bottomNavigationBar: loading || widget.previewOnly
           ? null
           : Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),

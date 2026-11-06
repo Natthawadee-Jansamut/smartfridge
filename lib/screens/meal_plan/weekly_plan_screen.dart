@@ -9,6 +9,7 @@ import 'package:test_app/services/meal_nutrition.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/services/meal_regenerate.dart';
+import 'package:test_app/services/plan_allocation.dart';
 
 class WeeklyPlanScreen extends StatefulWidget {
   final String planId;
@@ -57,7 +58,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           : List<Map<String, dynamic>>.from(
               await supabase
                   .from('fridge_items')
-                  .select('name, quantity')
+                  .select()
                   .eq('user_id', user.id),
             );
 
@@ -153,6 +154,16 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
       result[day]!.add(item);
     }
 
+    // เรียงตาม meal_type ("มื้อที่ 1", "มื้อที่ 2", ...) ไม่ใช่ลำดับแถวจากฐานข้อมูล
+    // ให้เลขมื้อบนการ์ดตรงกับหน้าดูสูตรและลำดับที่ใช้จองของในตู้
+    for (final list in result.values) {
+      list.sort(
+        (a, b) => PlanAllocation.mealRank(
+          a['meal_type']?.toString(),
+        ).compareTo(PlanAllocation.mealRank(b['meal_type']?.toString())),
+      );
+    }
+
     return result;
   }
 
@@ -236,27 +247,16 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
     );
   }
 
-  bool _inFridge(String name) {
-    final n = name.trim().toLowerCase();
-    if (n.isEmpty) return false;
-    return fridgeItems.any((f) {
-      final fn = (f['name'] ?? '').toString().trim().toLowerCase();
-      return fn.isNotEmpty &&
-          (fn == n || fn.contains(n) || n.contains(fn)) &&
-          (num.tryParse('${f['quantity']}') ?? 0) > 0;
-    });
-  }
+  /// ผลการจองวัตถุดิบให้มื้อที่ใกล้ถึงก่อน (คำนวณใหม่ทุกครั้งที่ build)
+  Map<String, List<IngredientStatus>> _allocation = {};
 
-  /// กล่อง "🛒 ต้องซื้อ" ในการ์ดมื้อ — เฉพาะวัตถุดิบที่ติดธง to_buy และยังไม่มีในตู้เย็น
+  /// กล่อง "🛒 ต้องซื้อ" ในการ์ดมื้อ — เฉพาะส่วนที่ขาดหลังจองของให้มื้อก่อนหน้าแล้ว
   Widget _toBuyBox(Map<String, dynamic> meal) {
-    final raw = meal['ingredients'];
-    if (raw is! List) return const SizedBox.shrink();
+    if (meal['is_cooked'] == true) return const SizedBox.shrink();
     final pending = [
-      for (final e in raw.whereType<Map>())
-        if (e[ShoppingSuggestion.toBuyKey] == true &&
-            !_inFridge((e['name'] ?? '').toString()) &&
-            !ShoppingSuggestion.isStaple((e['name'] ?? '').toString()))
-          "${e['name']} ${e['quantity'] ?? ''}".trim(),
+      for (final s
+          in _allocation[meal['id']?.toString()] ?? const <IngredientStatus>[])
+        if (!s.have) "${s.name} ${_qtyText(s.short)} ${s.unit}".trim(),
     ];
     if (pending.isEmpty) return const SizedBox.shrink();
     return Container(
@@ -275,81 +275,24 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
     );
   }
 
-  /// ตัวเลขข้างหน้าของปริมาณ เช่น "2 ฟอง" -> 2, "1/2 หัว" -> 0.5 (ไม่มี = 0)
-  num _qtyAmount(String text) {
-    final frac = RegExp(
-      r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)',
-    ).firstMatch(text);
-    if (frac != null) {
-      final b = num.parse(frac.group(2)!);
-      return b == 0 ? 0 : num.parse(frac.group(1)!) / b;
-    }
-    final m = RegExp(r'\d+(?:\.\d+)?').firstMatch(text);
-    return m == null ? 0 : num.parse(m.group(0)!);
-  }
-
   String _qtyText(num v) {
     if (v == v.roundToDouble()) return v.toInt().toString();
     return v
         .toStringAsFixed(2)
-        .replaceFirst(RegExp(r'0+\$'), '')
-        .replaceFirst(RegExp(r'\.\$'), '');
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
   }
 
-  /// การ์ดด้านบน: รายการของที่ต้องซื้อทั้งสัปดาห์ของแพลนนี้
-  /// รวมวัตถุดิบที่ติดธง to_buy จากทุกมื้อ (ชื่อ+หน่วยเดียวกันบวกจำนวนกัน)
-  /// ตัดของที่มีในตู้เย็นแล้วออก — ซื้อมาสแกนเข้าตู้ รายการจะหายไปเอง
-  Widget _shoppingListCard(
-    List<Map<String, String>> weekDays,
-    Map<String, List<dynamic>> grouped,
-  ) {
-    final totals =
-        <
-          String,
-          ({
-            String name,
-            String unit,
-            num amount,
-            List<String> extra,
-            List<String> days,
-          })
-        >{};
-    for (final day in weekDays) {
-      for (final meal in grouped[day["en"]] ?? []) {
-        final raw = meal['ingredients'];
-        if (raw is! List) continue;
-        for (final e in raw.whereType<Map>()) {
-          if (e[ShoppingSuggestion.toBuyKey] != true) continue;
-          final name = (e['name'] ?? '').toString().trim();
-          if (name.isEmpty ||
-              _inFridge(name) ||
-              ShoppingSuggestion.isStaple(name)) {
-            continue;
-          }
-          final qty = (e['quantity'] ?? '').toString().trim();
-          final amount = _qtyAmount(qty);
-          final unit = qty.replaceFirst(RegExp(r'^\s*[\d.,/\s]+'), '').trim();
-          final key = '${name.toLowerCase()}|$unit';
-          final prev = totals[key];
-          final dayTh = day["th"] ?? '';
-          totals[key] = (
-            name: name,
-            unit: unit,
-            amount: (prev?.amount ?? 0) + amount,
-            // ปริมาณที่ไม่มีตัวเลข (เช่น "เล็กน้อย") เก็บเป็นข้อความไว้แสดง
-            extra: [...?prev?.extra, if (amount == 0 && qty.isNotEmpty) qty],
-            days: [
-              ...?prev?.days,
-              if (!(prev?.days.contains(dayTh) ?? false)) dayTh,
-            ],
-          );
-        }
-      }
-    }
-    if (totals.isEmpty) return const SizedBox.shrink();
-
-    final items = totals.values.toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+  /// การ์ดด้านบน: รายการของที่ต้องซื้อทั้งสัปดาห์ = ส่วนที่ขาดจริงของทุกมื้อ
+  /// (ของในตู้จองให้มื้อที่ใกล้ถึงก่อน) — ซื้อมาสแกนเข้าตู้ รายการจะลดลงเอง
+  Widget _shoppingListCard(List<Map<String, String>> weekDays) {
+    final thaiDay = {for (final d in weekDays) d["en"]: d["th"] ?? ''};
+    final items = PlanAllocation.shoppingList(
+      meals: meals,
+      allocation: _allocation,
+      dayLabel: (key) => thaiDay[key] ?? key,
+    );
+    if (items.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
@@ -371,7 +314,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           ),
           const SizedBox(height: 2),
           const Text(
-            "ซื้อมาแล้วสแกนเข้าตู้เย็น รายการจะหายไปเอง",
+            "คิดจากของในตู้ที่จองให้มื้อที่ใกล้ถึงก่อน ซื้อมาสแกนเข้าตู้ รายการจะลดลงเอง",
             style: TextStyle(fontSize: 12, color: Colors.black54),
           ),
           const SizedBox(height: 8),
@@ -403,11 +346,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                     ),
                   ),
                   Text(
-                    [
-                      if (it.amount > 0)
-                        "${_qtyText(it.amount)} ${it.unit}".trim(),
-                      ...it.extra,
-                    ].join(' + '),
+                    "${_qtyText(it.amount)} ${it.unit}".trim(),
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -424,6 +363,11 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
   @override
   Widget build(BuildContext context) {
     final grouped = groupByDay();
+    _allocation = PlanAllocation.allocate(
+      meals: meals,
+      fridgeItems: fridgeItems,
+      planStart: createdDate,
+    );
     final weekDays = generateWeekDays();
 
     return Scaffold(
@@ -497,7 +441,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                   : ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
-                        _shoppingListCard(weekDays, grouped),
+                        _shoppingListCard(weekDays),
                         ...weekDays.map((day) {
                           final dayMeals = grouped[day["en"]] ?? [];
 
@@ -618,7 +562,10 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                                             runSpacing: 8,
                                             children: [
                                               // ปุ่มทำอาหารโชว์เฉพาะตอนบันทึกแผนแล้ว
-                                              if (saved) _buildCookButton(meal),
+                                              // บันทึกแล้ว = ทำอาหาร, ยังไม่บันทึก = ดูสูตร (ไม่มีปุ่มทำแล้ว)
+                                              saved
+                                                  ? _buildCookButton(meal)
+                                                  : _buildPreviewButton(meal),
                                               // เปลี่ยนเมนูได้ทั้งก่อนและหลังบันทึก
                                               // (ยกเว้นมื้อที่ทำไปแล้ว)
                                               if (meal['is_cooked'] != true)
@@ -798,6 +745,51 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                 Text(
                   isCooked ? "ทำแล้ว" : "ทำอาหาร",
                   style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ก่อนบันทึกแพลน: เปิดดูวัตถุดิบ/วิธีทำ/ค่าโภชนาการได้ แต่ไม่มีปุ่ม "ทำแล้ว"
+  Widget _buildPreviewButton(dynamic meal) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      widthFactor: 1,
+      child: Material(
+        color: const Color(0xFFFFF7D0),
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(15),
+          onTap: () async {
+            final mealId = meal['id']?.toString();
+            if (mealId == null) return;
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    CookMealScreen(mealId: mealId, previewOnly: true),
+              ),
+            );
+            loadMeals();
+          },
+          child: const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.menu_book_rounded, size: 16, color: Colors.black87),
+                SizedBox(width: 6),
+                Text(
+                  "ดูสูตร",
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
                     color: Colors.black87,
