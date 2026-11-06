@@ -47,15 +47,24 @@ drop policy if exists "read own ai logs"         on public.ai_request_logs;
 drop policy if exists "add own ai logs"          on public.ai_request_logs;
 
 -- ---------------------------------------------------------------------------
--- 3) ปิด TRUNCATE ของ user_saved_recipes (ค่าเริ่มต้นของ Supabase ที่ migration ทีมตกไป)
---    TRUNCATE ล้างทั้งตารางในคำสั่งเดียวและ RLS กันไม่ได้ -> ผู้ใช้คนไหนก็ลบคลังสูตร
---    ของทุกคนได้ แอปไม่ได้ใช้ TRUNCATE (ลบทีละแถวด้วย DELETE + RLS) จึงปิดได้เลย
+-- 3) ปิด TRUNCATE ของตารางข้อมูลผู้ใช้ (ค่าเริ่มต้นของ Supabase ที่ยังไม่ได้ปิด)
+--    TRUNCATE ล้างทั้งตารางในคำสั่งเดียวและ RLS กันไม่ได้ ตอนนี้ API ของ Supabase
+--    (PostgREST) ไม่มีคำสั่ง TRUNCATE ให้เรียก จึงยังไม่ใช่ช่องโหว่ที่ใช้ได้จริง แต่ถ้า
+--    อนาคตมีช่องทางรัน SQL ด้วยสิทธิ์ผู้ใช้ สิทธิ์นี้จะลบข้อมูลของทุกคนได้ทันที
+--    แอปไม่ได้ใช้ TRUNCATE (ลบทีละแถวด้วย DELETE + RLS / delete_meal_plan) จึงปิดได้เลย
 -- ---------------------------------------------------------------------------
-revoke truncate on public.user_saved_recipes from anon, authenticated;
+revoke truncate
+  on public.user_saved_recipes, public.fridge_items, public.meal_plans,
+     public.profiles, public.weekly_meals
+  from anon, authenticated;
+
+-- ตารางที่สร้างใหม่ในอนาคต (ด้วย role postgres) จะไม่ได้ TRUNCATE ติดมาอัตโนมัติ
+alter default privileges for role postgres in schema public
+  revoke truncate on tables from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 4) ตรวจผล: ตารางกลางต้องเหลือแค่ SELECT สำหรับ authenticated
---    user_saved_recipes ต้องไม่มี TRUNCATE
+--    และไม่มีตารางไหนให้ TRUNCATE กับ anon/authenticated (เช็กด้วยคำสั่งท้ายไฟล์)
 -- ---------------------------------------------------------------------------
 select table_name, string_agg(privilege_type, ', ' order by privilege_type) as privileges
 from information_schema.role_table_grants
@@ -65,3 +74,11 @@ where grantee = 'authenticated'
                      'user_saved_recipes', 'ai_request_logs')
 group by table_name
 order by table_name;
+
+-- ต้องไม่มีแถวออกมา (ไม่มีตารางไหนให้ TRUNCATE กับผู้ใช้ทั่วไป)
+select table_name, grantee
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and privilege_type = 'TRUNCATE'
+  and grantee in ('anon', 'authenticated')
+order by table_name, grantee;
