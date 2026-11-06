@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:test_app/widgets/app_icons.dart';
 
@@ -75,7 +76,7 @@ class _AddRecipeSheet extends StatelessWidget {
           _SheetOption(
             icon: Icons.camera_alt_outlined,
             title: 'สแกนสูตรอาหาร',
-            subtitle: 'ถ่ายรูปตำราหรือสูตรลายมือ ให้ AI อ่านสูตรให้',
+            subtitle: 'ถ่ายภาพตำราหรือสูตรลายมือ ให้ AI อ่านสูตรให้',
             onTap: () => Navigator.pop(context, AddRecipeOption.scan),
           ),
           const SizedBox(height: 12),
@@ -611,6 +612,7 @@ num maxForUnit(String? unit) => (unit ?? '').trim() == '%' ? 100 : 9999;
 /// ปุ่ม [−] ค่า [+] สำหรับค่าตัวเลขทุกช่อง (จำนวนวัตถุดิบ, เวลาทำ, จำนวนที่)
 /// - ค่า 0 / null แสดงเป็น [emptyLabel] และถือว่า "ไม่ได้ระบุ"
 /// - กดค้างเพื่อเพิ่ม/ลดต่อเนื่อง
+/// - แตะที่ตัวเลขตรงกลางเพื่อพิมพ์ค่าเองได้เลย (เช่น 250 กรัม ไม่ต้องกด + ทีละขั้น)
 class NumberStepper extends StatefulWidget {
   final num? value;
   final ValueChanged<num?> onChanged;
@@ -641,6 +643,54 @@ class _NumberStepperState extends State<NumberStepper> {
   Timer? _repeat;
   num? _current;
 
+  // โหมดพิมพ์ตัวเลขเอง
+  bool _typing = false;
+  final _textCtrl = TextEditingController();
+  final _focus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // แตะที่อื่น/ปิดคีย์บอร์ด = ยืนยันค่าที่พิมพ์
+    _focus.addListener(() {
+      if (!_focus.hasFocus && _typing) _commitTyped();
+    });
+  }
+
+  String _plain(num v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  void _startTyping() {
+    setState(() {
+      _typing = true;
+      _textCtrl.text = _v == 0 ? '' : _plain(_v);
+      _textCtrl.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _textCtrl.text.length,
+      );
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
+  }
+
+  void _commitTyped() {
+    final raw = _textCtrl.text.trim().replaceAll(',', '.');
+    setState(() => _typing = false);
+    if (raw.isEmpty) {
+      // ลบจนว่าง = ไม่ระบุ
+      if (_v != 0) widget.onChanged(null);
+      return;
+    }
+    final parsed = num.tryParse(raw);
+    if (parsed == null) return; // พิมพ์ไม่ใช่ตัวเลข -> คงค่าเดิม
+    final clamped = parsed.clamp(widget.min, widget.max);
+    final clean = double.parse(clamped.toStringAsFixed(2));
+    final value = clean == clean.roundToDouble() ? clean.toInt() : clean;
+    if (value == _v) return;
+    widget.onChanged(value == 0 ? null : value);
+  }
+
   num get _v => _current ?? widget.value ?? 0;
 
   @override
@@ -652,10 +702,13 @@ class _NumberStepperState extends State<NumberStepper> {
   @override
   void dispose() {
     _repeat?.cancel();
+    _textCtrl.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
   void _bump(int dir) {
+    if (_typing) _commitTyped();
     // ปัดให้ตรงจังหวะ step เสมอ (กันเลขทศนิยมเพี้ยน เช่น 0.30000000004)
     final raw = _v + dir * widget.step;
     final snapped = (raw / widget.step).round() * widget.step;
@@ -714,6 +767,66 @@ class _NumberStepperState extends State<NumberStepper> {
     );
   }
 
+  /// ค่าตรงกลาง (มีกรอบบางๆ ให้รู้ว่าแตะเพื่อพิมพ์ได้)
+  Widget _tapToType(num v) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: _startTyping,
+      child: Container(
+        constraints: BoxConstraints(minWidth: widget.compact ? 52 : 70),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: Text(
+          _label(),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: widget.compact ? 13 : 14,
+            fontWeight: FontWeight.w600,
+            color: v == 0 ? Colors.black38 : Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// ช่องพิมพ์ตัวเลข (แสดงตอนแตะที่ค่า)
+  Widget _typingField() {
+    return SizedBox(
+      width: widget.compact ? 64 : 84,
+      child: TextField(
+        controller: _textCtrl,
+        focusNode: _focus,
+        textAlign: TextAlign.center,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textInputAction: TextInputAction.done,
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+        ],
+        onSubmitted: (_) => _focus.unfocus(),
+        style: TextStyle(
+          fontSize: widget.compact ? 13 : 14,
+          fontWeight: FontWeight.w600,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          suffixText: widget.suffix,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 6,
+            vertical: 8,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: kRecipeBlue, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = _v;
@@ -721,20 +834,9 @@ class _NumberStepperState extends State<NumberStepper> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _button(Icons.remove_rounded, -1, v > widget.min),
-        ConstrainedBox(
-          constraints: BoxConstraints(minWidth: widget.compact ? 52 : 70),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              _label(),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: widget.compact ? 13 : 14,
-                fontWeight: FontWeight.w600,
-                color: v == 0 ? Colors.black38 : Colors.black87,
-              ),
-            ),
-          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: _typing ? _typingField() : _tapToType(v),
         ),
         _button(Icons.add_rounded, 1, v < widget.max),
       ],
@@ -810,7 +912,11 @@ class ScannedImagePreview extends StatelessWidget {
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.zoom_in_rounded, size: 16, color: Colors.white),
+                        Icon(
+                          Icons.zoom_in_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
                         SizedBox(width: 4),
                         Text(
                           'แตะเพื่อขยาย',
@@ -847,6 +953,16 @@ class _FullScreenImage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+        // ธีมหลักของแอป (main.dart) ตั้งไอคอน AppBar เป็นสีดำ
+        // บนพื้นดำจะมองไม่เห็น -> บังคับเป็นสีขาวที่หน้านี้
+        iconTheme: const IconThemeData(color: Colors.white),
+        // ปุ่มปิด (X) ออกจากหน้าดูรูปเต็มจอ
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+          tooltip: 'ปิด',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Text('รูปสูตรที่อัปโหลด', style: TextStyle(fontSize: 16)),
       ),
       body: InteractiveViewer(

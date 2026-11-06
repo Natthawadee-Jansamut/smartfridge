@@ -7,6 +7,7 @@ import 'package:test_app/screens/menu_generator/ai_recipe_screen.dart';
 import 'package:test_app/screens/meal_plan/plan_menu_screen.dart';
 import 'package:test_app/screens/notification/expiration_alert_screen.dart';
 import 'package:test_app/screens/recipe_scan/scan_recipe_screen.dart';
+import 'package:test_app/services/notification_service.dart';
 import 'package:test_app/utils/fridge_age.dart';
 
 class MainMenuScreen extends StatefulWidget {
@@ -33,6 +34,17 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
     loadUser();
     loadExpiryStatus();
+
+    // แอปถูกเปิดจากการกดแจ้งเตือน (ตอนแอปปิดอยู่) -> พาไปหน้าแจ้งเตือนเลย
+    if (NotificationService.takeOpenAlertsOnLaunch()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ExpirationAlertScreen()),
+        );
+      });
+    }
   }
 
   @override
@@ -239,7 +251,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
                           divider(),
 
-                          stat(expiredItems.toString(), "เกินกำหนด", Colors.red),
+                          stat(
+                            expiredItems.toString(),
+                            "เกินกำหนด",
+                            Colors.red,
+                          ),
                         ],
                       ),
                     ),
@@ -265,70 +281,58 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       ),
 
                       itemBuilder: (context, index) {
-                        final menus = [
-                          [
+                        // เรียงตามแถบเมนูด้านล่าง: สแกน (วัตถุดิบ, สูตร) → คลัง
+                        // → เมนูอาหาร → แจ้งเตือน → แพลน
+                        // ไอคอน/ชื่อ/หน้าที่เปิด อยู่ในรายการเดียวกัน จะได้ไม่สลับกัน
+                        const menus = <(IconData, String, String, Widget)>[
+                          (
                             Icons.camera_alt,
                             "ถ่ายภาพวัตถุดิบ",
                             "เพิ่มของในตู้เย็น",
-                          ],
-
-                          [
-                            Icons.calendar_month,
-                            "แพลนอาหาร",
-                            "สร้างเมนูรายสัปดาห์",
-                          ],
-
-                          [
-                            Icons.notifications,
-                            "แจ้งเตือน",
-                            "ของที่อยู่ในตู้เย็นนาน",
-                          ],
-
-                          [
-                            Icons.kitchen,
-                            "เช็คตู้เย็น",
-                            "ดูวัตถุดิบได้จากทุกที่",
-                          ],
-
-                          [
+                            ImageScanning(),
+                          ),
+                          (
                             Icons.document_scanner,
                             "สแกนสูตรอาหาร",
                             "บันทึกสูตรเข้าคลัง",
-                          ],
-
-                          [
+                            ScanRecipeScreen(),
+                          ),
+                          (
+                            Icons.kitchen,
+                            "เช็คตู้เย็น",
+                            "ดูวัตถุดิบได้จากทุกที่",
+                            InventoryScreen(),
+                          ),
+                          (
                             Icons.restaurant,
                             "สร้างเมนูอาหาร",
                             "จากของที่มีอยู่",
-                          ],
+                            AiRecipeScreen(),
+                          ),
+                          (
+                            Icons.notifications,
+                            "แจ้งเตือน",
+                            "ของที่อยู่ในตู้เย็นนาน",
+                            ExpirationAlertScreen(),
+                          ),
+                          (
+                            Icons.calendar_month,
+                            "แพลนอาหาร",
+                            "สร้างเมนูรายสัปดาห์",
+                            PlanMenuScreen(),
+                          ),
                         ];
+                        final (icon, title, subtitle, page) = menus[index];
 
-                        return menuCard(
-                          menus[index][0] as IconData,
-
-                          menus[index][1] as String,
-
-                          menus[index][2] as String,
-
-                          () {
-                            const pages = <Widget>[
-                              ImageScanning(),
-                              PlanMenuScreen(),
-                              ExpirationAlertScreen(),
-                              InventoryScreen(),
-                              ScanRecipeScreen(),
-                              AiRecipeScreen(),
-                            ];
-
-                            // กลับมาหน้าหลักแล้วโหลดตัวเลขสรุปใหม่ทุกครั้ง (เช่น
-                            // หลังสแกนเพิ่มของ ทำอาหาร หรือลบของ) ไม่งั้นตัวเลข
-                            // จะค้างเป็นค่าตอนเปิดหน้าครั้งแรก
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => pages[index]),
-                            ).then((_) => loadExpiryStatus());
-                          },
-                        );
+                        return menuCard(icon, title, subtitle, () {
+                          // กลับมาหน้าหลักแล้วโหลดตัวเลขสรุปใหม่ทุกครั้ง (เช่น
+                          // หลังสแกนเพิ่มของ ทำอาหาร หรือลบของ) ไม่งั้นตัวเลข
+                          // จะค้างเป็นค่าตอนเปิดหน้าครั้งแรก
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => page),
+                          ).then((_) => loadExpiryStatus());
+                        });
                       },
                     ),
                   ),

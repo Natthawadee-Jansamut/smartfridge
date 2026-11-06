@@ -36,7 +36,8 @@ Future<bool> editShelfDaysDialog(
             keyboardType: TextInputType.number,
             autofocus: true,
             decoration: InputDecoration(
-              labelText: "เก็บใน${storageLabel(item['storage']?.toString())}ได้",
+              labelText:
+                  "เก็บใน${storageLabel(item['storage']?.toString())}ได้",
               suffixText: "วัน",
             ),
           ),

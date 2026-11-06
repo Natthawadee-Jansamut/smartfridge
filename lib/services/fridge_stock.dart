@@ -94,12 +94,21 @@ num availableQuantity(List<Map<String, dynamic>> inventory, String name) {
 
 /// รายการวัตถุดิบสำหรับใส่ใน prompt ของ Gemini — รวมลอตที่ชื่อและหน่วยเดียวกัน
 /// เป็นรายการเดียว และไม่เอาของที่ใช้หมดแล้วมาเสนอให้ AI ใช้
-String inventoryPromptList(List<Map<String, dynamic>> inventory) {
+/// [withPerCook] = ใส่ "ใช้ครั้งละ" ของวัตถุดิบที่นับเป็นชิ้นด้วย (ใช้กับหน้าแนะนำเมนู
+/// ส่วนแผนอาหารไม่ใส่ เพราะ AI ต้องกำหนดสัดส่วนเองตามโภชนาการที่ผู้ใช้ตั้ง)
+String inventoryPromptList(
+  List<Map<String, dynamic>> inventory, {
+  bool withPerCook = false,
+}) {
   final totals = <String, num>{};
+  // นับเป็นชิ้น: ผู้ใช้ตั้งไว้ว่าทำอาหาร 1 ครั้งใช้กี่ชิ้น ("ใช้ครั้งละ")
+  final perCook = <String, num>{};
   for (final lot in inventory) {
     if (isUsedUp(lot)) continue;
     final key = "${lot['name']}|${lot['unit'] ?? ''}";
     totals[key] = (totals[key] ?? 0) + _toNum(lot['quantity']);
+    final per = _toNum(lot['use_per_cook']);
+    if (per > 0 && !perCook.containsKey(key)) perCook[key] = per;
   }
   return totals.entries
       .map((e) {
@@ -107,7 +116,12 @@ String inventoryPromptList(List<Map<String, dynamic>> inventory) {
         final qty = e.value == e.value.roundToDouble()
             ? e.value.toInt().toString()
             : e.value.toStringAsFixed(1);
-        return "${parts[0]} ($qty ${parts[1]})";
+        final per = perCook[e.key];
+        // เช่น "ไข่ไก่ (10 ฟอง, ใช้ครั้งละ 2 ฟอง)"
+        final perText = !withPerCook || per == null || parts[1] == 'ส่วน'
+            ? ''
+            : ", ใช้ครั้งละ ${per == per.roundToDouble() ? per.toInt() : per} ${parts[1]}";
+        return "${parts[0]} ($qty ${parts[1]}$perText)";
       })
       .join(", ");
 }

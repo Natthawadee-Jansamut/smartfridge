@@ -10,41 +10,23 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
-import 'package:test_app/services/global_recipe_service.dart';
-import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/utils/fridge_age.dart';
-
-
+import 'package:test_app/services/shopping_suggestion.dart';
+import 'package:test_app/services/recipe_repository.dart';
 
 class MealPlanScreen extends StatefulWidget {
-
   const MealPlanScreen({super.key});
 
-
   @override
-  State<MealPlanScreen> createState() =>
-      _MealPlanScreenState();
-
+  State<MealPlanScreen> createState() => _MealPlanScreenState();
 }
 
+class _MealPlanScreenState extends State<MealPlanScreen> {
+  final supabase = Supabase.instance.client;
 
-
-
-
-class _MealPlanScreenState
-    extends State<MealPlanScreen>{
-
-
-  final supabase =
-  Supabase.instance.client;
-
-
-
- 
   final String apiKey = ApiKeys.mealPlanScreen;
-
-
 
   String goal = "ลดน้ำหนัก";
 
@@ -52,99 +34,53 @@ class _MealPlanScreenState
 
   String diet = "ไม่มี";
 
-
   bool loading = false;
 
+  /// true = ใช้เฉพาะของในตู้เย็น (ไม่ต้องออกไปซื้อ แต่อาจไม่ถึงเป้า)
+  /// false = ใช้ของในตู้ก่อน แล้วซื้อเพิ่มได้เท่าที่จำเป็น (รวมรายการซื้อในแผนรายสัปดาห์)
+  bool fridgeOnly = false;
 
+  final calorieController = TextEditingController();
 
-  final calorieController =
-  TextEditingController();
+  final proteinController = TextEditingController();
 
+  Future<void> createMealPlan() async {
+    final user = supabase.auth.currentUser;
 
+    if (user == null) return;
 
-  final proteinController =
-  TextEditingController();
-
-
-
-
-
-
-
-
-
-  Future<void> createMealPlan() async{
-
-
-    final user =
-    supabase.auth.currentUser;
-
-
-
-    if(user == null) return;
-
-
-
-
-    setState((){
-
-      loading=true;
-
+    setState(() {
+      loading = true;
     });
 
-
-
-
-
-    try{
-
-
+    try {
       // ===============================
       // ดึงข้อมูลของในตู้เย็น
       // ===============================
 
+      // ของพื้นฐาน (ingredients.is_staple) ใช้ทั้งใน prompt และตอนติดธงต้องซื้อ
+      await ShoppingSuggestion.loadStaples();
 
       final fridgeItems = await supabase
-
           .from('fridge_items')
-
           .select()
-
-          .eq(
-
-          'user_id',
-
-          user.id
-
-      );
-
-
-
-
+          .eq('user_id', user.id);
 
       // รวมลอตที่ชื่อ/หน่วยเดียวกันเป็นรายการเดียวก่อนส่งให้ Gemini
       // ของที่เกินระยะที่เก็บได้แล้วไม่ส่งให้ AI เอาไปวางแผน (อาจไม่ปลอดภัย)
+      // withPerCook: แนบ "ใช้ครั้งละ" ที่ผู้ใช้ตั้งไว้ (เช่น "อกไก่ (3 ชิ้น,
+      // ใช้ครั้งละ 1 ชิ้น)") ให้ AI ใช้ปริมาณนั้นเป็นหลัก ปริมาณในแพลนจะได้
+      // ตรงกับหน้ายืนยันการหักวัตถุดิบตอนกด "ทำแล้ว" ไม่ต้องปรับซ้ำ
       final fridgeList = inventoryPromptList(
-        List<Map<String, dynamic>>.from(fridgeItems)
-            .where((e) => !isOverdue(e))
-            .toList(),
+        List<Map<String, dynamic>>.from(
+          fridgeItems,
+        ).where((e) => !isOverdue(e)).toList(),
+        withPerCook: true,
       );
 
-
-
-
-
-
-      if(fridgeList.isEmpty){
-
-
-        throw Exception(
-
-            "ไม่มีวัตถุดิบในตู้เย็น"
-
-        );
-
-
+      // โหมดใช้เฉพาะของในตู้ ต้องมีของในตู้ (โหมดซื้อเพิ่มได้ ตู้ว่างก็สร้างได้)
+      if (fridgeList.isEmpty && fridgeOnly) {
+        throw Exception("ไม่มีวัตถุดิบในตู้เย็น");
       }
 
       // ===============================
@@ -166,8 +102,8 @@ class _MealPlanScreenState
 
       // ของที่อยู่ในตู้เย็นนานที่สุดขึ้นก่อน
       expiringSoon.sort(
-        (a, b) => (b['days_in_fridge'] as int)
-            .compareTo(a['days_in_fridge'] as int),
+        (a, b) =>
+            (b['days_in_fridge'] as int).compareTo(a['days_in_fridge'] as int),
       );
 
       final expiringList = expiringSoon.map((e) => e['name']).join(", ");
@@ -206,49 +142,13 @@ class _MealPlanScreenState
         }
         libraryByName[name] = Map<String, dynamic>.from(m);
       }
-
-      // เพิ่มเมนูจากคลังสูตรกลาง (แพลนของผู้ใช้คนอื่น / เมนูที่ AI เคยสร้าง) ที่
-      // วัตถุดิบครบและตรงข้อจำกัดอาหาร — เรียก Gemini น้อยลงอีก
-      // (ข้อจำกัดอาหารอื่นที่ไม่ใช่ "ไม่มี" จะได้เฉพาะเมนูที่ติดป้ายนั้นไว้เท่านั้น)
-      final globalMeals = await GlobalRecipeService.matchByIngredients(
-        GlobalRecipeService.fridgeNames(
-          List<Map<String, dynamic>>.from(fridgeItems)
-              .where((e) => !isOverdue(e) && !isUsedUp(e)),
-        ),
-        maxMissing: 0,
-        minMatchRatio: 1,
-        dietTags: diet == "ไม่มี" ? null : [diet],
-        limit: 30,
-      );
-      for (final r in globalMeals) {
-        final name = (r['recipe_name'] ?? '').toString().trim();
-        if (name.isEmpty || libraryByName.containsKey(name)) continue;
-        final ingredients = [
-          for (final ing in (r['detailed_ingredients'] as List? ?? []))
-            {
-              'name': ing['name'],
-              'quantity': [
-                RecipeRepository.formatNum(ing['use_quantity']),
-                (ing['unit'] ?? '').toString(),
-              ].where((s) => s.trim().isNotEmpty).join(' '),
-            },
-        ];
-        final steps = RecipeRepository.stepTextsOf(r);
-        if (ingredients.isEmpty || steps.isEmpty) continue;
-        libraryByName[name] = {
-          'food_name': name,
-          'calories': r['calories_per_serving'],
-          'protein': r['protein_per_serving'],
-          'ingredients': ingredients,
-          'steps': steps,
-        };
-      }
       final library = libraryByName.values.toList();
 
       // แยกตัวเลขปริมาณออกจากข้อความ เช่น "1 ชิ้น" -> 1, "1/2 หัว" -> 0.5
       double parseQtyAmount(String qtyText) {
-        final fraction =
-            RegExp(r'(\d+(\.\d+)?)\s*/\s*(\d+(\.\d+)?)').firstMatch(qtyText);
+        final fraction = RegExp(
+          r'(\d+(\.\d+)?)\s*/\s*(\d+(\.\d+)?)',
+        ).firstMatch(qtyText);
         if (fraction != null) {
           final numerator = double.tryParse(fraction.group(1) ?? '') ?? 0;
           final denominator = double.tryParse(fraction.group(3) ?? '') ?? 1;
@@ -264,13 +164,13 @@ class _MealPlanScreenState
           final name = (ing['name']?.toString() ?? '').trim().toLowerCase();
           if (name.isEmpty) continue;
 
-          final needAmount =
-              parseQtyAmount(ing['quantity']?.toString() ?? '');
+          final needAmount = parseQtyAmount(ing['quantity']?.toString() ?? '');
           if (needAmount <= 0) continue;
 
           final matches = fridgeItems.where((item) {
-            final itemName =
-                (item['name']?.toString() ?? '').trim().toLowerCase();
+            final itemName = (item['name']?.toString() ?? '')
+                .trim()
+                .toLowerCase();
             return itemName.isNotEmpty &&
                 (itemName == name ||
                     itemName.contains(name) ||
@@ -308,10 +208,8 @@ class _MealPlanScreenState
           .toList();
       matched.shuffle();
       matched.sort((a, b) {
-        final aExp =
-            usesExpiringIngredient(a['ingredients'] as List) ? 0 : 1;
-        final bExp =
-            usesExpiringIngredient(b['ingredients'] as List) ? 0 : 1;
+        final aExp = usesExpiringIngredient(a['ingredients'] as List) ? 0 : 1;
+        final bExp = usesExpiringIngredient(b['ingredients'] as List) ? 0 : 1;
         return aExp.compareTo(bExp);
       });
 
@@ -332,8 +230,9 @@ class _MealPlanScreenState
         }
       }
 
-      final reuseCount =
-          matched.length < slotGrid.length ? matched.length : slotGrid.length;
+      final reuseCount = matched.length < slotGrid.length
+          ? matched.length
+          : slotGrid.length;
 
       final reusedMeals = <Map<String, dynamic>>[];
       for (var i = 0; i < reuseCount; i++) {
@@ -347,77 +246,104 @@ class _MealPlanScreenState
           'protein': source['protein'],
           'ingredients': source['ingredients'],
           'steps': source['steps'],
+          'recipe_id': source['recipe_id'],
         });
+      }
+
+      // ===============================
+      // เติมช่องที่เหลือจากคลังสูตรกลาง (recipes) ก่อนเรียก AI — เมนูที่ทำได้จาก
+      // ของในตู้ (ซื้อเพิ่มได้ไม่เกิน 1 อย่างถ้าไม่ได้เปิด "ใช้เฉพาะของในตู้")
+      // มีแคลอรี/โปรตีน ตรงข้อจำกัดอาหาร และแคลอรีใกล้เป้าต่อมื้อ
+      // ===============================
+      final libraryMeals = <Map<String, dynamic>>[];
+      if (reuseCount < slotGrid.length) {
+        try {
+          final targetCal = int.tryParse(calorieController.text) ?? 0;
+          final perMeal = meals > 0 ? targetCal / meals : 0;
+          final candidates = await RecipeRepository.findRecipesForFridge(
+            fridgeItems: List<Map<String, dynamic>>.from(
+              fridgeItems,
+            ).where((e) => !isOverdue(e)).toList(),
+            maxMissing: fridgeOnly ? 0 : 1,
+            limit: 60,
+            requireNutrition: true,
+            excludeNames: {
+              for (final m in reusedMeals) (m['food_name'] ?? '').toString(),
+            },
+            useFirstNames: {
+              for (final e in expiringSoon) (e['name'] ?? '').toString(),
+            },
+          );
+          final suitable = candidates.where((r) {
+            if (diet != 'ไม่มี' && !(r['diet_tags'] as List).contains(diet)) {
+              return false;
+            }
+            final cal = RecipeRepository.toNum(r['calories']);
+            return perMeal <= 0 ||
+                (cal >= perMeal * 0.5 && cal <= perMeal * 1.6);
+          }).toList();
+          for (
+            var i = reuseCount;
+            i < slotGrid.length && libraryMeals.length < suitable.length;
+            i++
+          ) {
+            final r = suitable[libraryMeals.length];
+            libraryMeals.add({
+              'day': slotGrid[i]['day'],
+              'meal_type': slotGrid[i]['meal_type'],
+              'food_name': r['recipe_name'],
+              'calories': RecipeRepository.toNum(r['calories']).round(),
+              'protein': RecipeRepository.toNum(r['protein']).round(),
+              'ingredients': [
+                for (final ing in RecipeRepository.ingredientsOf(r))
+                  {
+                    'name': ing['name'],
+                    'quantity':
+                        '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
+                            .trim(),
+                  },
+              ],
+              'steps': RecipeRepository.stepTextsOf(r),
+              'recipe_id': r['recipe_id'],
+            });
+            logAiRequest(
+              event: AiEvent.mealPlan,
+              result: AiResult.cacheHit,
+              recipeId: r['recipe_id'],
+            );
+          }
+        } catch (e) {
+          debugPrint('ค้นคลังสูตรสำหรับแพลนไม่สำเร็จ (ใช้ AI แทน): $e');
+        }
       }
 
       // ช่องที่เหลือ (ถ้ามี) ค่อยให้ Gemini สร้างเสริมเฉพาะส่วนที่ขาด — ถ้า
       // เมนูเก่าครบพอทั้งสัปดาห์แล้ว ช่องนี้จะว่างและไม่ต้องเรียก Gemini เลย
-      final remainingSlots = slotGrid.sublist(reuseCount);
-
-
-
-
-
+      final remainingSlots = slotGrid.sublist(reuseCount + libraryMeals.length);
 
       // ===============================
       // สร้างข้อมูล plan
       // ===============================
 
-
       final plan = await supabase
-
           .from('meal_plans')
-
           .insert({
+            'user_id': user.id,
 
-        'user_id':
-        user.id,
+            'goal': goal,
 
+            'meals_per_day': meals,
 
-        'goal':
-        goal,
+            'target_calories': int.tryParse(calorieController.text) ?? 2000,
 
+            'target_protein': int.tryParse(proteinController.text) ?? 100,
 
-        'meals_per_day':
-        meals,
-
-
-        'target_calories':
-        int.tryParse(
-            calorieController.text
-        ) ?? 2000,
-
-
-        'target_protein':
-        int.tryParse(
-            proteinController.text
-        ) ?? 100,
-
-
-        'diet_type':
-        diet,
-
-
-      })
-
+            'diet_type': diet,
+          })
           .select()
-
           .single();
 
-
-
-
-
-      final planId =
-      plan['id'];
-
-
-
-
-
-
-
-
+      final planId = plan['id'];
 
       // ===============================
       // Gemini — เรียกเฉพาะตอนที่เมนูเก่าในคลังไม่พอเติมเต็มสัปดาห์เท่านั้น
@@ -428,29 +354,22 @@ class _MealPlanScreenState
       List<dynamic> geminiMeals = [];
 
       if (remainingSlots.isNotEmpty) {
+        final slotsJson = remainingSlots
+            .map((s) => '{"day":"${s['day']}","meal_type":"${s['meal_type']}"}')
+            .join(",\n");
 
+        final usedNames = [...reusedMeals, ...libraryMeals]
+            .map((m) => m['food_name']?.toString() ?? '')
+            .where((n) => n.isNotEmpty)
+            .join(", ");
 
-
-
-
-
-
-
-      final slotsJson = remainingSlots
-          .map((s) => '{"day":"${s['day']}","meal_type":"${s['meal_type']}"}')
-          .join(",\n");
-
-      final usedNames = reusedMeals
-          .map((m) => m['food_name']?.toString() ?? '')
-          .where((n) => n.isNotEmpty)
-          .join(", ");
-
-      final prompt = """
+        final prompt =
+            """
 
 คุณเป็น AI Nutritionist
 
 
-ใช้วัตถุดิบจากตู้เย็นของผู้ใช้เท่านั้น
+${fridgeOnly ? "ใช้วัตถุดิบจากตู้เย็นของผู้ใช้เท่านั้น" : "ใช้วัตถุดิบจากตู้เย็นของผู้ใช้เป็นหลัก ซื้อเพิ่มได้เท่าที่จำเป็น"}
 
 
 วัตถุดิบที่มี:
@@ -502,13 +421,26 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
 
 กฎ:
 
-- ห้ามสร้างวัตถุดิบที่ไม่มีในรายการ
+${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่ไม่มีในรายการ''' : '''- ใช้วัตถุดิบในตู้เย็นก่อนเสมอ (โดยเฉพาะของที่อยู่มานาน) แล้วค่อยซื้อเพิ่ม
+- ซื้อเพิ่มได้เฉพาะเท่าที่จำเป็น เพื่อให้เมนูทำได้จริงและใกล้เป้า เลือกของหาง่ายในไทย ราคาไม่แพง
+  เข้ากับข้อจำกัดอาหาร และใช้ของที่ซื้อซ้ำในหลายมื้อได้ (จะได้ไม่ต้องซื้อหลายอย่าง)
+- วัตถุดิบที่ไม่มีในตู้เย็น ให้ใส่ "to_buy": true ใน ingredients ของมื้อนั้น'''}
+- ถือว่าบ้านมีของพื้นฐานอยู่แล้ว ใช้ได้เลยโดยไม่ต้องอยู่ในรายการวัตถุดิบและไม่ต้องซื้อ:
+  ${ShoppingSuggestion.stapleNamesForPrompt()}
 - ใช้วัตถุดิบที่มีอยู่ให้คุ้มค่า
 - ให้ความสำคัญกับวัตถุดิบที่อยู่ในตู้เย็นมานานก่อนเป็นอันดับแรก
 - สามารถใช้วัตถุดิบเดิมซ้ำได้
-- ระบุ ingredients ของแต่ละมื้อ โดยเลือกจากวัตถุดิบที่มีเท่านั้น พร้อมปริมาณที่ใช้
-- ปริมาณที่ใช้ต้องเป็นหน่วยเดียวกับวัตถุดิบที่มี (เช่น ส่วน, ฟอง, ผล, หัว) ห้ามใช้กรัม/กก./มล./ช้อน
+- ระบุ ingredients ของแต่ละมื้อ${fridgeOnly ? " โดยเลือกจากวัตถุดิบที่มีเท่านั้น" : ""} พร้อมปริมาณที่ใช้
+- ปริมาณที่ใช้ต้องเป็นหน่วยเดียวกับวัตถุดิบที่มี (เช่น ส่วน, ฟอง, ผล, หัว) ของที่ต้องซื้อใช้หน่วยที่นับได้
+  (ชิ้น, ฟอง, กล่อง, แพ็ค, หัว) ห้ามใช้กรัม/กก./มล./ช้อน
   เพราะผู้ใช้ไม่ได้ชั่งตวง (1 ส่วน ≈ ใช้ทำอาหาร 1 ครั้ง ใช้ "1/2 ส่วน" ได้)
+- ถ้าวัตถุดิบมีระบุ "ใช้ครั้งละ" ไว้ ให้ใช้ปริมาณนั้นต่อ 1 มื้อเป็นหลัก
+  (เช่น "ใช้ครั้งละ 1 ชิ้น" ให้ใส่ "1 ชิ้น" ไม่ใช่ "1/2 ชิ้น") ใช้มากกว่านั้นได้
+  เฉพาะเมื่อเมนูจำเป็นจริงๆ และต้องไม่เกินจำนวนที่มี
+- calories และ protein ของแต่ละมื้อ ต้องคำนวณจากวัตถุดิบและปริมาณที่ใส่ในมื้อนั้นจริงเท่านั้น
+  (เช่น ไข่ไก่ 1 ฟอง ≈ 70 kcal / โปรตีน 6 g) ห้ามเอาเป้าต่อวันมาหารแบ่งเป็นค่าต่อมื้อ
+  และห้ามปั้นตัวเลขให้ถึงเป้า ถ้าวัตถุดิบไม่พอถึงเป้า ให้ตอบตัวเลขต่ำตามจริง
+  (พยายามเลือกเมนู/ปริมาณให้ใกล้เป้าที่สุดเท่าที่วัตถุดิบจริงทำได้)
 - ระบุ steps เป็นขั้นตอนการทำอาหารแบบละเอียด เรียงเป็นข้อๆ (array ของ string ภาษาไทย)
 - ส่งออก JSON เท่านั้น
 
@@ -526,7 +458,8 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
 "protein":35,
 "ingredients":[
 {"name":"อกไก่","quantity":"1 ชิ้น"},
-{"name":"ไข่ไก่","quantity":"1 ฟอง"}
+{"name":"ไข่ไก่","quantity":"1 ฟอง"}${fridgeOnly ? "" : ''',
+{"name":"บรอกโคลี","quantity":"1/2 หัว","to_buy":true}'''}
 ],
 "steps":[
 "หั่นอกไก่เป็นชิ้นพอดีคำ",
@@ -539,77 +472,60 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
 
 """;
 
+        // Gemini ตอบ 503 "high demand" ได้เป็นพักๆ ลองใหม่อัตโนมัติก่อนแจ้ง error
+        final result = await generateGemini(
+          apiKey: apiKey,
+          logEvent: AiEvent.mealPlan,
+          content: [Content.text(prompt)],
+          timeout: const Duration(seconds: 90),
+        );
 
+        String json = result.text!
+            .replaceAll("```json", "")
+            .replaceAll("```", "")
+            .trim();
 
+        geminiMeals = jsonDecode(json);
 
-
-
-      // Gemini ตอบ 503 "high demand" ได้เป็นพักๆ ลองใหม่อัตโนมัติก่อนแจ้ง error
-      final result = await generateGemini(
-        apiKey: apiKey,
-        content: [Content.text(prompt)],
-        timeout: const Duration(seconds: 90),
-      );
-
-
-
-
-
-
-      String json =
-
-      result!.text!
-
-          .replaceAll(
-
-          "```json",
-
-          ""
-
-      )
-
-          .replaceAll(
-
-          "```",
-
-          ""
-
-      )
-
-          .trim();
-
-
-
-
-
-
-
-      geminiMeals = jsonDecode(json);
-
-      // เก็บเมนูใหม่เข้าคลังกลาง (ติดป้ายข้อจำกัดอาหารที่สั่ง Gemini ไว้)
-      GlobalRecipeService.cacheRecipesInBackground(
-        geminiMeals.whereType<Map>().map(Map<String, dynamic>.from),
-        source: 'ai_generated',
-        dietTags: diet == "ไม่มี" ? const [] : [diet],
-      );
-      GlobalRecipeService.log(
-        eventType: 'meal_plan',
-        result: 'gemini',
-        usage: result.usageMetadata,
-      );
-      } else {
-        GlobalRecipeService.log(eventType: 'meal_plan', result: 'cache_hit');
+        // เก็บเมนูใหม่จาก AI ลงคลังสูตรกลาง ครั้งหน้า (ของผู้ใช้คนไหนก็ได้) จะได้
+        // หยิบจากคลังแทนการเรียก AI
+        for (final m in geminiMeals.whereType<Map>()) {
+          final steps = m['steps'];
+          final id = await RecipeRepository.saveAiRecipe(
+            {
+              'recipe_name': m['food_name'],
+              'detailed_ingredients': [
+                for (final ing
+                    in (m['ingredients'] as List? ?? []).whereType<Map>())
+                  {
+                    'name': ing['name'],
+                    'use_quantity': RecipeRepository.leadingNumber(
+                      ing['quantity'],
+                    ),
+                    'unit': (ing['quantity'] ?? '')
+                        .toString()
+                        .replaceFirst(RegExp(r'^\s*[\d.,/\s]+'), '')
+                        .trim(),
+                  },
+              ],
+              'instructions': steps is List
+                  ? [
+                      for (var k = 0; k < steps.length; k++)
+                        '${k + 1}. ${steps[k]}',
+                    ]
+                  : [steps?.toString() ?? ''],
+            },
+            caloriesPerServing: RecipeRepository.toNum(m['calories']),
+            proteinPerServing: RecipeRepository.toNum(m['protein']),
+            dietTags: [if (diet != 'ไม่มี') diet],
+          );
+          if (id != null) m['recipe_id'] = id;
+        }
       }
 
       // รวมเมนูที่หยิบจากคลังเก่า (ประหยัด token) กับเมนูใหม่จาก Gemini
       // (ถ้ามี) เข้าด้วยกันเป็นแผนอาหารสัปดาห์เดียว
-      final List mealsData = [...reusedMeals, ...geminiMeals];
-
-
-
-
-
-
+      final List mealsData = [...reusedMeals, ...libraryMeals, ...geminiMeals];
 
       // ===============================
       // บันทึก weekly_meals
@@ -629,21 +545,21 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
         );
       }
 
-      for(var meal in mealsData){
-
-
+      for (var meal in mealsData) {
         // วัตถุดิบของมื้อนี้ (มาจาก Gemini โดยอิงของจริงในตู้เย็นเท่านั้น)
         // checked สะท้อนของจริงในตู้เย็น ณ ตอนสร้างแผน ไม่ใช่ค่าคงที่
-        final ingredientsList = (meal['ingredients'] as List? ?? [])
-            .map((ing) {
-              final name = ing['name']?.toString() ?? '';
-              return {
-                'name': name,
-                'quantity': ing['quantity']?.toString() ?? '',
-                'checked': inFridge(name),
-              };
-            })
-            .toList();
+        final ingredientsList = (meal['ingredients'] as List? ?? []).map((ing) {
+          final name = ing['name']?.toString() ?? '';
+          // ของพื้นฐาน (ข้าว เครื่องปรุง ฯลฯ) ถือว่ามีในบ้าน ไม่ต้องซื้อ
+          final have = inFridge(name) || ShoppingSuggestion.isStaple(name);
+          return {
+            'name': name,
+            'quantity': ing['quantity']?.toString() ?? '',
+            'checked': have,
+            // ไม่มีในตู้เย็น -> ต้องซื้อ (รวมเป็นรายการซื้อของในแผนรายสัปดาห์)
+            if (!have) ShoppingSuggestion.toBuyKey: true,
+          };
+        }).toList();
 
         // ขั้นตอนการทำอาหารจาก Gemini (อาจส่งมาเป็น array หรือ string ก็ได้)
         final stepsRaw = meal['steps'];
@@ -658,413 +574,171 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
           stepsText = stepsRaw?.toString() ?? '';
         }
 
+        await supabase.from('weekly_meals').insert({
+          'plan_id': planId,
 
-        await supabase
+          'day': meal['day'],
 
-            .from('weekly_meals')
+          'meal_type': meal['meal_type'],
 
-            .insert({
+          'food_name': meal['food_name'],
 
-          'plan_id':
+          'calories': meal['calories'],
 
-          planId,
+          'protein': meal['protein'],
 
+          'ingredients': ingredientsList,
 
-          'day':
+          'steps': stepsText,
 
-          meal['day'],
+          'is_cooked': false,
 
-
-
-          'meal_type':
-
-          meal['meal_type'],
-
-
-
-          'food_name':
-
-          meal['food_name'],
-
-
-
-          'calories':
-
-          meal['calories'],
-
-
-
-          'protein':
-
-          meal['protein'],
-
-
-          'ingredients':
-
-          ingredientsList,
-
-          'steps':
-
-          stepsText,
-
-
-          'is_cooked':
-
-          false,
-
-
+          // สูตรในคลังกลางที่มื้อนี้มาจาก (ถ้ามี)
+          if (meal['recipe_id'] != null) 'recipe_id': meal['recipe_id'],
         });
-
-
       }
 
-
-
-
-
-
-
       Navigator.push(
-
         context,
 
-        MaterialPageRoute(
-
-          builder:(_)=>
-
-          WeeklyPlanScreen(
-
-            planId:
-
-            planId,
-
-          ),
-
-        ),
-
+        MaterialPageRoute(builder: (_) => WeeklyPlanScreen(planId: planId)),
       );
-
-
-
-
-    }
-
-    catch(e){
-
-
-
-      ScaffoldMessenger.of(context)
-
-          .showSnackBar(
-
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-
-          content:
-
-          Text(
-
-              geminiErrorMessage(e, fallback: "สร้างแผนไม่สำเร็จ")
-
-          ),
-
+          content: Text(geminiErrorMessage(e, fallback: "สร้างแผนไม่สำเร็จ")),
         ),
-
       );
-
-
-
-    }
-
-
-
-    finally{
-
-
-      setState((){
-
-        loading=false;
-
+    } finally {
+      setState(() {
+        loading = false;
       });
-
-
     }
-
-
   }
+
   @override
-  Widget build(BuildContext context){
-
-
+  Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xffD8EEFF),
 
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
 
-      backgroundColor:
-      const Color(0xffD8EEFF),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
 
-
-
-      body:
-
-      SafeArea(
-
-        child:
-
-        SingleChildScrollView(
-
-          padding:
-          const EdgeInsets.all(20),
-
-
-
-          child:
-          Column(
-
-            crossAxisAlignment:
-            CrossAxisAlignment.start,
-
-
-            children:[
-
-
-
+            children: [
               _buildHeader(context),
 
+              const SizedBox(height: 20),
 
-
-              const SizedBox(height:20),
-
-
-
-
-              buildTitle(
-                  Icons.track_changes,
-                  "เป้าหมาย"
-              ),
-
-
-
-
-
+              buildTitle(Icons.track_changes, "เป้าหมาย"),
 
               buildChoiceCard(
+                "ลดน้ำหนัก",
 
-                  "ลดน้ำหนัก",
+                "ควบคุม Calories",
 
-                  "ควบคุม Calories",
+                goal == "ลดน้ำหนัก",
 
-                  goal=="ลดน้ำหนัก",
-
-                      (){
-
-
-                    setState((){
-
-                      goal="ลดน้ำหนัก";
-
-                    });
-
-
-                  }
-
+                () {
+                  setState(() {
+                    goal = "ลดน้ำหนัก";
+                  });
+                },
               ),
-
-
-
-
-
 
               buildChoiceCard(
+                "รักษาน้ำหนัก",
 
-                  "รักษาน้ำหนัก",
+                "Balance สุขภาพ",
 
-                  "Balance สุขภาพ",
+                goal == "รักษาน้ำหนัก",
 
-                  goal=="รักษาน้ำหนัก",
-
-                      (){
-
-
-                    setState((){
-
-                      goal="รักษาน้ำหนัก";
-
-                    });
-
-
-                  }
-
+                () {
+                  setState(() {
+                    goal = "รักษาน้ำหนัก";
+                  });
+                },
               ),
-
-
-
-
-
 
               buildChoiceCard(
+                "เพิ่มกล้ามเนื้อ",
 
-                  "เพิ่มกล้ามเนื้อ",
+                "High Protein",
 
-                  "High Protein",
+                goal == "เพิ่มกล้ามเนื้อ",
 
-                  goal=="เพิ่มกล้ามเนื้อ",
-
-                      (){
-
-
-                    setState((){
-
-                      goal="เพิ่มกล้ามเนื้อ";
-
-                    });
-
-
-                  }
-
+                () {
+                  setState(() {
+                    goal = "เพิ่มกล้ามเนื้อ";
+                  });
+                },
               ),
 
+              const SizedBox(height: 20),
 
-
-
-
-              const SizedBox(height:20),
-
-
-
-
-
-              buildTitle(
-                  Icons.brunch_dining,
-                  "จำนวนมื้อต่อวัน"
-              ),
-
-
-
-
+              buildTitle(Icons.brunch_dining, "จำนวนมื้อต่อวัน"),
 
               _buildMealCounter(),
 
+              const SizedBox(height: 20),
 
+              buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
 
+              buildInput("Calories ต่อวัน", calorieController, "kcal"),
 
+              const SizedBox(height: 15),
 
+              buildInput("Protein ต่อวัน", proteinController, "g"),
 
-              const SizedBox(height:20),
+              const SizedBox(height: 20),
 
-
-
-
-
-              buildTitle(
-                  Icons.local_fire_department,
-                  "เป้าหมายโภชนาการ"
-              ),
-
-
-
-
-
-
-              buildInput(
-
-                  "Calories ต่อวัน",
-
-                  calorieController,
-
-                  "kcal"
-
-              ),
-
-
-
-
-
-              const SizedBox(height:15),
-
-
-
-
-
-              buildInput(
-
-                  "Protein ต่อวัน",
-
-                  proteinController,
-
-                  "g"
-
-              ),
-
-
-
-
-
-
-              const SizedBox(height:20),
-
-
-
-
-
-              buildTitle(
-                  Icons.block,
-                  "ข้อจำกัดอาหาร"
-              ),
-
-
-
-
-
+              buildTitle(Icons.block, "ข้อจำกัดอาหาร"),
 
               _buildDietDropdown(),
 
+              const SizedBox(height: 20),
 
+              _buildFridgeOnlySwitch(),
 
-
-
-
-              const SizedBox(height:35),
-
-
-
-
-
+              const SizedBox(height: 25),
 
               _buildCreateButton(),
-
-
-
             ],
-
-
           ),
-
-
         ),
-
-
       ),
 
-
-
-
-      bottomNavigationBar:
-
-      const AppBottomNav(current: AppTab.plan),
-
-
-
+      bottomNavigationBar: const AppBottomNav(current: AppTab.plan),
     );
-
-
   }
 
-
-
-
-
-
-
-
+  Widget _buildFridgeOnlySwitch() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        value: fridgeOnly,
+        onChanged: (v) => setState(() => fridgeOnly = v),
+        title: const Text(
+          "ใช้เฉพาะของในตู้เย็น",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          fridgeOnly
+              ? "ไม่ต้องออกไปซื้อ แต่บางวันอาจไม่ถึงเป้า"
+              : "ใช้ของในตู้ก่อน ซื้อเพิ่มเท่าที่จำเป็น (มีรายการซื้อของให้)",
+          style: const TextStyle(fontSize: 13),
+        ),
+      ),
+    );
+  }
 
   Widget _buildHeader(BuildContext context) {
     return Row(
@@ -1109,373 +783,114 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
             ),
           ),
         ),
-        const SizedBox(width: 10),
-        Container(
-          height: 50,
-          width: 50,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: const [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 5,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: const InkWell(
-            customBorder: CircleBorder(),
-            child: Center(child: FilterIcon(size: 20)),
-          ),
-        ),
       ],
     );
   }
 
-
-
-
-
-
-
-
-
-  Widget _buildMealCounter(){
-
-
+  Widget _buildMealCounter() {
     return Container(
+      padding: const EdgeInsets.all(15),
 
-      padding:
-      const EdgeInsets.all(15),
+      decoration: boxDecoration(),
 
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
 
-
-      decoration:
-      boxDecoration(),
-
-
-
-      child:
-      Row(
-
-        mainAxisAlignment:
-        MainAxisAlignment.spaceBetween,
-
-
-        children:[
-
-
-
+        children: [
           IconButton(
+            icon: const Icon(Icons.remove),
 
-            icon:
-            const Icon(Icons.remove),
-
-
-
-            onPressed:(){
-
-              if(meals>1){
-
-
-                setState((){
-
+            onPressed: () {
+              if (meals > 1) {
+                setState(() {
                   meals--;
-
                 });
-
-
               }
-
-
             },
-
-
           ),
-
-
-
-
-
 
           Text(
-
             "$meals มื้อ",
 
-
-            style:
-            const TextStyle(
-
-              fontSize:20,
-
-              fontWeight:
-              FontWeight.bold,
-
-            ),
-
-
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
-
-
-
-
-
 
           IconButton(
+            icon: const Icon(Icons.add),
 
-            icon:
-            const Icon(Icons.add),
-
-
-
-            onPressed:(){
-
-              setState((){
-
+            onPressed: () {
+              setState(() {
                 meals++;
-
               });
-
-
             },
-
-
           ),
-
-
-
         ],
-
-
       ),
-
-
     );
-
-
   }
 
-
-
-
-
-
-
-
-
-  Widget _buildDietDropdown(){
-
-
+  Widget _buildDietDropdown() {
     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
 
-      padding:
-      const EdgeInsets.symmetric(
-          horizontal:15
-      ),
+      decoration: boxDecoration(),
 
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: diet,
 
-      decoration:
-      boxDecoration(),
+          isExpanded: true,
 
-
-
-      child:
-      DropdownButtonHideUnderline(
-
-
-        child:
-        DropdownButton<String>(
-
-
-          value:
-          diet,
-
-
-          isExpanded:
-          true,
-
-
-          items:[
-
-
+          items: [
             "ไม่มี",
 
             "มังสวิรัติ",
 
             "เจ",
 
-            "ไม่ทานนม"
+            "ไม่ทานนม",
+          ].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
 
-
-          ]
-
-              .map(
-
-                  (e)=>
-
-                  DropdownMenuItem(
-
-                    value:e,
-
-                    child:
-                    Text(e),
-
-                  )
-
-          )
-
-              .toList(),
-
-
-
-
-          onChanged:(value){
-
-
-            setState((){
-
-
-              diet=value!;
-
-
+          onChanged: (value) {
+            setState(() {
+              diet = value!;
             });
-
-
           },
-
-
         ),
-
-
       ),
-
-
     );
-
-
   }
 
-
-
-
-
-
-
-
-
-  Widget _buildCreateButton(){
-
-
+  Widget _buildCreateButton() {
     return SizedBox(
+      width: double.infinity,
 
+      height: 55,
 
-      width:
-      double.infinity,
+      child: ElevatedButton(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFFFF7D0),
 
+          foregroundColor: Colors.black87,
 
-
-      height:
-      55,
-
-
-
-      child:
-      ElevatedButton(
-
-
-
-        style:
-        ElevatedButton.styleFrom(
-
-
-
-          backgroundColor:
-          const Color(0xFFFFF7D0),
-
-
-
-          foregroundColor:
-          Colors.black87,
-
-
-
-          shape:
-          RoundedRectangleBorder(
-
-
-
-            borderRadius:
-            BorderRadius.circular(25),
-
-
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(25),
           ),
-
-
-
         ),
 
+        onPressed: loading ? null : createMealPlan,
 
+        child: loading
+            ? const CircularProgressIndicator()
+            : const Text(
+                "สร้างแผนอาหาร",
 
-
-        onPressed:
-
-        loading
-
-            ?
-
-        null
-
-            :
-
-        createMealPlan,
-
-
-
-        child:
-
-        loading
-
-            ?
-
-        const CircularProgressIndicator()
-
-
-
-            :
-
-
-        const Text(
-
-
-
-          "สร้างแผนอาหารจากของในตู้เย็น",
-
-
-
-          style:
-          TextStyle(
-
-            fontSize:16,
-
-            fontWeight:
-            FontWeight.bold,
-
-          ),
-
-
-
-        ),
-
-
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
       ),
-
-
-
     );
-
-
   }
+
   Widget buildTitle(IconData icon, String text) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -1485,316 +900,100 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
           const SizedBox(width: 8),
           Text(
             text,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
 
-
-
-
-
-
-
-
   Widget buildChoiceCard(
+    String title,
 
-      String title,
+    String sub,
 
-      String sub,
+    bool selected,
 
-      bool selected,
-
-      VoidCallback tap,
-
-      ){
-
-
+    VoidCallback tap,
+  ) {
     return GestureDetector(
+      onTap: tap,
 
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
 
-      onTap:
-      tap,
+        padding: const EdgeInsets.all(15),
 
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xfffff7d0) : Colors.white,
 
-
-      child:
-      Container(
-
-
-        margin:
-        const EdgeInsets.only(bottom:10),
-
-
-
-        padding:
-        const EdgeInsets.all(15),
-
-
-
-        decoration:
-        BoxDecoration(
-
-
-
-          color:
-
-          selected
-
-              ?
-
-          const Color(0xfffff7d0)
-
-              :
-
-          Colors.white,
-
-
-
-          borderRadius:
-          BorderRadius.circular(20),
-
-
-
+          borderRadius: BorderRadius.circular(20),
         ),
 
-
-
-
-        child:
-        Row(
-
-
-
-          children:[
-
-
-
+        child: Row(
+          children: [
             Icon(
-
-
-
-              selected
-
-                  ?
-
-              Icons.radio_button_checked
-
-                  :
-
-              Icons.radio_button_off,
-
-
-
+              selected ? Icons.radio_button_checked : Icons.radio_button_off,
             ),
 
-
-
-
-
-            const SizedBox(width:15),
-
-
-
-
-
+            const SizedBox(width: 15),
 
             Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
 
-
-
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
-
-
-
-              children:[
-
-
-
+              children: [
                 Text(
-
-
-
                   title,
 
+                  style: const TextStyle(
+                    fontSize: 16,
 
-
-                  style:
-                  const TextStyle(
-
-
-
-                    fontSize:16,
-
-                    fontWeight:
-                    FontWeight.bold,
-
-
-
+                    fontWeight: FontWeight.bold,
                   ),
-
-
-
                 ),
 
-
-
-
                 Text(sub),
-
-
-
               ],
-
-
-
-            )
-
-
-
+            ),
           ],
-
-
-
         ),
-
-
-
       ),
-
-
-
     );
-
-
-
   }
-
-
-
-
-
-
-
-
 
   Widget buildInput(
+    String label,
 
-      String label,
+    TextEditingController controller,
 
-      TextEditingController controller,
-
-      String suffix,
-
-
-      ){
-
-
-
+    String suffix,
+  ) {
     return Container(
+      decoration: boxDecoration(),
 
+      child: TextField(
+        controller: controller,
 
+        keyboardType: TextInputType.number,
 
-      decoration:
-      boxDecoration(),
+        decoration: InputDecoration(
+          labelText: label,
 
+          suffixText: suffix,
 
+          border: InputBorder.none,
 
-
-      child:
-      TextField(
-
-
-
-        controller:
-        controller,
-
-
-
-        keyboardType:
-        TextInputType.number,
-
-
-
-
-        decoration:
-        InputDecoration(
-
-
-
-          labelText:
-          label,
-
-
-
-          suffixText:
-          suffix,
-
-
-
-          border:
-          InputBorder.none,
-
-
-
-          contentPadding:
-          const EdgeInsets.all(15),
-
-
-
+          contentPadding: const EdgeInsets.all(15),
         ),
-
-
-
       ),
-
-
-
     );
-
-
-
   }
 
-
-
-
-
-
-
-
-
-  BoxDecoration boxDecoration(){
-
-
-
+  BoxDecoration boxDecoration() {
     return BoxDecoration(
+      color: Colors.white,
 
-
-
-      color:
-      Colors.white,
-
-
-
-      borderRadius:
-      BorderRadius.circular(20),
-
-
-
+      borderRadius: BorderRadius.circular(20),
     );
-
-
-
   }
-
-
-
-
 }

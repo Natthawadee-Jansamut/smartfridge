@@ -38,7 +38,7 @@ String normalizeCategory(String raw) {
 
 /// อิโมจิของแต่ละหมวดหมู่วัตถุดิบ — ให้ตรงกันทุกหน้า (ตามหน้า "คลัง"/Inventory
 /// ซึ่งเป็นต้นแบบ) ห้ามให้แต่ละหน้ามีชุด mapping ของตัวเองแยกกันอีก
-/// ใช้: หน้าคลัง, หน้าผลลัพธ์หลังสแกน, หน้าถ่ายรูปวัตถุดิบ (วัตถุดิบที่เพิ่มล่าสุด)
+/// ใช้: หน้าคลัง, หน้าผลลัพธ์หลังสแกน, หน้าถ่ายภาพวัตถุดิบ (วัตถุดิบที่เพิ่มล่าสุด)
 String categoryEmoji(String category) {
   if (category.contains('ผลไม้')) return '🍎';
   if (category.contains('ผัก')) return '🥕';
@@ -48,11 +48,12 @@ String categoryEmoji(String category) {
     return '🥩';
   }
   if (category.contains('แป้ง') || category.contains('ข้าว')) return '🍞';
+  // เช็ค "ขนม" ก่อน "นม" เพราะคำว่า ขนม มีตัว นม อยู่ข้างใน
+  if (category.contains('ขนม')) return '🍬';
   if (category.contains('เครื่องดื่ม') ||
       category.contains('น้ำ') ||
       category.contains('นม')) {
     return '🥛';
   }
-  if (category.contains('ขนม')) return '🍬';
   return '📦';
 }

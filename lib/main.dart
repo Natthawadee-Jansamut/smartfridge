@@ -6,6 +6,7 @@ import 'package:test_app/config/supabase_config.dart';
 import 'package:test_app/screens/auth/login_screen.dart';
 import 'package:test_app/screens/home/main_menu_screen.dart';
 import 'package:test_app/screens/auth/reset_password_screen.dart';
+import 'package:test_app/screens/notification/expiration_alert_screen.dart';
 import 'package:test_app/services/notification_service.dart';
 import 'package:test_app/services/remember_me.dart';
 
@@ -42,6 +43,13 @@ Future<void> main() async {
     );
   }, onError: (_) {});
 
+  // กดแจ้งเตือนตอนแอปเปิดอยู่/อยู่เบื้องหลัง -> เปิดหน้าแจ้งเตือน (ต้องล็อกอินอยู่)
+  NotificationService.onOpenAlerts = () {
+    if (Supabase.instance.client.auth.currentSession == null) return;
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(builder: (_) => const ExpirationAlertScreen()),
+    );
+  };
   await NotificationService.init();
 
   // ไม่ได้ติ๊ก Remember me ตอน login ครั้งก่อน ให้ล้างเซสชันที่ค้างอยู่

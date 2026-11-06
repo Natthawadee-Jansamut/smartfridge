@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:test_app/services/fridge_images.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:test_app/utils/category_icons.dart';
@@ -19,11 +20,16 @@ class ResultScreen extends StatefulWidget {
   /// ชุดเดียวกับผลสแกน เผื่อกล้องหรือ AI ใช้งานไม่ได้
   final bool manual;
 
+  /// หมวดหมู่เริ่มต้นของวัตถุดิบที่กรอกเอง (เช่น กด "+ เพิ่มวัตถุดิบ" จากในหมวด
+  /// ผัก ในหน้าคลัง) — null = "อื่นๆ"
+  final String? initialCategory;
+
   const ResultScreen({
     super.key,
     required this.foundItems,
     this.imageBytes,
     this.manual = false,
+    this.initialCategory,
   });
 
   @override
@@ -44,8 +50,10 @@ class _ResultScreenState extends State<ResultScreen> {
     // เดียวกันยังอยู่ตามลำดับที่สแกนเจอ ไม่สลับกันไปมา)
     final indexed = widget.foundItems.asMap().entries.toList();
     indexed.sort((a, b) {
-      final catA = (a.value is Map ? a.value['category']?.toString() : null) ?? "อื่นๆ";
-      final catB = (b.value is Map ? b.value['category']?.toString() : null) ?? "อื่นๆ";
+      final catA =
+          (a.value is Map ? a.value['category']?.toString() : null) ?? "อื่นๆ";
+      final catB =
+          (b.value is Map ? b.value['category']?.toString() : null) ?? "อื่นๆ";
       final catCompare = catA.compareTo(catB);
       if (catCompare != 0) return catCompare;
       return a.key.compareTo(b.key);
@@ -86,7 +94,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Map<String, dynamic> _newManualItem() => {
     'manual': true,
     'name': '',
-    'category': 'อื่นๆ',
+    'category': widget.initialCategory ?? 'อื่นๆ',
     'count_mode': 'piece',
     'count': 1,
     'count_unit': 'ชิ้น',
@@ -172,80 +180,80 @@ class _ResultScreenState extends State<ResultScreen> {
 
             // --- การ์ด "รูปภาพ" (รูปจริงที่ถ่าย/เลือกมาสแกน) ---
             if (!widget.manual) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0),
-              child: Container(
-                width: double.infinity,
-                // เพิ่มความสูงจาก 200 เป็น 320 เพื่อให้มีที่พอแสดงรูปเต็มๆ
-                // ไม่ต้องครอปแน่นจนเกินไป (ของเดิมกล่องเตี้ยเกินไปเทียบกับรูปโหมด
-                // แนวตั้งจากกล้อง ทำให้ครอปหายไปเยอะ)
-                height: 320,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                child: Container(
+                  width: double.infinity,
+                  // เพิ่มความสูงจาก 200 เป็น 320 เพื่อให้มีที่พอแสดงรูปเต็มๆ
+                  // ไม่ต้องครอปแน่นจนเกินไป (ของเดิมกล่องเตี้ยเกินไปเทียบกับรูปโหมด
+                  // แนวตั้งจากกล้อง ทำให้ครอปหายไปเยอะ)
+                  height: 320,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 4,
+                        offset: Offset(0, 2),
                       ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFFCDC),
-                        border: Border.all(color: const Color(0xFFFFD191)),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Text(
-                        "รูปภาพ",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Colors.black87,
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFCDC),
+                          border: Border.all(color: const Color(0xFFFFD191)),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          "รูปภาพ",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          width: double.infinity,
-                          alignment: Alignment.center,
-                          // พื้นหลังสีเทาอ่อนไว้รองรับรูปที่สัดส่วนไม่พอดีกรอบ
-                          // (BoxFit.contain จะไม่ครอปรูปแต่จะเห็นแถบพื้นหลังนี้แทน)
-                          color: Colors.grey.shade100,
-                          child: widget.imageBytes != null
-                              ? Image.memory(
-                                  widget.imageBytes!,
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  // เปลี่ยนจาก cover เป็น contain เพื่อให้เห็นรูปที่ถ่ายมา
-                                  // แบบเต็มๆ ไม่ถูกครอปขอบออกเหมือนก่อนหน้านี้
-                                  fit: BoxFit.contain,
-                                )
-                              : Icon(
-                                  Icons.image_outlined,
-                                  size: 36,
-                                  color: Colors.grey.shade400,
-                                ),
+                      const SizedBox(height: 10),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            // พื้นหลังสีเทาอ่อนไว้รองรับรูปที่สัดส่วนไม่พอดีกรอบ
+                            // (BoxFit.contain จะไม่ครอปรูปแต่จะเห็นแถบพื้นหลังนี้แทน)
+                            color: Colors.grey.shade100,
+                            child: widget.imageBytes != null
+                                ? Image.memory(
+                                    widget.imageBytes!,
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    // เปลี่ยนจาก cover เป็น contain เพื่อให้เห็นรูปที่ถ่ายมา
+                                    // แบบเต็มๆ ไม่ถูกครอปขอบออกเหมือนก่อนหน้านี้
+                                    fit: BoxFit.contain,
+                                  )
+                                : Icon(
+                                    Icons.image_outlined,
+                                    size: 36,
+                                    color: Colors.grey.shade400,
+                                  ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
+              const SizedBox(height: 12),
             ],
 
             // --- รายการวัตถุดิบ (List) ---
@@ -406,6 +414,12 @@ class _ResultScreenState extends State<ResultScreen> {
     );
 
     try {
+      // รูปที่ใช้สแกน: อัปโหลดครั้งเดียว ทุกวัตถุดิบจากรูปนี้ชี้ไปที่รูปเดียวกัน
+      // (ไม่สำเร็จก็บันทึกวัตถุดิบต่อได้ แค่ไม่มีรูป)
+      final imagePath = widget.imageBytes == null
+          ? null
+          : await uploadFridgeImage(user.id, widget.imageBytes!);
+
       // หลัก FIFO: ซื้อวัตถุดิบชนิดเดิมมาเพิ่มเมื่อไหร่ ก็บันทึกแยกเป็นลอตใหม่
       // (แถวใหม่) เสมอ ไม่รวมเข้ากับลอตเดิม เพื่อให้แต่ละลอตมีวันที่เข้าตู้เย็น
       // และวันหมดอายุของตัวเอง ตอนทำอาหารระบบจะหักจากลอตที่ใกล้หมดอายุก่อน
@@ -424,8 +438,8 @@ class _ResultScreenState extends State<ResultScreen> {
         // (การ์ดที่ยังไม่ถูกเลื่อนมาแสดงจะยังไม่ได้ normalize ค่าจาก Gemini จึง
         // กันไว้ตรงนี้อีกชั้น: หน่วยที่นับเป็นชิ้นไม่ได้ เช่น กรัม → เป็นส่วน)
         final rawCountUnit = item['count_unit']?.toString().trim() ?? '';
-        final isPiece = item['count_mode'] == 'piece' &&
-            pieceUnits.contains(rawCountUnit);
+        final isPiece =
+            item['count_mode'] == 'piece' && pieceUnits.contains(rawCountUnit);
         final num stockQty =
             (num.tryParse(item['count']?.toString() ?? '') ?? 1).round().clamp(
               1,
@@ -433,11 +447,15 @@ class _ResultScreenState extends State<ResultScreen> {
             );
         final stockUnit = isPiece ? rawCountUnit : 'ส่วน';
         // กรอกเองแล้วไม่ได้เลือกประเภท ค่าวันมาจากผู้ใช้ ไม่ใช่ AI หรือตาราง
-        final isCustom = item['expiry_custom'] == true ||
+        final isCustom =
+            item['expiry_custom'] == true ||
             (item['manual'] == true && item['shelf_type'] == null);
 
         await supabase.from('fridge_items').insert({
           'user_id': user.id,
+          // วันที่เข้าตู้เย็น — ตาราง fridge_items ไม่มีค่าเริ่มต้นให้คอลัมน์นี้
+          // ถ้าไม่ใส่จะเป็นค่าว่าง แล้วหน้าแจ้งเตือน/การนับวันจะไม่เห็นของชิ้นนี้
+          'created_at': DateTime.now().toUtc().toIso8601String(),
           'name': name,
           'category': item['category'],
           'quantity': stockQty,
@@ -463,6 +481,12 @@ class _ResultScreenState extends State<ResultScreen> {
               : item['shelf_type'],
           if (isCustom)
             storage == storageFreezer ? 'freezer_days' : 'fridge_days': days,
+          // นับเป็นชิ้น: ทำอาหาร 1 ครั้งใช้กี่ชิ้น (แบ่งเป็นส่วน 1 ครั้ง = 1 ส่วนอยู่แล้ว)
+          if (isPiece)
+            'use_per_cook':
+                (num.tryParse(item['use_per_cook']?.toString() ?? '') ?? 1)
+                    .clamp(1, stockQty),
+          if (imagePath != null) 'image_path': imagePath,
         });
       }
 
@@ -524,6 +548,10 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   late int count;
   late String countUnit;
 
+  // นับเป็นชิ้น: ทำอาหาร 1 ครั้งใช้กี่ชิ้น (เช่น ไข่ ครั้งละ 2 ฟอง)
+  // ใช้เป็นค่าเริ่มต้นตอนกด Cooking ถ้าหน่วยในสูตรไม่ตรง/สูตรไม่บอกปริมาณ
+  late int usePerCook;
+
   // หน่วยนับชิ้นล่าสุด (เช่น "ผล") จำไว้ตอนสลับไป "แบ่งเป็นส่วน" แล้วกลับมา
   // "นับเป็นชิ้น" จะได้คืนเป็นหน่วยเดิม ไม่ใช่กลายเป็น "ชิ้น"
   String lastPieceUnit = 'ชิ้น';
@@ -536,7 +564,6 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   late String storage;
   late ResolvedShelfLife shelfLife;
 
-
   @override
   void initState() {
     super.initState();
@@ -547,14 +574,15 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     // ค่าเริ่มต้นถูกคำนวณไว้แล้วใน ResultScreen.initState อ่านกลับมาจากข้อมูล
     // ของชิ้นนี้ (การ์ดที่ถูกสร้างใหม่ตอนเลื่อนจอจะได้ไม่รีเซ็ตค่าที่ผู้ใช้เลือก)
     shelfType = findShelfType(data['shelf_type']?.toString());
-    foodState = data['food_state']?.toString() ?? defaultStateFor(shelfType?.key);
+    foodState =
+        data['food_state']?.toString() ?? defaultStateFor(shelfType?.key);
     storage = data['storage']?.toString() ?? storageFridge;
     shelfLife = _resolve();
     expiryController = TextEditingController(
       text: (data['expiry_days'] ?? shelfLife.daysFor(storage) ?? 7).toString(),
     );
 
-    // ค่าเริ่มต้นจาก Gemini (ดู prompt ใน ImageScanning.dart) ถ้า Gemini ตอบ
+    // ค่าเริ่มต้นจาก Gemini (ดู prompt ใน image_scanning_screen.dart) ถ้า Gemini ตอบ
     // หน่วยที่นับเป็นชิ้นไม่ได้ (เช่น กรัม) ให้เปลี่ยนเป็นแบ่งเป็นส่วนแทน
     final rawUnit = data['count_unit']?.toString().trim() ?? '';
     countMode = data['count_mode'] == 'piece' && rawUnit != 'ส่วน'
@@ -569,6 +597,9 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     lastPieceUnit = pieceUnits.contains(rawUnit) ? rawUnit : 'ชิ้น';
     count = (num.tryParse(data['count']?.toString() ?? '') ?? 1).round();
     if (count < 1) count = 1;
+    usePerCook = (num.tryParse(data['use_per_cook']?.toString() ?? '') ?? 1)
+        .round();
+    if (usePerCook < 1) usePerCook = 1;
     _pushCount();
 
     // กันเหนียว: normalize หมวดหมู่ให้เข้าเซ็ตที่กำหนดไว้เสมอ (fixedCategories)
@@ -606,6 +637,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     widget.onUpdate('count_mode', countMode);
     widget.onUpdate('count', count);
     widget.onUpdate('count_unit', countUnit);
+    widget.onUpdate('use_per_cook', usePerCook);
   }
 
   // บอกให้ชัดว่า 1 ส่วนมีเท่าไหร่ เช่น "3 ลูก แบ่ง 3 ส่วน = ส่วนละประมาณ 1 ลูก"
@@ -623,6 +655,11 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     }
     return "1 ส่วน = ใช้ทำอาหารได้ 1 ครั้ง";
   }
+
+  // บอกให้ชัดว่า "นับเป็นชิ้น" หักยังไง เช่น "มี 6 ฟอง ใช้ไปกี่ฟองก็หักเท่านั้น"
+  String _pieceHint() =>
+      "ทำอาหาร 1 ครั้ง ระบบจะเสนอให้หัก $usePerCook $countUnit "
+      "(ถ้าสูตรบอกจำนวน$countUnitไว้ จะใช้ตามสูตร) แก้ได้ก่อนยืนยันทุกครั้ง";
 
   // ข้อความ "ตรวจพบจากรูป: 1 แพ็ค" (แสดงอย่างเดียว ไม่ใช้หัก)
   String? _detectedText() {
@@ -755,11 +792,51 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
               ),
           ],
         ),
+        if (countMode == 'piece') ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Text(
+                "ใช้ครั้งละ",
+                style: TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+              const SizedBox(width: 10),
+              _buildCounterButton("-", () {
+                if (usePerCook > 1) {
+                  setState(() => usePerCook--);
+                  _pushCount();
+                }
+              }),
+              Container(
+                width: 44,
+                alignment: Alignment.center,
+                child: Text(
+                  "$usePerCook",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              _buildCounterButton("+", () {
+                setState(() => usePerCook++);
+                _pushCount();
+              }),
+              const SizedBox(width: 8),
+              Text(
+                countUnit,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 4),
         Text(
-          countMode == 'portion'
-              ? _portionHint()
-              : "นับตามจำนวนที่มีจริง",
+          countMode == 'portion' ? _portionHint() : _pieceHint(),
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
@@ -864,7 +941,8 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     } else if (shelfType != null) {
       icon = Icons.verified_outlined;
       color = const Color(0xff3F9142);
-      title = "${shelfType!.label}$stateText ${storageLabel(storage)} "
+      title =
+          "${shelfType!.label}$stateText ${storageLabel(storage)} "
           "เก็บได้ $defaultText";
       detail = "ข้อมูลจาก ${shelfType!.source}";
     } else {
@@ -1053,9 +1131,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
                       color: Colors.black87,
                     ),
                     items: fixedCategories
-                        .map(
-                          (c) => DropdownMenuItem(value: c, child: Text(c)),
-                        )
+                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                         .toList(),
                     onChanged: (val) {
                       if (val == null) return;

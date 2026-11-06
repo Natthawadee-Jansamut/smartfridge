@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:test_app/screens/fridge/item_detail_screen.dart';
+import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart';
+import 'package:test_app/screens/ingredient_scan/result_screen.dart';
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/utils/category_icons.dart';
@@ -262,8 +264,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Expanded(
                       child: Container(
                         height: 50,
+                        // สีเดียวกับแถบหัวข้อของหน้าอื่นๆ ในแอป (เหลืองอ่อน)
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: const Color(0xFFFFF7D0),
                           borderRadius: BorderRadius.circular(25),
                         ),
                         child: TextField(
@@ -283,10 +286,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               child: ListIcon(size: 20),
                             ),
                             suffixIcon: _searchQuery.isEmpty
-                                ? const Icon(
-                                    Icons.search,
-                                    color: Colors.black,
-                                  )
+                                ? const Icon(Icons.search, color: Colors.black)
                                 : IconButton(
                                     icon: const Icon(
                                       Icons.close,
@@ -304,16 +304,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      height: 50,
-                      width: 50,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF7D0),
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                      child: const Center(child: FilterIcon(size: 20)),
                     ),
                   ],
                 ),
@@ -402,11 +392,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               (item) => _buildItemCard(context, item),
                             ),
                           const SizedBox(height: 10),
-                          _buildAddButton(
-                            isCategoryView
-                                ? "+ เพิ่มหมวดหมู่"
-                                : "+ เพิ่มวัตถุดิบ",
-                          ),
+                          isCategoryView
+                              ? _buildAddButton(
+                                  "+ เพิ่มหมวดหมู่",
+                                  () => _showAddCategorySheet(uniqueCategories),
+                                )
+                              : _buildAddButton("+ เพิ่มวัตถุดิบ", _openScan),
                           const SizedBox(height: 30),
                         ],
                       ),
@@ -489,7 +480,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
       await _fetchInventoryData();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${item['name'] ?? 'วัตถุดิบ'} เก็บได้อีก $days วัน")),
+        SnackBar(
+          content: Text("${item['name'] ?? 'วัตถุดิบ'} เก็บได้อีก $days วัน"),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -730,7 +723,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         () => _adjustQuantity(item, -1),
                       ),
                       const SizedBox(width: 6),
-                      _buildQtyButton(Icons.add, () => _adjustQuantity(item, 1)),
+                      _buildQtyButton(
+                        Icons.add,
+                        () => _adjustQuantity(item, 1),
+                      ),
                       const SizedBox(width: 6),
                       GestureDetector(
                         onTap: () {
@@ -792,25 +788,128 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  Widget _buildAddButton(String text) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 25),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF7D0),
+  Widget _buildAddButton(String text, VoidCallback onTap) {
+    return Material(
+      color: const Color(0xFFFFF7D0),
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-      ),
-      child: Center(
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 25),
+          child: Center(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
           ),
         ),
       ),
     );
   }
 
+  // ---------------------------------------------------------------- เพิ่มของ
+
+  /// เปิดฟอร์มกรอกวัตถุดิบเอง โดยตั้งหมวดหมู่ไว้ให้แล้ว
+  void _openManualEntry(String category) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          foundItems: [],
+          manual: true,
+          initialCategory: category,
+        ),
+      ),
+    ).then((_) => _fetchInventoryData());
+  }
+
+  /// "+ เพิ่มวัตถุดิบ": ไปหน้าสแกนวัตถุดิบ (ในหน้านั้นเลือกถ่ายภาพ/คลังรูป/กรอกเองได้)
+  void _openScan() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ImageScanning()),
+    ).then((_) => _fetchInventoryData());
+  }
+
+  Widget _sheetOption({
+    required Widget leading,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      leading: leading,
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      onTap: () {
+        Navigator.pop(context);
+        onTap();
+      },
+    );
+  }
+
+  Future<void> _showSheet(String title, List<Widget> options) {
+    return showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ...options,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "+ เพิ่มหมวดหมู่": หมวดหมู่เป็นชุดตายตัว (fixedCategories) และจะแสดงเมื่อมี
+  /// วัตถุดิบอย่างน้อย 1 ชิ้น จึงให้เลือกหมวดที่ยังไม่มี แล้วกรอกวัตถุดิบชิ้นแรก
+  void _showAddCategorySheet(Set<String> shown) {
+    final missing = fixedCategories.where((c) => !shown.contains(c)).toList();
+    if (missing.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("มีวัตถุดิบครบทุกหมวดหมู่แล้ว")),
+      );
+      return;
+    }
+    _showSheet("เลือกหมวดหมู่ที่จะเพิ่ม", [
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+        child: Text(
+          "หมวดหมู่จะแสดงในคลังเมื่อมีวัตถุดิบอย่างน้อย 1 ชิ้น",
+          style: TextStyle(color: Colors.black54),
+        ),
+      ),
+      for (final c in missing)
+        _sheetOption(
+          leading: Text(categoryEmoji(c), style: const TextStyle(fontSize: 24)),
+          title: c,
+          onTap: () => _openManualEntry(c),
+        ),
+    ]);
+  }
 }

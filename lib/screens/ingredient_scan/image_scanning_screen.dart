@@ -12,9 +12,10 @@ import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
 import 'package:test_app/screens/ingredient_scan/result_screen.dart';
 import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
 
-/// หน้าถ่ายรูปวัตถุดิบเพื่อสแกนเข้าตู้เย็น (ตามดีไซน์ใน Figma: "SCAN")
+/// หน้าถ่ายภาพวัตถุดิบเพื่อสแกนเข้าตู้เย็น (ตามดีไซน์ใน Figma: "SCAN")
 /// รายการ "วัตถุดิบที่เพิ่มล่าสุด" ดึงจาก Supabase จริงเสมอ (ไม่ใช้ตัวเลข mock ของ Figma)
 class ImageScanning extends StatefulWidget {
   const ImageScanning({super.key});
@@ -193,6 +194,7 @@ class _ImageScanningState extends State<ImageScanning> {
       // และรอได้ถึง 60 วินาที (รูปที่มีหลายชิ้นอาจใช้เวลาเกิน 30 วินาที)
       final response = await generateGemini(
         apiKey: _apiKey,
+        logEvent: AiEvent.scanIngredient,
         content: [
           Content.multi([prompt, DataPart('image/jpeg', imageBytes)]),
         ],
@@ -278,7 +280,7 @@ class _ImageScanningState extends State<ImageScanning> {
       body: SafeArea(
         child: Column(
           children: [
-            const IngredientFlowHeader(title: "ถ่ายรูปวัตถุดิบ"),
+            const IngredientFlowHeader(title: "ถ่ายภาพวัตถุดิบ"),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -287,7 +289,7 @@ class _ImageScanningState extends State<ImageScanning> {
                     const SizedBox(height: 15),
                     _IngredientOptionCard(
                       icon: Icons.camera_alt_outlined,
-                      title: "ถ่ายรูปวัตถุดิบ",
+                      title: "ถ่ายภาพวัตถุดิบ",
                       subtitle: "เปิดกล้องเพื่อสแกน",
                       onTap: () => _pickAndAnalyzeImage(ImageSource.camera),
                     ),
@@ -334,7 +336,7 @@ class _ImageScanningState extends State<ImageScanning> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          _buildTipItem("ถ่ายรูปในที่ที่มีแสงสว่างเพียงพอ"),
+                          _buildTipItem("ถ่ายภาพในที่ที่มีแสงสว่างเพียงพอ"),
                           _buildTipItem("จัดวัตถุดิบให้อยู่ตรงกลางเฟรม"),
                           _buildTipItem("หลีกเลี่ยงเงาหรือแสงสะท้อนบนวัตถุ"),
                           _buildTipItem("ถ่ายทีละชิ้นเพื่อความแม่นยำสูงสุด"),

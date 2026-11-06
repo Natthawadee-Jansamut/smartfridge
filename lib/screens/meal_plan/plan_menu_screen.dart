@@ -56,26 +56,6 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Container(
-                    height: 50,
-                    width: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 5,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const InkWell(
-                      customBorder: CircleBorder(),
-                      child: Center(child: FilterIcon(size: 20)),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -109,9 +89,7 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
                     () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const MyPlanScreen(),
-                        ),
+                        MaterialPageRoute(builder: (_) => const MyPlanScreen()),
                       );
                     },
                   ),
@@ -167,7 +145,10 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(subtitle, style: TextStyle(color: Colors.grey.shade600)),
+                    Text(
+                      subtitle,
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
                   ],
                 ),
               ),
@@ -177,5 +158,4 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
       ),
     );
   }
-
 }

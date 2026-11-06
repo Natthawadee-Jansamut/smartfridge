@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:test_app/services/remember_me.dart';
 import 'package:test_app/screens/auth/register_screen.dart';
 import 'package:test_app/screens/home/main_menu_screen.dart';
 import 'package:test_app/screens/auth/forgot_password_screen.dart';
@@ -25,6 +26,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool isLoading = false;
 
+  bool rememberMe = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    RememberMe.isEnabled().then((value) {
+      if (mounted) {
+        setState(() {
+          rememberMe = value;
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
     emailController.dispose();
@@ -42,6 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+      await RememberMe.setEnabled(rememberMe);
+
       final response = await supabase.auth.signInWithPassword(
         email: emailController.text.trim(),
 
@@ -208,7 +226,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 8),
+
+                    CheckboxListTile(
+                      value: rememberMe,
+
+                      onChanged: (value) {
+                        setState(() {
+                          rememberMe = value ?? false;
+                        });
+                      },
+
+                      title: const Text(
+                        "Remember me",
+
+                        style: TextStyle(color: Color(0xff5189C9)),
+                      ),
+
+                      activeColor: const Color(0xff5189C9),
+
+                      controlAffinity: ListTileControlAffinity.leading,
+
+                      contentPadding: EdgeInsets.zero,
+
+                      dense: true,
+                    ),
+
+                    const SizedBox(height: 14),
 
                     SizedBox(
                       width: double.infinity,

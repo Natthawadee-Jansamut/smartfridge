@@ -7,6 +7,7 @@ import 'package:test_app/widgets/deduct_confirm_sheet.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/widgets/add_recipe_widgets.dart';
+import 'package:test_app/services/fridge_images.dart';
 
 /// หน้ารายละเอียดสูตรอาหารที่บันทึกไว้ (ตามดีไซน์ใน Figma: "Smart Recipe" หน้าเมนู)
 /// เปิดจากการกดเลือกสูตรในหน้าคลังสูตรอาหาร
@@ -24,12 +25,17 @@ class RecipeDetailScreen extends StatefulWidget {
   /// หน้า "เมนูแนะนำ" จาก AI ยังไม่ได้บันทึก จึงปิดไว้
   final bool canEdit;
 
+  /// แท็บที่ไฮไลต์ในแถบล่าง ให้ตรงกับฟีเจอร์ที่เปิดหน้านี้มา (หน้านี้ใช้ร่วมกัน
+  /// ระหว่าง "สแกนสูตรอาหาร" = scan และ "สร้างเมนูอาหาร" = menu)
+  final AppTab tab;
+
   const RecipeDetailScreen({
     super.key,
     required this.recipe,
     required this.inventory,
     this.headerTitle = "สูตรเมนูอาหาร",
     this.canEdit = false,
+    this.tab = AppTab.scan,
   });
 
   @override
@@ -155,7 +161,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   void _endEdit() {
     FocusScope.of(context).unfocus();
-    final old = [..._ingDrafts.map((d) => d.dispose), ..._stepDrafts.map((d) => d.dispose)];
+    final old = [
+      ..._ingDrafts.map((d) => d.dispose),
+      ..._stepDrafts.map((d) => d.dispose),
+    ];
     setState(() {
       _editingIngredients = false;
       _editingSteps = false;
@@ -163,6 +172,38 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       _stepDrafts = [];
     });
     _disposeLater(old);
+  }
+
+  /// เปลี่ยนชื่อเมนู แล้วบันทึกลงคลังทันที (เก็บใน overrides เหมือนการแก้ไขอื่น)
+  Future<void> _renameRecipe() async {
+    final name = await showRenameRecipeDialog(
+      context,
+      currentName: (_recipe['recipe_name'] ?? '').toString(),
+    );
+    if (name == null || !mounted) return;
+    final updated = {..._recipe, 'recipe_name': name};
+    setState(() => _isSavingEdit = true);
+    try {
+      final warnings = await RecipeRepository.updateRecipe(
+        widget.recipe['id'] as Object,
+        updated,
+      );
+      if (!mounted) return;
+      setState(() {
+        _recipe = updated;
+        _isSavingEdit = false;
+      });
+      _snack(
+        warnings.isEmpty
+            ? 'เปลี่ยนชื่อเป็น "$name" แล้ว ✏️'
+            : 'บันทึกแล้ว แต่${warnings.join(' และ')}',
+        warnings.isEmpty ? Colors.green : Colors.orange,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSavingEdit = false);
+      _snack('เปลี่ยนชื่อไม่สำเร็จ: $e', Colors.red);
+    }
   }
 
   Future<void> _saveEdit() async {
@@ -183,7 +224,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       }
       updated['detailed_ingredients'] = list;
       updated['ingredients_used'] = list.map((e) => e['name']).toList();
-      updated['servings'] = RecipeRepository.servingsText(_servingsDraft);
+      final servings = RecipeRepository.servingsText(_servingsDraft);
+      if (servings !=
+          RecipeRepository.servingsText(
+            RecipeRepository.leadingNumber(_recipe['servings']),
+          )) {
+        updated['servings_estimated'] = false; // ผู้ใช้แก้เอง
+      }
+      updated['servings'] = servings;
     } else {
       final filled = _stepDrafts
           .where((d) => d.ctrl.text.trim().isNotEmpty)
@@ -196,7 +244,14 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         for (var i = 0; i < filled.length; i++)
           if (filled[i].isAi) i,
       ];
-      updated['time'] = RecipeRepository.minutesText(_minutesDraft);
+      final time = RecipeRepository.minutesText(_minutesDraft);
+      if (time !=
+          RecipeRepository.minutesText(
+            RecipeRepository.minutesOf(_recipe['time']),
+          )) {
+        updated['time_estimated'] = false; // ผู้ใช้แก้เอง
+      }
+      updated['time'] = time;
     }
 
     FocusScope.of(context).unfocus();
@@ -237,7 +292,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     final direct = num.tryParse(text);
     if (direct != null) return direct;
 
-    final fraction = RegExp(r'(\d+(\.\d+)?)\s*/\s*(\d+(\.\d+)?)').firstMatch(text);
+    final fraction = RegExp(
+      r'(\d+(\.\d+)?)\s*/\s*(\d+(\.\d+)?)',
+    ).firstMatch(text);
     if (fraction != null) {
       final numerator = double.tryParse(fraction.group(1) ?? '') ?? 0;
       final denominator = double.tryParse(fraction.group(3) ?? '') ?? 1;
@@ -275,8 +332,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   // ฟังก์ชันหักวัตถุดิบออกจาก Supabase
   Future<void> _startCooking() async {
-    List<dynamic> detailedIngredients =
-        _recipe['detailed_ingredients'] ?? [];
+    List<dynamic> detailedIngredients = _recipe['detailed_ingredients'] ?? [];
 
     // ให้ผู้ใช้ยืนยันก่อนว่าใช้ไปเท่าไหร่จริง (กดเลือกแบบกะด้วยตา ไม่ต้องชั่ง)
     // ค่าเริ่มต้นตามที่สูตรบอก — กดยกเลิกก็ไม่หักอะไรเลย
@@ -285,10 +341,21 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       inventory: widget.inventory,
       requests: [
         for (final needed in detailedIngredients)
-          if ((needed['name'] ?? '').toString().trim().isNotEmpty)
+          if ((needed['name'] ?? '').toString().trim().isNotEmpty &&
+              // เครื่องปรุงพื้นฐานที่ไม่ได้เก็บในตู้เย็น -> ไม่ต้องหัก
+              !(RecipeRepository.isStapleIngredient(
+                    Map<String, dynamic>.from(needed),
+                  ) &&
+                  !widget.inventory.any(
+                    (inv) => ingredientNameMatches(
+                      inv['name'],
+                      needed['name'].toString().trim().toLowerCase(),
+                    ),
+                  )))
             DeductRequest(
               name: needed['name'].toString(),
               suggested: _toNum(needed['use_quantity']),
+              unit: (needed['unit'] ?? '').toString(),
             ),
       ],
     );
@@ -346,7 +413,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
         if (hasUpdateError) {
           // ฐานข้อมูลปฏิเสธการอัปเดตจริงๆ (เช่นสิทธิ์ไม่พอ) ต้องโชว์ error ตรงๆ
           // ไม่งั้นจะดูเหมือนกดแล้วไม่มีอะไรเกิดขึ้นเลย ทั้งที่จริงๆ error
-          message = "หักวัตถุดิบไม่สำเร็จบางรายการ: ${updateErrors.join(' | ')}";
+          message =
+              "หักวัตถุดิบไม่สำเร็จบางรายการ: ${updateErrors.join(' | ')}";
           bgColor = Colors.red;
         } else if (deductedCount == 0 && !hasNotFound) {
           // ผู้ใช้เลือก "ไม่ได้ใช้" ทุกรายการในหน้ายืนยัน
@@ -354,7 +422,8 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           bgColor = Colors.green;
         } else if (deductedCount == 0) {
           // ไม่พบวัตถุดิบที่ตรงกันในคลังเลยสักชิ้น ไม่ควรบอกว่า "เรียบร้อยแล้ว"
-          message = "ไม่พบวัตถุดิบที่ตรงกับในคลังเลย จึงยังไม่ได้หักอะไรออก "
+          message =
+              "ไม่พบวัตถุดิบที่ตรงกับในคลังเลย จึงยังไม่ได้หักอะไรออก "
               "(${notFoundNames.join(', ')})";
           bgColor = Colors.orange;
         } else if (hasNotFound) {
@@ -395,7 +464,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text("ลบสูตรอาหารนี้?"),
-            content: Text("ต้องการลบ \"$recipeName\" ออกจากคลังสูตรอาหารใช่ไหม"),
+            content: Text(
+              "ต้องการลบ \"$recipeName\" ออกจากคลังสูตรอาหารใช่ไหม",
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
@@ -450,50 +521,67 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
     final aiSteps = RecipeRepository.aiStepIndexesOf(recipe);
     List<dynamic> detailedIngredients = recipe['detailed_ingredients'] ?? [];
 
-    final availableCount = detailedIngredients
-        .where((e) => _isIngredientAvailable(Map<String, dynamic>.from(e)))
-        .length;
+    // เครื่องปรุงพื้นฐาน (ซอส น้ำปลา น้ำตาล ฯลฯ) แยกไว้ ไม่นับในสถานะวัตถุดิบ
+    final allIngredients = [
+      for (final e in detailedIngredients) Map<String, dynamic>.from(e),
+    ];
+    final mainIngredients = [
+      for (final ing in allIngredients)
+        if (!RecipeRepository.isStapleIngredient(ing)) ing,
+    ];
+    final stapleIngredients = [
+      for (final ing in allIngredients)
+        if (RecipeRepository.isStapleIngredient(ing)) ing,
+    ];
+    final availableCount = mainIngredients.where(_isIngredientAvailable).length;
 
     return Scaffold(
       backgroundColor: const Color(0xFFD8EEFF),
-      bottomNavigationBar: const AppBottomNav(current: AppTab.scan),
+      bottomNavigationBar: AppBottomNav(current: widget.tab),
       body: SafeArea(
         child: Column(
           children: [
             RecipeFlowHeader(title: widget.headerTitle),
             const SizedBox(height: 15),
+            // ตอนแก้ไขวัตถุดิบ/ขั้นตอน ตรึงรูปที่ใช้สแกนไว้ด้านบน ไม่เลื่อนตาม
+            // จะได้เทียบกับรูปได้ตลอด (ตอนดูสูตรปกติ รูปเลื่อนไปกับเนื้อหา)
+            if (_isEditing)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: PrivateScanImage(
+                  bucket: recipeScanImageBucket,
+                  path: recipe['scan_image_path']?.toString(),
+                  height: 150,
+                ),
+              ),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ชื่อเมนู (กล่องขาวตรงกลาง ตามดีไซน์)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        recipe['recipe_name'] ?? 'ไม่มีชื่อเมนู',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
+                    // ชื่อเมนู (กล่องขาวตรงกลาง ตามดีไซน์) แตะเพื่อเปลี่ยนชื่อ
+                    RecipeNameBox(
+                      name: (recipe['recipe_name'] ?? '').toString(),
+                      onRename: _canEdit && !_isEditing && !_isSavingEdit
+                          ? _renameRecipe
+                          : null,
                     ),
                     const SizedBox(height: 20),
+
+                    // รูปสูตรที่ผู้ใช้สแกน (มีเฉพาะสูตรที่สแกนแล้วบันทึกหลังมีฟีเจอร์นี้)
+                    // ตอนแก้ไข รูปย้ายไปตรึงไว้ด้านบนแทน
+                    if (!_isEditing)
+                      PrivateScanImage(
+                        bucket: recipeScanImageBucket,
+                        path: recipe['scan_image_path']?.toString(),
+                      ),
 
                     // สถานะวัตถุดิบ (ของจริงจากฐานข้อมูล ไม่ใช่ mock)
                     RecipeStatusBar(
                       label: "สถานะวัตถุดิบ",
                       have: availableCount,
-                      total: detailedIngredients.length,
+                      total: mainIngredients.length,
                     ),
                     const SizedBox(height: 20),
 
@@ -544,45 +632,84 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                           if (_editingIngredients)
                             ..._buildIngredientEditor()
                           else ...[
-                          if (servingsText.isNotEmpty)
-                            _infoLine(Icons.restaurant_outlined, 'สำหรับ $servingsText'),
-                          ...detailedIngredients.map((ing) {
-                            final ingMap = Map<String, dynamic>.from(ing);
-                            final available = _isIngredientAvailable(ingMap);
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 10.0),
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Row(
+                            if (servingsText.isNotEmpty)
+                              _infoLine(
+                                Icons.restaurant_outlined,
+                                'สำหรับ $servingsText',
+                                estimated: recipe['servings_estimated'] == true,
+                              ),
+                            ...mainIngredients.map((ingMap) {
+                              final available = _isIngredientAvailable(ingMap);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10.0),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 20,
+                                          child: available
+                                              ? const CheckIcon(size: 18)
+                                              : null,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          ingMap['name'] ?? '',
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      _formatQty(ingMap),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }),
+                            if (stapleIngredients.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              const StapleIngredientsHeader(),
+                              for (final ing in stapleIngredients)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10.0),
+                                  child: Row(
                                     children: [
                                       SizedBox(
                                         width: 20,
-                                        child: available
-                                            ? const CheckIcon(size: 18)
-                                            : null,
+                                        child: Icon(
+                                          Icons.kitchen_outlined,
+                                          size: 16,
+                                          color: Colors.grey.shade500,
+                                        ),
                                       ),
                                       const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          (ing['name'] ?? '').toString(),
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            color: Colors.grey.shade600,
+                                          ),
+                                        ),
+                                      ),
                                       Text(
-                                        ingMap['name'] ?? '',
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          color: Colors.black87,
+                                        _formatQty(ing),
+                                        style: TextStyle(
+                                          color: Colors.grey.shade500,
                                         ),
                                       ),
                                     ],
                                   ),
-                                  Text(
-                                    _formatQty(ingMap),
-                                    style: TextStyle(
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
+                                ),
+                            ],
                           ],
                         ],
                       ),
@@ -640,6 +767,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                               _infoLine(
                                 Icons.timer_outlined,
                                 'ใช้เวลาประมาณ $timeText',
+                                estimated: recipe['time_estimated'] == true,
                               ),
                             // ขั้นตอนที่ AI คิดเพิ่ม = ตัวหนังสือสีแดง + ป้าย "AI"
                             RecipeStepsView(
@@ -753,19 +881,10 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
 
   // ------------------------------------------------------------ Edit UI
 
-  Widget _infoLine(IconData icon, String text) {
+  Widget _infoLine(IconData icon, String text, {bool estimated = false}) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.black54),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(fontSize: 13, color: Colors.black54),
-          ),
-        ],
-      ),
+      child: RecipeInfoLine(icon: icon, text: text, estimated: estimated),
     );
   }
 

@@ -49,7 +49,8 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
 
       if (mounted) {
         setState(() {
-          _recipes = recipes;
+          // สูตรโปรดบนสุด แล้วเรียงตามวัตถุดิบที่มีในตู้เย็นมากไปน้อย
+          _recipes = RecipeRepository.sortForLibrary(recipes, inventory);
           _inventory = inventory;
           _isLoading = false;
         });
@@ -98,6 +99,28 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
       return;
     }
     _fetchData();
+  }
+
+  // ------------------------------------------------------------ Favorite
+
+  Future<void> _toggleFavorite(Map<String, dynamic> recipe) async {
+    final next = recipe['is_favorite'] != true;
+    // อัปเดตหน้าจอทันที แล้วค่อยบันทึก ถ้าไม่สำเร็จจะย้อนกลับ
+    setState(() {
+      recipe['is_favorite'] = next;
+      _recipes = RecipeRepository.sortForLibrary(_recipes, _inventory);
+    });
+    try {
+      await RecipeRepository.setFavorite(recipe['id'] as Object, next);
+    } catch (e) {
+      debugPrint('บันทึกสูตรโปรดไม่สำเร็จ: $e');
+      if (!mounted) return;
+      setState(() {
+        recipe['is_favorite'] = !next;
+        _recipes = RecipeRepository.sortForLibrary(_recipes, _inventory);
+      });
+      _showSnack('บันทึกสูตรโปรดไม่สำเร็จ: $e', Colors.red);
+    }
   }
 
   // -------------------------------------------------------------- Delete
@@ -202,6 +225,7 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
           );
           final recipeName = (recipe['recipe_name'] ?? 'ไม่มีชื่อเมนู')
               .toString();
+          final isFavorite = recipe['is_favorite'] == true;
           return Dismissible(
             key: ValueKey(recipe['id'] ?? '$recipeName$index'),
             direction: DismissDirection.endToStart,
@@ -243,11 +267,32 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                     if (mounted) _fetchData();
                   },
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: RecipeStatusBar(
-                      label: recipeName,
-                      have: have,
-                      total: total,
+                    padding: const EdgeInsets.fromLTRB(16, 16, 6, 16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: RecipeStatusBar(
+                            label: recipeName,
+                            have: have,
+                            total: total,
+                          ),
+                        ),
+                        // ปุ่มสูตรโปรด: กดแล้วสูตรจะขึ้นไปอยู่บนสุด
+                        IconButton(
+                          tooltip: isFavorite
+                              ? 'เลิกเป็นสูตรโปรด'
+                              : 'เพิ่มเป็นสูตรโปรด',
+                          onPressed: () => _toggleFavorite(recipe),
+                          icon: Icon(
+                            isFavorite
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            color: isFavorite
+                                ? const Color(0xFFE53935)
+                                : Colors.grey.shade400,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

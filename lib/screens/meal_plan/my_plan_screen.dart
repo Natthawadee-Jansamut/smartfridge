@@ -50,27 +50,27 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
 
   Future<void> deletePlan(String id) async {
     try {
-      await supabase.rpc(
-        'delete_meal_plan',
-        params: {'plan_uuid': id},
-      );
+      await supabase.rpc('delete_meal_plan', params: {'plan_uuid': id});
 
       await loadPlans();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("ลบแพลนเรียบร้อย")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("ลบแพลนเรียบร้อย")));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("ลบไม่สำเร็จ: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("ลบไม่สำเร็จ: $e")));
     }
   }
 
-  String formatDate(String date) {
-    final d = DateTime.parse(date).toLocal();
+  // created_at ใน meal_plans ไม่มีค่าเริ่มต้น แผนเก่าบางแผนจึงเป็น null
+  // -> แสดง "-" แทนที่จะทำให้ทั้งหน้าพัง
+  String formatDate(Object? date) {
+    final d = DateTime.tryParse(date?.toString() ?? '')?.toLocal();
+    if (d == null) return '-';
     return "${d.day}/${d.month}/${d.year + 543}";
   }
 
@@ -88,15 +88,15 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : plans.isEmpty
-                      ? const Center(child: Text("ยังไม่มีแพลนที่บันทึก"))
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: plans.length,
-                          itemBuilder: (context, index) {
-                            final plan = plans[index];
-                            return _buildPlanCard(plan);
-                          },
-                        ),
+                  ? const Center(child: Text("ยังไม่มีแพลนที่บันทึก"))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: plans.length,
+                      itemBuilder: (context, index) {
+                        final plan = plans[index];
+                        return _buildPlanCard(plan);
+                      },
+                    ),
             ),
           ],
         ),
@@ -222,18 +222,11 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                     );
                   },
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: Colors.red,
-                        ),
+                        Icon(Icons.delete_outline, size: 18, color: Colors.red),
                         SizedBox(width: 6),
                         Text(
                           "ลบ",
@@ -297,26 +290,6 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            height: 50,
-            width: 50,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 5,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const InkWell(
-              customBorder: CircleBorder(),
-              child: Center(child: FilterIcon(size: 20)),
             ),
           ),
         ],

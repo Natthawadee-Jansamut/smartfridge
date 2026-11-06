@@ -7,9 +7,10 @@ import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
-import 'package:test_app/services/global_recipe_service.dart';
 import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/services/recipe_repository.dart';
 
 class AiRecipeScreen extends StatefulWidget {
   const AiRecipeScreen({super.key});
@@ -30,12 +31,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   List<Map<String, dynamic>> _fridgeByAge = [];
   int _aheadDays = defaultOldItemDays;
   List<dynamic> _generatedRecipes = []; // เก็บเมนูที่ AI สร้างให้
-
-  // เมนูที่แสดงอยู่มาจากคลังสูตรกลาง (ไม่ได้เรียก Gemini) — ใช้แสดงป้าย + ปุ่มให้ AI คิดใหม่
-  bool _fromLibrary = false;
-
-  // เจอเมนูในคลังกลางอย่างน้อยเท่านี้ถึงจะใช้แทน Gemini (เท่ากับจำนวนที่ขอ Gemini)
-  static const _libraryMenuCount = 3;
 
   // ตัวแปรสำหรับ Filter
   String _selectedCategory = 'ทั้งหมด';
@@ -63,59 +58,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
       default:
         return 'เท่าไหร่ก็ได้';
     }
-  }
-
-  // ตัวกรองชุดเดียวกับที่บอก Gemini แต่ใช้ค้นในคลังสูตรกลาง
-  int? _maxMinutesForFilter() {
-    switch (_selectedTime) {
-      case '< 15 นาที':
-        return 15;
-      case '< 30 นาที':
-        return 30;
-      case '< 1 ชั่วโมง':
-        return 60;
-      default:
-        return null;
-    }
-  }
-
-  List<String> _dietTagsForFilter() =>
-      _selectedCategory == 'ทั้งหมด' ? const [] : [_selectedCategory];
-
-  // ค้นเมนูจากคลังสูตรกลางก่อน — เจอพอ (>= _libraryMenuCount) คืนเมนูที่จะแสดง
-  // ไม่พอคืน null แล้วค่อยเรียก Gemini (ใช้ของที่ควรใช้ก่อนขึ้นก่อน)
-  Future<List<Map<String, dynamic>>?> _findInLibrary(
-    List<Map<String, dynamic>> usable,
-  ) async {
-    final dietTags = _dietTagsForFilter();
-    final found = await GlobalRecipeService.matchByIngredients(
-      GlobalRecipeService.fridgeNames(usable),
-      maxMissing: 1,
-      minMatchRatio: 0.6,
-      maxMinutes: _maxMinutesForFilter(),
-      dietTags: dietTags.isEmpty ? null : dietTags,
-    );
-    if (found.length < _libraryMenuCount) return null;
-
-    final useFirstNames = _oldItems
-        .map((e) => (e['name'] ?? '').toString().trim().toLowerCase())
-        .where((n) => n.isNotEmpty)
-        .toList();
-    bool usesOldItem(Map<String, dynamic> recipe) =>
-        (recipe['detailed_ingredients'] as List? ?? []).any((ing) {
-          final name = (ing['name'] ?? '').toString().trim().toLowerCase();
-          return name.isNotEmpty &&
-              useFirstNames.any((o) => o.contains(name) || name.contains(o));
-        });
-
-    // sort ของ Dart ไม่ stable -> ใส่ลำดับเดิม (ขาดของน้อยก่อน) เป็นตัวตัดสินรอง
-    final indexed = found.asMap().entries.toList()
-      ..sort((a, b) {
-        final byOld =
-            (usesOldItem(a.value) ? 0 : 1).compareTo(usesOldItem(b.value) ? 0 : 1);
-        return byOld != 0 ? byOld : a.key.compareTo(b.key);
-      });
-    return indexed.take(_libraryMenuCount).map((e) => e.value).toList();
   }
 
   @override
@@ -178,9 +120,8 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
     return const Color(0xff3F9142);
   }
 
-  // 2. หาเมนูจากคลังสูตรกลางก่อน ไม่พอค่อยส่งข้อมูลให้ Gemini คิดเมนู
-  //    [forceAi] = ผู้ใช้กด "ให้ AI คิดเมนูใหม่" (ข้ามคลังกลาง)
-  Future<void> _generateRecipes({bool forceAi = false}) async {
+  // 2. ส่งข้อมูลให้ Gemini คิดเมนู
+  Future<void> _generateRecipes() async {
     if (_inventory.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -193,28 +134,62 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
     setState(() {
       _isGenerating = true;
       _generatedRecipes = []; // เคลียร์ของเก่า
-      _fromLibrary = false;
     });
 
     try {
-      if (!forceAi) {
-        final usable = _inventory
-            .where((e) => !isOverdue(e) && !isUsedUp(e))
+      // ===== 1) ค้นเมนูจากคลังสูตรกลาง (recipes) ก่อน — เจอครบไม่ต้องเรียก AI =====
+      const wanted = 3;
+      final usable = _inventory.where((e) => !isOverdue(e)).toList();
+      final maxMinutes = switch (_selectedTime) {
+        '< 15 นาที' => 15,
+        '< 30 นาที' => 30,
+        '< 1 ชั่วโมง' => 60,
+        _ => null,
+      };
+      List<Map<String, dynamic>> fromLibrary = [];
+      try {
+        final candidates = await RecipeRepository.findRecipesForFridge(
+          fridgeItems: usable,
+          limit: 20,
+          useFirstNames: {for (final e in _oldItems) e['name'].toString()},
+        );
+        fromLibrary = candidates
+            .where((r) {
+              // ประเภทอาหาร: ต้องมีแท็กตรงกับที่เลือก (ทั้งหมด = ไม่กรอง)
+              if (_selectedCategory != 'ทั้งหมด' &&
+                  !(r['diet_tags'] as List).contains(_selectedCategory)) {
+                return false;
+              }
+              // เวลาทำ: ไม่รู้เวลา = ผ่านเฉพาะตอนไม่จำกัดเวลา
+              final minutes = r['time_minutes'] as int?;
+              if (maxMinutes != null &&
+                  (minutes == null || minutes > maxMinutes)) {
+                return false;
+              }
+              return true;
+            })
+            .take(wanted)
+            .map((r) => {...r, 'from_library': true})
             .toList();
-        final fromLibrary = await _findInLibrary(usable);
-        if (fromLibrary != null) {
-          setState(() {
-            _generatedRecipes = fromLibrary;
-            _fromLibrary = true;
-          });
-          GlobalRecipeService.log(
-            eventType: 'generate_menu',
-            result: 'cache_hit',
-          );
-          return;
-        }
+      } catch (e) {
+        debugPrint('ค้นคลังสูตรไม่สำเร็จ (ใช้ AI แทน): $e');
       }
 
+      if (fromLibrary.length >= wanted) {
+        for (final r in fromLibrary) {
+          logAiRequest(
+            event: AiEvent.generateMenu,
+            result: AiResult.cacheHit,
+            recipeId: r['recipe_id'],
+          );
+        }
+        setState(() => _generatedRecipes = fromLibrary);
+        return;
+      }
+      final aiCount = wanted - fromLibrary.length;
+      final libraryNames = fromLibrary.map((r) => r['recipe_name']).join(', ');
+
+      // ===== 2) ให้ AI คิดเฉพาะส่วนที่ยังขาด =====
       // ⚠️ ใส่ API Key ของคุณที่นี่
       final String apiKey = ApiKeys.aiRecipeScreen;
 
@@ -225,13 +200,15 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
       // ให้ผู้ใช้ตรวจเองก่อน)
       String allItems = inventoryPromptList(
         _inventory.where((e) => !isOverdue(e)).toList(),
+        withPerCook: true,
       );
       final useFirst = _oldItems
           .map((e) => "${e['name']} (${daysLeftText(daysLeft(e)!)})")
           .join(", ");
 
       final prompt = TextPart("""
-        คุณคือเชฟอัจฉริยะ ช่วยคิดเมนูอาหาร 3 เมนู ที่สามารถทำได้จากวัตถุดิบเหล่านี้เป็นหลัก
+        คุณคือเชฟอัจฉริยะ ช่วยคิดเมนูอาหาร $aiCount เมนู ที่สามารถทำได้จากวัตถุดิบเหล่านี้เป็นหลัก
+        ${libraryNames.isEmpty ? '' : 'ห้ามซ้ำกับเมนูเหล่านี้: $libraryNames'}
         วัตถุดิบที่มี: $allItems
         วัตถุดิบที่ควรใช้ก่อน เรียงจากเก็บได้อีกน้อยวันที่สุด: ${useFirst.isEmpty ? 'ไม่มี' : useFirst}
         ถ้ามีวัตถุดิบที่ควรใช้ก่อน ทุกเมนูต้องใช้วัตถุดิบกลุ่มนี้อย่างน้อย 1 อย่าง (ตัวแรกๆ ก่อน)
@@ -243,6 +220,13 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         สำคัญเรื่องปริมาณใน detailed_ingredients: ผู้ใช้ไม่ได้ชั่งตวง ให้ใช้หน่วยเดียวกับ
         วัตถุดิบที่มีในวงเล็บเท่านั้น (เช่น ส่วน, ฟอง, ผล, หัว) ห้ามใช้กรัม/กก./มล./ช้อน
         และ use_quantity ห้ามเกินจำนวนที่มี (1 ส่วน ≈ ใช้ทำอาหาร 1 ครั้ง ใช้ 0.5 ได้)
+        ถ้าวัตถุดิบมี "ใช้ครั้งละ N" ในวงเล็บ (ผู้ใช้กำหนดเองว่าทำอาหาร 1 ครั้งใช้เท่านี้)
+        ให้ use_quantity ของวัตถุดิบนั้น = N พอดี
+
+        เครื่องปรุงพื้นฐานที่ทุกบ้านมีอยู่แล้ว (น้ำปลา ซีอิ๊ว ซอสหอยนางรม ซอสปรุงรส น้ำตาล เกลือ
+        พริกไทย น้ำมันพืช ผงปรุงรส น้ำเปล่า) ใช้ได้เลยแม้ไม่อยู่ในรายการวัตถุดิบที่มี
+        ให้ใส่ "is_staple": true และใช้หน่วยครัว เช่น ช้อนโต๊ะ ช้อนชา ได้
+        (กติกาเรื่องหน่วยด้านบนใช้กับวัตถุดิบหลักเท่านั้น ไม่ใช้กับเครื่องปรุงพื้นฐาน)
 
         ตอบกลับมาเป็น JSON Array เท่านั้น ตามรูปแบบนี้เป๊ะๆ:
         [
@@ -252,7 +236,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
             "servings": "จำนวนที่ได้ (เช่น 2 ที่)",
             "ingredients_used": ["วัตถุดิบหลัก1", "วัตถุดิบหลัก2"],
             "detailed_ingredients": [
-              {"name": "ชื่อวัตถุดิบให้ตรงกับที่มีเป๊ะๆ", "use_quantity": จำนวนเลข(ใส่แค่เลข), "unit": "หน่วยเดียวกับวัตถุดิบที่มี"}
+              {"name": "ชื่อวัตถุดิบให้ตรงกับที่มีเป๊ะๆ", "use_quantity": จำนวนเลข(ใส่แค่เลข), "unit": "หน่วยเดียวกับวัตถุดิบที่มี", "is_staple": false}
             ],
             "instructions": [
               "1. ขั้นตอนแรก...",
@@ -266,6 +250,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
       // Gemini ตอบ 503 "high demand" ได้เป็นพักๆ ลองใหม่อัตโนมัติก่อนแจ้ง error
       final response = await generateGemini(
         apiKey: apiKey,
+        logEvent: AiEvent.generateMenu,
         content: [
           Content.multi([prompt]),
         ],
@@ -278,27 +263,31 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
             .replaceAll('```', '')
             .trim();
         dynamic decoded = jsonDecode(cleanJson);
+        // เมนูที่ AI คิดให้ทั้งเมนู -> เวลาและจำนวนที่เป็นค่าที่ AI ประมาณเอง
+        for (final r in decoded is List ? decoded : [decoded]) {
+          if (r is Map) {
+            r['time_estimated'] = true;
+            r['servings_estimated'] = true;
+          }
+        }
+
+        final aiRecipes = [
+          for (final r in decoded is List ? decoded : [decoded])
+            if (r is Map) Map<String, dynamic>.from(r),
+        ];
+        // ===== 3) เก็บเมนูจาก AI ลงคลังสูตรกลาง ครั้งหน้าจะได้ไม่ต้องเรียก AI =====
+        for (final r in aiRecipes) {
+          final id = await RecipeRepository.saveAiRecipe(
+            r,
+            dietTags: [if (_selectedCategory != 'ทั้งหมด') _selectedCategory],
+          );
+          if (id != null) r['recipe_id'] = id;
+        }
 
         setState(() {
-          if (decoded is List) {
-            _generatedRecipes = decoded;
-          } else if (decoded is Map) {
-            _generatedRecipes = [decoded];
-          }
+          _generatedRecipes = [...fromLibrary, ...aiRecipes];
         });
-
-        // เก็บเมนูใหม่เข้าคลังกลาง ให้ครั้งถัดไป (และผู้ใช้คนอื่น) ไม่ต้องเรียก Gemini ซ้ำ
-        GlobalRecipeService.cacheRecipesInBackground(
-          _generatedRecipes.whereType<Map>().map(Map<String, dynamic>.from),
-          source: 'ai_generated',
-          dietTags: _dietTagsForFilter(),
-        );
       }
-      GlobalRecipeService.log(
-        eventType: 'generate_menu',
-        result: 'gemini',
-        usage: response.usageMetadata,
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -314,7 +303,9 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFD8EEFF), // ฟ้าอ่อนให้ตรงกับดีไซน์ใหม่ทั้งแอป
+      backgroundColor: const Color(
+        0xFFD8EEFF,
+      ), // ฟ้าอ่อนให้ตรงกับดีไซน์ใหม่ทั้งแอป
       bottomNavigationBar: const AppBottomNav(current: AppTab.menu),
       body: _isLoadingData
           ? const Center(
@@ -357,26 +348,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Container(
-                          height: 50,
-                          width: 50,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 5,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const InkWell(
-                            customBorder: CircleBorder(),
-                            child: Center(child: FilterIcon(size: 20)),
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -386,7 +357,10 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: Text(
                       "สร้างเมนูจากวัตถุดิบที่มี โดยใช้ของที่เก็บได้อีกน้อยวันก่อน",
-                      style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 ),
@@ -534,7 +508,8 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                                           e,
                                           _selectedCategory,
                                           (v) => setState(
-                                              () => _selectedCategory = v),
+                                            () => _selectedCategory = v,
+                                          ),
                                         ),
                                       )
                                       .toList(),
@@ -572,8 +547,8 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                                         (e) => _buildFilterChip(
                                           e,
                                           _selectedTime,
-                                          (v) => setState(
-                                              () => _selectedTime = v),
+                                          (v) =>
+                                              setState(() => _selectedTime = v),
                                         ),
                                       )
                                       .toList(),
@@ -625,29 +600,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                             fontSize: 18,
                           ),
                         ),
-                        if (_fromLibrary && _generatedRecipes.isNotEmpty)
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  "เมนูจากคลังสูตรที่ทำได้จากของในตู้เย็น",
-                                  style: TextStyle(
-                                    color: Colors.grey.shade700,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: _isGenerating
-                                    ? null
-                                    : () => _generateRecipes(forceAi: true),
-                                child: const Text(
-                                  "ให้ AI คิดเมนูใหม่",
-                                  style: TextStyle(color: Color(0xff5189C9)),
-                                ),
-                              ),
-                            ],
-                          ),
                         const SizedBox(height: 10),
                       ],
                     ),
@@ -727,8 +679,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   // Widget การ์ดเมนูอาหาร — ตรงกับดีไซน์ Figma (avatar กลม + tag แบบขอบ)
   Widget _buildRecipeCard(Map<String, dynamic> recipe) {
     List<dynamic> tags = recipe['ingredients_used'] ?? [];
-    // เมนูจากคลังกลางอาจขาดวัตถุดิบได้ 1 อย่าง — บอกให้ผู้ใช้รู้ก่อนกดเข้าไป
-    final List<dynamic> missing = recipe['missing_ingredients'] ?? [];
 
     return GestureDetector(
       onTap: () async {
@@ -740,6 +690,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
               recipe: recipe,
               inventory: _inventory,
               headerTitle: "เมนูแนะนำ",
+              tab: AppTab.menu,
             ),
           ),
         );
@@ -793,6 +744,18 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  // เมนูจากคลังสูตรกลาง (ไม่ได้เรียก AI)
+                  if (recipe['from_library'] == true) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      "📖 จากคลังสูตร",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Color(0xff3F9142),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 6),
                   Row(
                     children: [
@@ -811,16 +774,6 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                       ),
                     ],
                   ),
-                  if (missing.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      "ขาด: ${missing.join(', ')}",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.orange.shade800,
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 10),
                   // Tags วัตถุดิบ
                   Wrap(

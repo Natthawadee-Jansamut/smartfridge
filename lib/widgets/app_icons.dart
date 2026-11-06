@@ -33,7 +33,7 @@ class ViewfinderIcon extends StatelessWidget {
   }
 }
 
-/// ไอคอน "ถ่ายรูปวัตถุดิบ" (กรอบมุม viewfinder + รูปแอปเปิ้ล) ตรงตัวจาก Figma
+/// ไอคอน "ถ่ายภาพวัตถุดิบ" (กรอบมุม viewfinder + รูปแอปเปิ้ล) ตรงตัวจาก Figma
 /// (ต้นฉบับชื่อ hugeicons:meal-scan) — วางไว้ในหน้าเลือกสแกน
 class MealScanIcon extends StatelessWidget {
   final double size;
