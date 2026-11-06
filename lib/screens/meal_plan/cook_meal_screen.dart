@@ -38,6 +38,9 @@ class _CookMealScreenState extends State<CookMealScreen> {
   Map<String, dynamic>? meal;
   bool loading = true;
   bool saving = false;
+
+  /// มื้อนี้กด "ทำแล้ว" (หักวัตถุดิบ) ไปแล้ว -> ห้ามกดซ้ำ
+  bool get _cooked => meal?['is_cooked'] == true;
   bool recalculating = false;
 
   final Map<String, String> _dayThai = const {
@@ -536,13 +539,43 @@ class _CookMealScreenState extends State<CookMealScreen> {
 
     setState(() => saving = true);
 
+    // จองสถานะ "ทำแล้ว" ก่อนหักของ — อัปเดตเฉพาะเมื่อยังไม่เคยทำ (เงื่อนไขอยู่ใน
+    // คำสั่งเดียวกัน) ถ้าไม่มีแถวถูกอัปเดต แปลว่ามื้อนี้ทำไปแล้ว (เปิดหน้าค้างไว้,
+    // กดซ้ำเร็วๆ หรือกดจากอีกเครื่อง) -> ไม่หักวัตถุดิบซ้ำ
+    final List claimed;
     try {
-      final result = await _deductFridgeIngredients(fridgeItems, choices);
-
-      await supabase
+      claimed = await supabase
           .from('weekly_meals')
           .update({'is_cooked': true})
-          .eq('id', widget.mealId);
+          .eq('id', widget.mealId)
+          .not('is_cooked', 'is', true)
+          .select('id');
+    } catch (e) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("บันทึกไม่สำเร็จ: $e")));
+      }
+      return;
+    }
+    if (claimed.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        saving = false;
+        meal = {...?meal, 'is_cooked': true};
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("มื้อนี้ทำไปแล้ว ไม่ได้หักวัตถุดิบซ้ำ"),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    try {
+      final result = await _deductFridgeIngredients(fridgeItems, choices);
 
       if (!mounted) return;
 
@@ -573,6 +606,13 @@ class _CookMealScreenState extends State<CookMealScreen> {
       );
       Navigator.pop(context, true);
     } catch (e) {
+      // หักของล้มเหลวทั้งก้อน -> คืนสถานะ "ยังไม่ทำ" ให้กดใหม่ได้
+      try {
+        await supabase
+            .from('weekly_meals')
+            .update({'is_cooked': false})
+            .eq('id', widget.mealId);
+      } catch (_) {}
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -1025,6 +1065,29 @@ class _CookMealScreenState extends State<CookMealScreen> {
       // ดูสูตรก่อนบันทึกแพลน -> ไม่มีปุ่ม "ทำแล้ว" (กลับด้วยปุ่มย้อนกลับด้านบน)
       bottomNavigationBar: loading || widget.previewOnly
           ? null
+          : _cooked
+          // ทำไปแล้ว -> ไม่มีปุ่ม "ทำแล้ว" ให้กดซ้ำ (กันหักวัตถุดิบซ้ำ)
+          ? SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Color(0xff3F9142)),
+                    SizedBox(width: 8),
+                    Text(
+                      "ทำมื้อนี้แล้ว (หักวัตถุดิบไปแล้ว)",
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
+            )
           : Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
               child: Row(
