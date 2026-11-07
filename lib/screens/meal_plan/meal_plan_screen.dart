@@ -12,6 +12,7 @@ import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/plan_allocation.dart';
 import 'package:test_app/services/diet_check.dart';
+import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -235,10 +236,19 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           )
           .toList();
       matched.shuffle();
+      // คะแนนความเหมาะกับเป้าหมาย (ลดน้ำหนัก: โปรตีนต่อแคลอรีสูง,
+      // เพิ่มกล้ามเนื้อ: โปรตีนสูง) ทุกเมนูอยู่ในช่วงเป้าต่อมื้ออยู่แล้ว
+      double goalScore(Map m) => PlanGoal.score(
+        goal,
+        RecipeRepository.toNum(m['calories']),
+        RecipeRepository.toNum(m['protein']),
+      );
+      // ใช้ของที่ควรใช้ก่อนมาก่อน แล้วค่อยเลือกเมนูที่เหมาะกับเป้าหมาย
       matched.sort((a, b) {
         final aExp = usesExpiringIngredient(a['ingredients'] as List) ? 0 : 1;
         final bExp = usesExpiringIngredient(b['ingredients'] as List) ? 0 : 1;
-        return aExp.compareTo(bExp);
+        if (aExp != bExp) return aExp.compareTo(bExp);
+        return goalScore(b).compareTo(goalScore(a));
       });
 
       // ช่องมื้ออาหารทั้งสัปดาห์ (วัน x จำนวนมื้อต่อวัน)
@@ -342,6 +352,24 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             if (!DietCheck.fits(diet, names)) return false;
             return fitsMealTarget(r['calories'], r['protein']);
           }).toList();
+          // คงลำดับเดิม (ซื้อเพิ่มน้อยก่อน -> ใช้ของที่ควรใช้ก่อน) แล้วค่อยเลือก
+          // เมนูที่เหมาะกับเป้าหมายก่อนในกลุ่มเดียวกัน
+          final libOrder = {
+            for (var i = 0; i < suitable.length; i++) suitable[i]: i,
+          };
+          suitable.sort((a, b) {
+            final byMissing = (a['missing'] as List).length.compareTo(
+              (b['missing'] as List).length,
+            );
+            if (byMissing != 0) return byMissing;
+            final byFirst =
+                (b['uses_first'] == true ? 1 : 0) -
+                (a['uses_first'] == true ? 1 : 0);
+            if (byFirst != 0) return byFirst;
+            final byGoal = goalScore(b).compareTo(goalScore(a));
+            if (byGoal != 0) return byGoal;
+            return libOrder[a]!.compareTo(libOrder[b]!);
+          });
           for (final r in suitable) {
             if (freeSlots.isEmpty) break;
             final slot = freeSlots.first;

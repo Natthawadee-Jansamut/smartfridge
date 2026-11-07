@@ -8,6 +8,7 @@ import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
@@ -27,6 +28,7 @@ class MealRegenerate {
     required bool fridgeOnly,
     String? hint,
     String? dietType,
+    String? goal,
   }) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
@@ -61,7 +63,7 @@ class MealRegenerate {
           requireNutrition: true,
           excludeNames: {...otherNames, oldName},
         );
-        final pick = candidates.where((r) {
+        final fitting = candidates.where((r) {
           if (dietType != null &&
               dietType != 'ไม่มี' &&
               !(r['diet_tags'] as List).contains(dietType)) {
@@ -74,7 +76,17 @@ class MealRegenerate {
           if (!DietCheck.fits(dietType, names)) return false;
           final cal = RecipeRepository.toNum(r['calories']);
           return oldCal <= 0 || (cal >= oldCal * 0.65 && cal <= oldCal * 1.35);
-        }).firstOrNull;
+        }).toList();
+        // เลือกเมนูที่เหมาะกับเป้าหมายของแพลนก่อน (คะแนนเท่ากัน = คงลำดับเดิม)
+        double goalScore(Map<String, dynamic> r) => PlanGoal.score(
+          goal,
+          RecipeRepository.toNum(r['calories']),
+          RecipeRepository.toNum(r['protein']),
+        );
+        Map<String, dynamic>? pick;
+        for (final r in fitting) {
+          if (pick == null || goalScore(r) > goalScore(pick)) pick = r;
+        }
         if (pick != null) {
           final libIngredients = [
             for (final ing in RecipeRepository.ingredientsOf(pick))
