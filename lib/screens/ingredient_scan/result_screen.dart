@@ -406,6 +406,24 @@ class _ResultScreenState extends State<ResultScreen> {
       return;
     }
 
+    // ช่องแช่แข็งของที่ไม่มีข้อมูล (กรอกเอง) ไม่มีค่าเริ่มต้น ต้องให้ผู้ใช้กรอกจำนวนวัน
+    final missingDays = [
+      for (final item in widget.foundItems)
+        if ((int.tryParse('${item['expiry_days']}') ?? 0) <= 0)
+          (item['name'] ?? '').toString().trim(),
+    ];
+    if (missingDays.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'กรุณากรอกจำนวนวันที่เก็บได้ของ: ${missingDays.join(', ')}',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -611,8 +629,8 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     });
 
     expiryController.addListener(() {
-      int? val = int.tryParse(expiryController.text);
-      if (val != null) widget.onUpdate('expiry_days', val);
+      // ว่าง = ยังไม่ได้กรอก (ช่องแช่แข็งของที่ไม่มีข้อมูล) -> ตอนบันทึกจะเตือนให้กรอก
+      widget.onUpdate('expiry_days', int.tryParse(expiryController.text));
       // จำไว้ว่าผู้ใช้แก้จำนวนวันเองหรือไม่ เพื่อบอกที่มาให้ถูก (และบันทึกเป็น
       // "กำหนดเองโดยผู้ใช้" ตอนบันทึก)
       widget.onUpdate('expiry_custom', _isCustomDays);
@@ -855,16 +873,16 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     widget.onUpdate('storage', storage);
     widget.onUpdate('food_state', foodState);
     widget.onUpdate('fridge_days', shelfLife.fridgeDays);
-    // ไม่มีข้อมูลช่องแช่แข็งแต่ผู้ใช้เลือกแช่แข็ง: ใช้จำนวนวันเท่าช่องปกติ (ไม่ต่อเวลา)
+    // ไม่มีข้อมูลช่องแช่แข็งแต่ผู้ใช้เลือกแช่แข็ง: ใช้จำนวนวันที่ AI ประเมิน (ของที่สแกน)
+    // หรือที่ผู้ใช้กรอกเอง — แอปไม่เดาตัวเลขให้
     widget.onUpdate(
       'freezer_days',
       shelfLife.freezerDays ??
-          (storage == storageFreezer ? shelfLife.fridgeDays : null),
+          (storage == storageFreezer
+              ? int.tryParse(expiryController.text)
+              : null),
     );
-    widget.onUpdate(
-      'expiry_days',
-      int.tryParse(expiryController.text) ?? shelfLife.fridgeDays,
-    );
+    widget.onUpdate('expiry_days', int.tryParse(expiryController.text));
   }
 
   // เปลี่ยนช่องที่เก็บ/สถานะแล้ว คำนวณวันหมดอายุเริ่มต้นใหม่ตามตาราง
@@ -873,12 +891,25 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       if (newState != null) foodState = newState;
       shelfLife = _resolve();
       if (newStorage != null) storage = newStorage;
-      expiryController.text = _defaultDays.toString();
+      expiryController.text = _defaultDays?.toString() ?? '';
     });
     _pushShelfLife();
   }
 
-  int get _defaultDays => shelfLife.daysFor(storage) ?? shelfLife.fridgeDays;
+  /// จำนวนวันเริ่มต้น: ตามตาราง — ช่องแช่แข็งของที่ไม่มีข้อมูล: ของที่สแกนใช้ค่าที่ AI
+  /// ประเมิน ส่วนของที่กรอกเองไม่มีค่าเริ่มต้น (null) ให้ผู้ใช้กรอกเอง
+  int? get _defaultDays {
+    final table = shelfLife.daysFor(storage);
+    if (table != null) return table;
+    return storage == storageFreezer ? _aiFreezerDays : shelfLife.fridgeDays;
+  }
+
+  /// จำนวนวันช่องแช่แข็งที่ AI ประเมินจากรูป (ของที่กรอกเองไม่มี)
+  int? get _aiFreezerDays {
+    if (_isManual) return null;
+    final v = num.tryParse('${widget.initialData['gemini_freezer_days']}');
+    return (v == null || v <= 0) ? null : v.round();
+  }
 
   /// ประเภทนี้มีข้อมูลช่องแช่แข็งไหม — ไม่รู้ประเภท: กรอกเองไม่เตือน (ไม่รู้ว่าเป็น
   /// อะไร), สแกนแล้ว AI บอกว่าไม่ควรแช่แข็ง (ไม่ให้จำนวนวันมา) ก็เตือน
@@ -930,7 +961,10 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   // AI ประเมินให้ / ผู้ใช้กำหนดเอง ผู้ใช้จะได้รู้ว่าตัวเลขเชื่อได้แค่ไหน
   Widget _buildShelfSource() {
     final stateText = foodState.isEmpty ? "" : " ($foodState)";
-    final defaultText = formatShelfDays(_defaultDays);
+    final defaultText = _defaultDays == null
+        ? ""
+        : formatShelfDays(_defaultDays!);
+    final noFreezerData = storage == storageFreezer && !_freezerRecommended;
 
     final IconData icon;
     final Color color;
@@ -940,18 +974,27 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       icon = Icons.edit_outlined;
       color = const Color(0xff5189C9);
       title = "คุณกำหนดเอง";
-      detail = "ค่าแนะนำคือ $defaultText";
+      detail = noFreezerData
+          ? (_defaultDays == null
+                ? freezerNotRecommendedText
+                : "AI ประเมินไว้ $defaultText · $freezerNotRecommendedText")
+          : "ค่าแนะนำคือ $defaultText";
+    } else if (noFreezerData) {
+      // ไม่มีข้อมูลอ้างอิงช่องแช่แข็ง -> ไม่บอกแหล่งที่มา ไม่เดาจำนวนวันให้
+      icon = Icons.warning_amber_rounded;
+      color = const Color(0xffE67E22);
+      if (_defaultDays == null) {
+        title = freezerNotRecommendedText;
+        detail = "ไม่มีข้อมูลสำหรับช่องแช่แข็ง กรอกจำนวนวันที่เก็บได้เอง";
+      } else {
+        title = "AI ประเมินให้ว่าเก็บได้ $defaultText";
+        detail = "$freezerNotRecommendedText ควรตรวจสอบอีกครั้ง";
+      }
     } else if (_isManual && shelfType == null) {
       icon = Icons.info_outline;
       color = const Color(0xffE67E22);
       title = "ค่าเริ่มต้น $defaultText";
       detail = "เลือกประเภทวัตถุดิบ หรือแก้จำนวนวันให้ตรงกับของจริง";
-    } else if (storage == storageFreezer && !_freezerRecommended) {
-      // ไม่มีข้อมูลช่องแช่แข็ง -> ไม่บอกแหล่งที่มา แค่เตือนว่าไม่แนะนำ
-      icon = Icons.warning_amber_rounded;
-      color = const Color(0xffE67E22);
-      title = "${storageLabel(storage)} นับเก็บได้ $defaultText เท่าช่องปกติ";
-      detail = freezerNotRecommendedText;
     } else if (shelfType != null) {
       icon = Icons.verified_outlined;
       color = const Color(0xff3F9142);
@@ -1105,10 +1148,13 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
 
   @override
   Widget build(BuildContext context) {
-    int daysToAdd = int.tryParse(expiryController.text) ?? 7;
-    final expiryDate = DateTime.now().add(Duration(days: daysToAdd));
-    final expiryDateString =
-        "${expiryDate.day}/${expiryDate.month}/${expiryDate.year + 543}";
+    final daysToAdd = int.tryParse(expiryController.text);
+    final expiryDate = daysToAdd == null
+        ? null
+        : DateTime.now().add(Duration(days: daysToAdd));
+    final expiryDateString = expiryDate == null
+        ? "-"
+        : "${expiryDate.day}/${expiryDate.month}/${expiryDate.year + 543}";
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1246,6 +1292,11 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
                             isDense: true,
                             contentPadding: EdgeInsets.zero,
                             suffixText: "วัน",
+                            hintText: "กรอกจำนวนวัน",
+                            hintStyle: TextStyle(
+                              fontWeight: FontWeight.normal,
+                              color: Colors.black38,
+                            ),
                           ),
                           onChanged: (val) => setState(() {}),
                         ),
