@@ -242,8 +242,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     child: Text(
                       isPortion
                           ? '1 ส่วน = ใช้ทำอาหารได้ 1 ครั้ง ทำอาหาร 1 ครั้งหัก 1 ส่วน'
-                          : 'ทำอาหาร 1 ครั้ง ระบบจะเสนอให้หักตาม "ใช้ครั้งละ" '
-                                '(ถ้าสูตรบอกจำนวน$pieceUnitไว้ จะใช้ตามสูตร)',
+                          : 'ทำอาหาร 1 ครั้ง หักตาม "ใช้ครั้งละ"',
                       style: const TextStyle(
                         fontSize: 12,
                         color: Colors.black54,
