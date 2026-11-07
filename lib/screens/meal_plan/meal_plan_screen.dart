@@ -9,6 +9,7 @@ import 'package:test_app/widgets/app_icons.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -201,27 +202,22 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         });
       }
 
-      // เป้าแคลอรีต่อวันคือ "เพดาน" ที่ผู้ใช้ตั้ง (ห้ามเกิน) แบ่งเท่ากันทุกมื้อ
-      // ทุกมื้อไม่เกินเพดานต่อมื้อ -> ทั้งวันไม่เกินเป้าแน่นอน
-      // ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
+      // เป้าต่อวันเป็นเพดาน: ยอดรวมทั้งวันห้ามเกิน และขาดได้ไม่เกิน 100 kcal / 10 g
+      // (ดู PlanTargets) ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
       final targetCal = int.tryParse(calorieController.text) ?? 2000;
       final targetProtein = int.tryParse(proteinController.text) ?? 100;
-      final perMealCal = meals > 0 ? targetCal / meals : 0;
-      final perMealProtein = meals > 0 ? targetProtein / meals : 0;
-      // เผื่อปัดเศษตัวเลขจาก AI เล็กน้อย (เช่น เพดาน 500 ตอบ 505)
-      final mealCalCap = perMealCal * 1.02;
+      final targets = PlanTargets(
+        dayCal: targetCal,
+        dayProtein: targetProtein,
+        meals: meals,
+      );
 
-      // ขอบล่าง: แคลอรี >= 85% ของเพดานต่อมื้อ และโปรตีน >= 80% ของเป้าต่อมื้อ
-      // (ไม่ให้วันไหนขาดเป้ามาก) ขอบบน: ไม่เกินเพดาน
-      bool fitsMealTarget(dynamic calories, dynamic protein) {
-        final cal = RecipeRepository.toNum(calories);
-        final pro = RecipeRepository.toNum(protein);
-        if (perMealCal > 0 && (cal < perMealCal * 0.85 || cal > mealCalCap)) {
-          return false;
-        }
-        if (perMealProtein > 0 && pro < perMealProtein * 0.8) return false;
-        return true;
-      }
+      // เมนูเก่า/เมนูจากคลังสูตรใช้ได้เฉพาะที่อยู่ในช่วงต่อมื้อ ทั้งแคลอรีและโปรตีน
+      bool fitsMealTarget(dynamic calories, dynamic protein) =>
+          targets.mealFits(
+            RecipeRepository.toNum(calories),
+            RecipeRepository.toNum(protein),
+          );
 
       // เมนูเก่าที่วัตถุดิบครบพอใช้ได้เลยตอนนี้ และขนาดมื้อใกล้เป้า — สุ่มลำดับก่อน
       // แล้วเอาเมนูที่ใช้ของที่อยู่ในตู้เย็นนานขึ้นก่อน เพื่อความหลากหลายและช่วยเคลียร์ของเก่า
@@ -380,13 +376,34 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           .where((n) => n.isNotEmpty)
           .join(", ");
 
-      // ให้ Gemini สร้างเมนูสำหรับช่องที่กำหนด [extraRule] ใช้ตอนขอแก้มื้อที่เกินเพดาน
+      String r(num v) => v.round().toString();
+
+      // ช่องมื้อพร้อมช่วงแคลอรี/โปรตีนที่มื้อนั้นต้องอยู่
+      Map<String, dynamic> budgetSlot(
+        Map slot, {
+        required num calMin,
+        required num calMax,
+        required num proteinMin,
+        required num proteinMax,
+      }) => {
+        'day': slot['day'].toString(),
+        'meal_type': slot['meal_type'].toString(),
+        'kcal': '${r(calMin)}-${calMax.floor()}',
+        'protein': '${r(proteinMin)}-${proteinMax.floor()}',
+      };
+
+      // ให้ Gemini สร้างเมนูสำหรับช่องที่กำหนด (แต่ละช่องมีช่วง kcal/protein ของตัวเอง)
+      // [extraRule] ใช้ตอนขอแก้วันที่ยอดรวมไม่ตรงเป้า
       Future<List<dynamic>> askGemini(
-        List<Map<String, String>> slots, {
+        List<Map<String, dynamic>> slots, {
         String extraRule = '',
       }) async {
         final slotsJson = slots
-            .map((s) => '{"day":"${s['day']}","meal_type":"${s['meal_type']}"}')
+            .map(
+              (s) =>
+                  '{"day":"${s['day']}","meal_type":"${s['meal_type']}",'
+                  '"kcal":"${s['kcal']}","protein":"${s['protein']}"}',
+            )
             .join(",\n");
 
         final prompt =
@@ -418,13 +435,13 @@ $goal
 
 Calories:
 
-ไม่เกิน $targetCal kcal ต่อวัน = ไม่เกิน ${perMealCal.floor()} kcal ต่อมื้อ (เป็นเพดานที่ผู้ใช้ตั้ง ห้ามเกิน)
+ยอดรวมทั้งวัน ${targetCal - PlanTargets.calTolerance}-$targetCal kcal (เป้าที่ผู้ใช้ตั้งเป็นเพดาน ห้ามเกิน)
 
 
 
 Protein:
 
-$targetProtein g ต่อวัน (ประมาณ ${perMealProtein.round()} g ต่อมื้อ)
+ยอดรวมทั้งวัน ${targetProtein - PlanTargets.proteinTolerance}-$targetProtein g (ห้ามเกิน)
 
 
 
@@ -435,7 +452,8 @@ $diet
 
 
 สร้างเมนูเฉพาะสำหรับช่องต่อไปนี้เท่านั้น จำนวน ${slots.length} มื้อ
-(ระบุ day และ meal_type ให้ตรงกับที่กำหนดมาเป๊ะๆ ห้ามเพิ่มหรือลดจำนวน):
+(ระบุ day และ meal_type ให้ตรงกับที่กำหนดมาเป๊ะๆ ห้ามเพิ่มหรือลดจำนวน
+แต่ละช่องมี "kcal" และ "protein" เป็นช่วงที่มื้อนั้นต้องอยู่ ห้ามต่ำกว่าหรือเกินช่วง):
 
 [
 $slotsJson
@@ -469,11 +487,11 @@ ${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่
   (พยายามเลือกเมนู/ปริมาณให้ใกล้เป้าที่สุดเท่าที่วัตถุดิบจริงทำได้)
 - แต่ละมื้อต้องเป็นมื้ออาหารเต็มมื้อ ไม่ใช่ของว่างเล็กๆ (เช่น ไข่ 1/4 ฟอง + ผลไม้ 1/4 ลูก ไม่นับเป็นมื้อ)
   มีแหล่งโปรตีน (เนื้อสัตว์ ไข่ เต้าหู้ ถั่ว ฯลฯ) และแหล่งพลังงาน (ข้าว เส้น ขนมปัง ฯลฯ) ทุกมื้อ
-- แคลอรีแต่ละมื้อห้ามเกิน ${perMealCal.floor()} kcal เด็ดขาด (เป้าต่อวันเป็นเพดาน)
-  ให้อยู่ราว ${(perMealCal * 0.85).round()}-${perMealCal.floor()} kcal ถ้าเกินให้ลดปริมาณข้าว/น้ำมัน/ของทอด
-  หรือเปลี่ยนเป็นเนื้อสัตว์ไขมันต่ำ (อกไก่ ปลา ไข่ขาว เต้าหู้) แทน
-${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงเป้าโปรตีน ให้ใช้แหล่งโปรตีนที่มีมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- โปรตีนแต่ละมื้อให้ใกล้เป้าต่อมื้อ ถ้าของในตู้ไม่พอ ให้ซื้อแหล่งโปรตีนเพิ่ม
-  (เช่น อกไก่ ไข่ไก่ เต้าหู้ ปลา) ใส่ "to_buy": true ห้ามปล่อยมื้อให้ขาดเป้ามากเพียงเพราะไม่อยากซื้อของ'''}
+- calories และ protein ของแต่ละมื้อต้องอยู่ในช่วง "kcal" และ "protein" ของช่องนั้น ทั้งสองอย่าง
+  ปรับปริมาณให้ลงช่วง: แคลอรีเกิน -> ลดข้าว/น้ำมัน/ของทอด, โปรตีนเกิน -> ลดเนื้อสัตว์ เพิ่มข้าว/ผักแทน,
+  โปรตีนขาด -> เพิ่มเนื้อสัตว์ไขมันต่ำ (อกไก่ ปลา ไข่ขาว เต้าหู้)
+${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ใช้ปริมาณมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ซื้อเพิ่ม (โดยเฉพาะแหล่งโปรตีน เช่น อกไก่ ไข่ไก่ เต้าหู้ ปลา)
+  ใส่ "to_buy": true ห้ามปล่อยมื้อให้ขาดช่วงเพียงเพราะไม่อยากซื้อของ'''}
 $extraRule
 - ระบุ steps เป็นขั้นตอนการทำอาหารแบบละเอียด เรียงเป็นข้อๆ (array ของ string ภาษาไทย)
 - ส่งออก JSON เท่านั้น
@@ -523,62 +541,109 @@ $extraRule
       }
 
       if (remainingSlots.isNotEmpty) {
-        geminiMeals = await askGemini(remainingSlots);
+        // ช่วงต่อมื้อของช่องที่ให้ AI ทำ: วันที่มีเมนูจากคลังอยู่แล้วบางมื้อ แบ่งงบที่เหลือ
+        // ของวันนั้นให้มื้อที่เหลือ (มื้อจากคลังอยู่ในช่วงต่อมื้ออยู่แล้ว)
+        final fixedMeals = [...reusedMeals, ...libraryMeals];
+        List<Map<String, dynamic>> budgetFor(
+          List<Map> slots,
+          List<Map> keptMeals,
+        ) {
+          final out = <Map<String, dynamic>>[];
+          final byDay = <String, List<Map>>{};
+          for (final s in slots) {
+            byDay.putIfAbsent(s['day'].toString(), () => []).add(s);
+          }
+          byDay.forEach((day, daySlots) {
+            final kept = keptMeals.where((m) => m['day'] == day);
+            final b = targets.slotBudget(
+              fixedCal: kept.fold<num>(
+                0,
+                (a, m) => a + RecipeRepository.toNum(m['calories']),
+              ),
+              fixedProtein: kept.fold<num>(
+                0,
+                (a, m) => a + RecipeRepository.toNum(m['protein']),
+              ),
+              slots: daySlots.length,
+            );
+            for (final s in daySlots) {
+              out.add(
+                budgetSlot(
+                  s,
+                  calMin: b.calMin,
+                  calMax: b.calMax,
+                  proteinMin: b.proteinMin,
+                  proteinMax: b.proteinMax,
+                ),
+              );
+            }
+          });
+          return out;
+        }
 
-        // ตรวจผล: มื้อจาก AI ที่เกินเพดาน หรือต่ำกว่าเป้ามาก (แคลอรี < 80% /
-        // โปรตีน < 70% ของเป้าต่อมื้อ) ขอให้ทำใหม่ 1 รอบ แล้วใช้ผลที่ใกล้เป้ากว่า
+        geminiMeals = await askGemini(budgetFor(remainingSlots, fixedMeals));
+
+        // ตรวจยอดรวมรายวัน: วันที่หลุดช่วง (เกินเป้า หรือขาดเกิน 100 kcal / 10 g)
+        // ให้ AI ทำมื้อของวันนั้นใหม่ด้วยงบที่เหลือจริง สูงสุด 2 รอบ ใช้ผลที่ใกล้ช่วงกว่า
         // ยังไม่ผ่านอีก หน้าแพลนจะขึ้น "เกิน"/"ขาด" ให้เห็น
-        bool offTarget(Map m) {
-          final cal = RecipeRepository.toNum(m['calories']);
-          final pro = RecipeRepository.toNum(m['protein']);
-          return cal > mealCalCap ||
-              cal < perMealCal * 0.8 ||
-              pro < perMealProtein * 0.7;
+        ({num cal, num protein}) dayTotal(String day) {
+          num cal = 0, pro = 0;
+          for (final m in [...fixedMeals, ...geminiMeals.whereType<Map>()]) {
+            if (m['day'] != day) continue;
+            cal += RecipeRepository.toNum(m['calories']);
+            pro += RecipeRepository.toNum(m['protein']);
+          }
+          return (cal: cal, protein: pro);
         }
 
-        // ระยะห่างจากเป้า (เกินเพดานถือว่าแย่กว่าขาดเท่ากัน 3 เท่า)
-        num distance(Map m) {
-          final cal = RecipeRepository.toNum(m['calories']);
-          final pro = RecipeRepository.toNum(m['protein']);
-          final calGap = cal > perMealCal
-              ? (cal - perMealCal) * 3
-              : perMealCal - cal;
-          final proGap = pro < perMealProtein ? (perMealProtein - pro) * 10 : 0;
-          return calGap + proGap;
-        }
+        for (var round = 0; round < 2; round++) {
+          final badDays =
+              {
+                for (final m in geminiMeals.whereType<Map>())
+                  m['day'].toString(),
+              }.where((d) {
+                final t = dayTotal(d);
+                return !targets.dayFits(t.cal, t.protein);
+              }).toList();
+          if (badDays.isEmpty) break;
 
-        final over = [
-          for (final m in geminiMeals.whereType<Map>())
-            if (offTarget(m)) m,
-        ];
-        if (over.isNotEmpty && perMealCal > 0) {
+          final redo = [
+            for (final m in geminiMeals.whereType<Map>())
+              if (badDays.contains(m['day'].toString())) m,
+          ];
           try {
             final fixed = await askGemini(
-              [
-                for (final m in over)
-                  {
-                    'day': m['day'].toString(),
-                    'meal_type': m['meal_type'].toString(),
-                  },
-              ],
+              budgetFor(redo, fixedMeals),
               extraRule:
-                  '- รอบนี้เป็นการแก้มื้อที่ไม่ตรงเป้า (เดิม: ${over.map((m) => '${m['food_name']} ${m['calories']} kcal โปรตีน ${m['protein']} g').join(', ')}) '
-                  'แต่ละมื้อต้องอยู่ ${(perMealCal * 0.85).round()}-${perMealCal.floor()} kcal '
-                  'และโปรตีนราว ${perMealProtein.round()} g ปรับปริมาณหรือเปลี่ยนเมนู',
+                  '- รอบนี้แก้วันที่ยอดรวมไม่ตรงเป้า (เดิม: ${badDays.map((d) {
+                    final t = dayTotal(d);
+                    return '$d ${r(t.cal)} kcal โปรตีน ${r(t.protein)} g';
+                  }).join(', ')}) ทำทุกมื้อให้อยู่ในช่วง kcal/protein ของช่องให้ได้',
             );
-            for (final f in fixed.whereType<Map>()) {
-              final i = geminiMeals.indexWhere(
-                (m) =>
-                    m is Map &&
-                    m['day'] == f['day'] &&
-                    m['meal_type'] == f['meal_type'],
-              );
-              if (i >= 0 && distance(f) < distance(geminiMeals[i] as Map)) {
-                geminiMeals[i] = f;
+            for (final day in badDays) {
+              final before = dayTotal(day);
+              final newMeals = fixed
+                  .whereType<Map>()
+                  .where((f) => f['day'] == day)
+                  .toList();
+              final oldMeals = [
+                for (final m in geminiMeals.whereType<Map>())
+                  if (m['day'] == day) m,
+              ];
+              if (newMeals.length != oldMeals.length) continue;
+              geminiMeals.removeWhere((m) => m is Map && m['day'] == day);
+              geminiMeals.addAll(newMeals);
+              final after = dayTotal(day);
+              if (targets.dayDistance(after.cal, after.protein) >=
+                  targets.dayDistance(before.cal, before.protein)) {
+                // ผลใหม่ไม่ดีกว่า -> ใช้ของเดิม
+                geminiMeals.removeWhere((m) => m is Map && m['day'] == day);
+                geminiMeals.addAll(oldMeals);
               }
             }
           } catch (e) {
-            debugPrint('แก้มื้อที่เกินเพดานไม่สำเร็จ (ใช้ผลเดิม): $e');
+            debugPrint('แก้วันที่ยอดรวมไม่ตรงเป้าไม่สำเร็จ (ใช้ผลเดิม): $e');
+            break;
           }
         }
 

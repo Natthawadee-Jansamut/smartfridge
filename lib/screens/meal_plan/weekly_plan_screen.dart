@@ -5,6 +5,7 @@ import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/screens/meal_plan/cook_meal_screen.dart';
 import 'package:test_app/screens/meal_plan/my_plan_screen.dart';
+import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/meal_nutrition.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -180,21 +181,21 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         ),
       );
     }
-    // warnOver: เป้าแคลอรีเป็นเพดานต่อวัน เกินเมื่อไรก็เตือน (เผื่อปัดเศษ 2%)
-    // โปรตีนเกินเป้าไม่เป็นไร
+    // ช่วงเดียวกับตอนสร้างแพลน (PlanTargets): เป้าเป็นเพดาน เกินเมื่อไรก็เตือน
+    // ขาดไม่เกิน [tolerance] ถือว่าถึงเป้า
     Widget row(
       String label,
       num value,
       num target,
       String unit,
       Color color, {
-      bool warnOver = false,
+      required num tolerance,
     }) {
       if (target <= 0) return const SizedBox.shrink();
       final ratio = (value / target).clamp(0.0, 1.0).toDouble();
       final gap = target - value;
-      final reached = value >= target * ShoppingSuggestion.shortfallRatio;
-      final over = warnOver && value > target * 1.02;
+      final reached = gap <= tolerance;
+      final over = value.round() > target;
       return Padding(
         padding: const EdgeInsets.only(top: 6),
         child: Column(
@@ -261,9 +262,16 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           targetCalories,
           "kcal",
           Colors.orange,
-          warnOver: true,
+          tolerance: PlanTargets.calTolerance,
         ),
-        row("โปรตีน", protein, targetProtein, "g", Colors.blue),
+        row(
+          "โปรตีน",
+          protein,
+          targetProtein,
+          "g",
+          Colors.blue,
+          tolerance: PlanTargets.proteinTolerance,
+        ),
       ],
     );
   }
