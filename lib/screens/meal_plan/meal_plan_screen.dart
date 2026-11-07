@@ -48,6 +48,15 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   final proteinController = TextEditingController();
 
+  // แจ้งเตือนช่องที่ยังไม่ได้กรอก แบบ Google Forms (ขอบแดง + ข้อความแดงใต้ช่อง)
+  // ขึ้นหลังกดสร้างแผน และหายเองเมื่อกรอกตัวเลขที่ใช้ได้
+  bool calorieError = false;
+  bool proteinError = false;
+  final _calorieKey = GlobalKey();
+  final _proteinKey = GlobalKey();
+
+  static bool _validTarget(String text) => (int.tryParse(text.trim()) ?? 0) > 0;
+
   Future<void> createMealPlan() async {
     final user = supabase.auth.currentUser;
 
@@ -61,11 +70,20 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         targetCal <= 0 ||
         targetProtein == null ||
         targetProtein <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("กรุณากรอก Calories และ Protein ต่อวันให้ครบ"),
-        ),
-      );
+      setState(() {
+        calorieError = targetCal == null || targetCal <= 0;
+        proteinError = targetProtein == null || targetProtein <= 0;
+      });
+      // เลื่อนหน้าจอไปที่ช่องแรกที่ยังไม่ได้กรอก
+      final firstError = calorieError ? _calorieKey : _proteinKey;
+      final ctx = firstError.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          alignment: 0.3,
+        );
+      }
       return;
     }
 
@@ -988,11 +1006,33 @@ $extraRule
 
               buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
 
-              buildInput("Calories ต่อวัน", calorieController, "kcal"),
+              buildInput(
+                "Calories ต่อวัน",
+                calorieController,
+                "kcal",
+                key: _calorieKey,
+                showError: calorieError,
+                onChanged: (v) {
+                  if (calorieError && _validTarget(v)) {
+                    setState(() => calorieError = false);
+                  }
+                },
+              ),
 
               const SizedBox(height: 15),
 
-              buildInput("Protein ต่อวัน", proteinController, "g"),
+              buildInput(
+                "Protein ต่อวัน",
+                proteinController,
+                "g",
+                key: _proteinKey,
+                showError: proteinError,
+                onChanged: (v) {
+                  if (proteinError && _validTarget(v)) {
+                    setState(() => proteinError = false);
+                  }
+                },
+              ),
 
               const SizedBox(height: 20),
 
@@ -1262,31 +1302,68 @@ $extraRule
     );
   }
 
+  /// ช่องกรอกตัวเลข — [showError] = ยังไม่ได้กรอก: ขอบแดง + ข้อความแดงใต้ช่อง
+  /// (แบบ Google Forms)
   Widget buildInput(
     String label,
 
     TextEditingController controller,
 
-    String suffix,
-  ) {
-    return Container(
-      decoration: boxDecoration(),
+    String suffix, {
+    Key? key,
+    bool showError = false,
+    ValueChanged<String>? onChanged,
+  }) {
+    const errorColor = Color(0xffD93025);
+    return Column(
+      key: key,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          decoration: boxDecoration().copyWith(
+            border: Border.all(
+              color: showError ? errorColor : Colors.white,
+              width: 1.5,
+            ),
+          ),
 
-      child: TextField(
-        controller: controller,
+          child: TextField(
+            controller: controller,
 
-        keyboardType: TextInputType.number,
+            onChanged: onChanged,
 
-        decoration: InputDecoration(
-          labelText: label,
+            keyboardType: TextInputType.number,
 
-          suffixText: suffix,
+            decoration: InputDecoration(
+              labelText: label,
 
-          border: InputBorder.none,
+              labelStyle: showError
+                  ? const TextStyle(color: errorColor)
+                  : null,
 
-          contentPadding: const EdgeInsets.all(15),
+              suffixText: suffix,
+
+              border: InputBorder.none,
+
+              contentPadding: const EdgeInsets.all(15),
+            ),
+          ),
         ),
-      ),
+        if (showError)
+          const Padding(
+            padding: EdgeInsets.only(left: 12, top: 6),
+            child: Row(
+              children: [
+                Icon(Icons.error_outline, size: 16, color: errorColor),
+                SizedBox(width: 6),
+                Text(
+                  "กรุณากรอกช่องนี้",
+                  style: TextStyle(fontSize: 13, color: errorColor),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
