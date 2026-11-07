@@ -72,12 +72,12 @@ class ShelfType {
 }
 
 // แหล่งอ้างอิง (สไลด์อายุการเก็บรักษา: S = springnews, B = The Beefchelor,
-// SU = SUPALAI) — ใส่ตามที่มาของตัวเลขแต่ละบรรทัด
+// SU = SUPALAI, M = Maeban) — ใส่ตามที่มาของตัวเลขแต่ละบรรทัด
 const String _srcSpring = 'springnews';
 const String _srcBeef = 'The Beefchelor';
 const String _srcSpringBeef = 'springnews, The Beefchelor';
 const String _srcSupalai = 'SUPALAI';
-const String _srcProduce = 'Maeban, SUPALAI';
+const String _srcMaeban = 'Maeban';
 
 /// หน่วยสำหรับ "นับเป็นชิ้น" (ของที่นับได้ ไม่ต้องชั่ง) — "แบ่งเป็นส่วน" ใช้
 /// หน่วย "ส่วน" ใช้ร่วมกันทั้งหน้าผลสแกนและหน้ารายละเอียด
@@ -212,31 +212,32 @@ const List<ShelfType> shelfTypes = [
     key: 'leafy_veg',
     label: 'ผักใบ',
     states: {'': ShelfLife(fridgeMin: 3, fridgeMax: 5)},
-    source: _srcProduce,
+    source: _srcMaeban,
   ),
   ShelfType(
     key: 'root_veg',
     label: 'ผักหัว',
     states: {'': ShelfLife(fridgeMin: 7, fridgeMax: 15)},
-    source: _srcProduce,
+    source: _srcMaeban,
   ),
   ShelfType(
     key: 'fruit',
     label: 'ผลไม้',
-    states: {'': ShelfLife(fridgeMin: 3, fridgeMax: 15, freezer: 90)},
-    source: _srcProduce,
+    // ไม่มีข้อมูลช่องแช่แข็งจากแหล่งอ้างอิง -> ไม่มีตัวเลือกช่องแช่แข็ง
+    states: {'': ShelfLife(fridgeMin: 3, fridgeMax: 15)},
+    source: _srcMaeban,
   ),
   ShelfType(
     key: 'milk',
     label: 'นม',
     states: {'': ShelfLife(fridgeMin: 4)},
-    source: _srcProduce,
+    source: _srcSupalai,
   ),
   ShelfType(
     key: 'yogurt',
     label: 'โยเกิร์ต',
     states: {'': ShelfLife(fridgeMin: 3)},
-    source: _srcProduce,
+    source: _srcSupalai,
   ),
 ];
 

@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/utils/shelf_life.dart';
 
 // ที่มาของตัวเลขตามสไลด์อายุการเก็บรักษา
-// (S = springnews, B = The Beefchelor, SU = SUPALAI)
+// (S = springnews, B = The Beefchelor, SU = SUPALAI, M = Maeban)
 void main() {
   String src(String key, String state, String storage) =>
       findShelfType(key)!.sourceFor(state, storage);
@@ -38,11 +38,23 @@ void main() {
     expect(src('egg', stateCooked, storageFridge), 'springnews');
   });
 
-  test('ขนมปัง SU, ผัก ผลไม้ นม โยเกิร์ต Maeban, SUPALAI', () {
-    expect(src('bread', '', storageFridge), 'SUPALAI');
-    for (final key in ['leafy_veg', 'root_veg', 'fruit', 'milk', 'yogurt']) {
-      expect(src(key, '', storageFridge), 'Maeban, SUPALAI', reason: key);
+  test('ขนมปัง นม โยเกิร์ต SU, ผักใบ ผักหัว ผลไม้ M', () {
+    for (final key in ['bread', 'milk', 'yogurt']) {
+      expect(src(key, '', storageFridge), 'SUPALAI', reason: key);
     }
+    for (final key in ['leafy_veg', 'root_veg', 'fruit']) {
+      expect(src(key, '', storageFridge), 'Maeban', reason: key);
+    }
+  });
+
+  test('ผลไม้ไม่มีตัวเลือกช่องแช่แข็ง (ไม่มีข้อมูลจากแหล่งอ้างอิง)', () {
+    final r = resolveShelfLife(
+      typeKey: 'fruit',
+      state: '',
+      geminiFridgeDays: 7,
+    );
+    expect(r.fridgeDays, 7);
+    expect(r.freezerDays, isNull);
   });
 
   test('การ์ดในตู้เย็นใช้ที่มาตามสถานะและช่องที่เก็บ', () {
