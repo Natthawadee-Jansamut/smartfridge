@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:test_app/services/notification_service.dart';
+import 'package:test_app/screens/auth/login_screen.dart';
+
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
 
@@ -31,14 +34,28 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
       await supabase.auth.signOut();
 
+      // ยกเลิกแจ้งเตือนวัตถุดิบที่ตั้งล่วงหน้าไว้ของบัญชีที่ลบไปแล้ว
+
+      await NotificationService.notifications.cancelAll();
+
       if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        Navigator.pushAndRemoveUntil(
+          context,
+
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+
+          (route) => false,
+        );
       }
     } catch (e) {
+      debugPrint("ลบบัญชีไม่สำเร็จ: $e");
+
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("ไม่สามารถลบบัญชีได้ : $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("ไม่สามารถลบบัญชีได้ กรุณาลองใหม่อีกครั้ง"),
+          ),
+        );
       }
     } finally {
       if (mounted) {
@@ -104,6 +121,20 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     );
   }
 
+  Widget consequenceRow(String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+
+      children: [
+        const Icon(Icons.cancel, size: 20, color: Colors.red),
+
+        const SizedBox(width: 10),
+
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -162,6 +193,8 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               const SizedBox(height: 25),
 
               Container(
+                width: double.infinity,
+
                 padding: const EdgeInsets.all(20),
 
                 decoration: BoxDecoration(
@@ -170,11 +203,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
 
-                child: const Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
 
                   children: [
-                    Text(
+                    const Text(
                       "เมื่อคุณลบบัญชี:",
 
                       style: TextStyle(
@@ -184,13 +217,17 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                       ),
                     ),
 
-                    SizedBox(height: 10),
+                    const SizedBox(height: 14),
 
-                    Text("• ข้อมูลผู้ใช้จะถูกลบ"),
+                    consequenceRow("ข้อมูลผู้ใช้จะถูกลบ"),
 
-                    Text("• วัตถุดิบในตู้เย็นจะถูกลบ"),
+                    const SizedBox(height: 10),
 
-                    Text("• สูตรอาหารจะไม่สามารถกู้คืนได้"),
+                    consequenceRow("วัตถุดิบในตู้เย็นจะถูกลบ"),
+
+                    const SizedBox(height: 10),
+
+                    consequenceRow("สูตรอาหารจะไม่สามารถกู้คืนได้"),
                   ],
                 ),
               ),

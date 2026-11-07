@@ -7,7 +7,7 @@ import 'package:test_app/widgets/app_icons.dart';
 
 /// หน้าเลือกว่าจะ "สแกน" อะไร (ตามดีไซน์ใน Figma: เฟรม "SCAN" ตัวบนสุด)
 /// เข้าถึงได้จากแท็บ "สแกน" ที่แถบเมนูด้านล่าง
-/// - ถ่ายรูปวัตถุดิบ  -> ไปหน้าสแกนวัตถุดิบเข้าตู้เย็น (ImageScanning)
+/// - ถ่ายภาพวัตถุดิบ  -> ไปหน้าสแกนวัตถุดิบเข้าตู้เย็น (ImageScanning)
 /// - สแกนสูตรอาหาร   -> ไปหน้าคลังสูตรอาหารที่สแกนไว้ (SavedRecipesScreen)
 ///
 /// หมายเหตุ: ทางลัดจากหน้าหลัก (เมนูตะแกรง) ยังคงพาเข้า ImageScanning ตรงๆ
@@ -52,26 +52,6 @@ class ScanMenuScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Container(
-                    height: 50,
-                    width: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 5,
-                          offset: Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      child: const Center(child: FilterIcon(size: 20)),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -84,8 +64,9 @@ class ScanMenuScreen extends StatelessWidget {
                       // ตรงกับไอคอน "hugeicons:meal-scan" ใน Figma แบบเป๊ะๆ
                       // (ใช้เส้นพาธ SVG จริงจากไฟล์ Figma ไม่ใช่ไอคอนประมาณ)
                       iconWidget: const MealScanIcon(size: 64),
-                      title: "ถ่ายรูปวัตถุดิบ",
-                      subtitle: "นำวัตถุดิบเข้าตู้เย็น โดยการถ่ายรูป\nหรือเลือกรูปจากคลัง",
+                      title: "ถ่ายภาพวัตถุดิบ",
+                      subtitle:
+                          "นำวัตถุดิบเข้าตู้เย็น โดยการถ่ายภาพ\nหรือเลือกรูปจากคลัง",
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -103,7 +84,8 @@ class ScanMenuScreen extends StatelessWidget {
                         child: DocumentScannerRawIcon(size: 60),
                       ),
                       title: "สแกนสูตรอาหาร",
-                      subtitle: "นำเข้าสูตรอาหารโดยการถ่ายรูป\nหรือเลือกรูปจากคลัง",
+                      subtitle:
+                          "นำเข้าสูตรอาหารโดยการถ่ายภาพ\nหรือเลือกรูปจากคลัง",
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(

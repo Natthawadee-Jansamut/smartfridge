@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -22,17 +23,136 @@ class _NotificationSettingsScreenState
     extends State<NotificationSettingsScreen> {
   final supabase = Supabase.instance.client;
 
-  static const List<int> options = [1, 3, 7, 14];
+  // 0 = เตือนวันที่ครบกำหนดพอดี — ไม่มีค่ามากกว่า 7 เพราะของในตู้เย็นส่วนใหญ่
+  // เก็บได้ไม่กี่วัน ตั้งเยอะไปจะเด้งเตือนทันทีตั้งแต่วันที่ซื้อมา
+  static const List<int> options = [0, 1, 2, 3, 5, 7];
+
+  static String dayLabel(int day) =>
+      day == 0 ? "วันที่ครบกำหนด" : "ล่วงหน้า $day วัน";
 
   int selected = defaultOldItemDays;
   bool dropdownOpen = false;
   bool saving = false;
 
+  /// เวลาที่ต้องการรับแจ้งเตือนในแต่ละวัน (เก็บเป็น notify_time "HH:mm")
+  TimeOfDay notifyTime = const TimeOfDay(
+    hour: defaultNotifyHour,
+    minute: defaultNotifyMinute,
+  );
+
   @override
   void initState() {
     super.initState();
 
-    selected = readOldItemDays(supabase.auth.currentUser);
+    final user = supabase.auth.currentUser;
+    selected = readOldItemDays(user);
+    // ค่าเก่าที่ไม่อยู่ในรายการแล้ว (เช่น 14) ปรับเป็นค่าที่ใกล้ที่สุดในรายการ
+    if (!options.contains(selected)) {
+      selected = options.reduce(
+        (a, b) => (a - selected).abs() <= (b - selected).abs() ? a : b,
+      );
+    }
+    final t = readNotifyTime(user);
+    notifyTime = TimeOfDay(hour: t.hour, minute: t.minute);
+  }
+
+  /// เลือกเวลาแบบง่าย: วงล้อเลื่อนเลือกชั่วโมง/นาที (ทีละ 1 นาที)
+  Future<void> _pickNotifyTime() async {
+    var draft = notifyTime;
+    final picked = await showModalBottomSheet<TimeOfDay>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  "เลือกเวลารับแจ้งเตือน",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                // วงล้อเลื่อนชั่วโมง/นาที (แบบ 24 ชม. ทีละ 1 นาที)
+                SizedBox(
+                  height: 160,
+                  child: CupertinoDatePicker(
+                    mode: CupertinoDatePickerMode.time,
+                    use24hFormat: true,
+                    initialDateTime: DateTime(
+                      2000,
+                      1,
+                      1,
+                      draft.hour,
+                      draft.minute,
+                    ),
+                    onDateTimeChanged: (d) => setSheet(
+                      () => draft = TimeOfDay(hour: d.hour, minute: d.minute),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, draft),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xff5189C9),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  child: Text(
+                    "ใช้เวลา ${notifyTimeText(draft.hour, draft.minute)} น.",
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (picked != null) setState(() => notifyTime = picked);
+  }
+
+  Widget buildTimePicker() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(15),
+        onTap: _pickNotifyTime,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              const Icon(Icons.schedule_rounded, color: Color(0xff5189C9)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "${notifyTimeText(notifyTime.hour, notifyTime.minute)} น. ของทุกวัน",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              const Icon(Icons.edit_outlined, size: 18, color: Colors.black45),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> save() async {
@@ -40,7 +160,12 @@ class _NotificationSettingsScreenState
 
     try {
       await supabase.auth.updateUser(
-        UserAttributes(data: {"notify_days": selected}),
+        UserAttributes(
+          data: {
+            "notify_days": selected,
+            "notify_time": notifyTimeText(notifyTime.hour, notifyTime.minute),
+          },
+        ),
       );
 
       // ขอสิทธิ์แจ้งเตือนของระบบ (ถ้ายังไม่เคยอนุญาต จะเด้ง permission dialog)
@@ -50,7 +175,18 @@ class _NotificationSettingsScreenState
       // (ไม่ต้องรอให้ไปเปิดหน้าคลังก่อนถึงจะซิงก์)
       await NotificationService.scheduleExpiryReminders();
 
-      if (mounted) Navigator.pop(context, selected);
+      if (!mounted) return;
+      // แจ้งว่าบันทึกสำเร็จ (SnackBar อยู่ระดับแอป จึงยังเห็นหลังกลับไปหน้าก่อน)
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "บันทึกการตั้งค่าแล้ว ✅ แจ้งเตือน${dayLabel(selected)} "
+            "เวลา ${notifyTimeText(notifyTime.hour, notifyTime.minute)} น.",
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pop(context, selected);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -93,6 +229,17 @@ class _NotificationSettingsScreenState
                     "ส่วนไข่ (เก็บได้ 21 วัน) จะเตือนตอนอยู่มา 20 วัน",
                     style: TextStyle(fontSize: 13, color: Colors.black54),
                   ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    "เวลาที่ต้องการรับแจ้งเตือน",
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  buildTimePicker(),
                   const SizedBox(height: 16),
                   // ปุ่มทดสอบแจ้งเตือน — ใช้เช็กว่าได้รับสิทธิ์แจ้งเตือนแล้ว
                   // จริงไหม และแจ้งเตือนจริงๆ ขึ้นบนเครื่องไหม โดยไม่ต้องรอ
@@ -177,13 +324,16 @@ class _NotificationSettingsScreenState
 
     await NotificationService.init();
     await NotificationService.showExpiryAlert(
-      message: "นี่คือการแจ้งเตือนทดสอบจาก SmartFridge.AI 🔔 ถ้าเห็นข้อความนี้"
+      message:
+          "นี่คือการแจ้งเตือนทดสอบจาก SmartFridge.AI 🔔 ถ้าเห็นข้อความนี้"
           " แปลว่าระบบแจ้งเตือนทำงานถูกต้องแล้ว",
     );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("ส่งแจ้งเตือนทดสอบไปแล้ว ลองปาดแถบด้านบนดู")),
+      const SnackBar(
+        content: Text("ส่งแจ้งเตือนทดสอบไปแล้ว ลองปาดแถบด้านบนดู"),
+      ),
     );
   }
 
@@ -230,16 +380,6 @@ class _NotificationSettingsScreenState
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Container(
-            height: 50,
-            width: 50,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF7D0),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(child: FilterIcon(size: 20)),
-          ),
         ],
       ),
     );
@@ -265,7 +405,7 @@ class _NotificationSettingsScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  "$selected วัน",
+                  dayLabel(selected),
                   style: const TextStyle(fontSize: 15, color: Colors.black87),
                 ),
                 Icon(
@@ -313,7 +453,7 @@ class _NotificationSettingsScreenState
                           : Colors.transparent,
                     ),
                     child: Text(
-                      "$day วัน",
+                      dayLabel(day),
                       style: TextStyle(
                         fontSize: 15,
                         color: isSelected
@@ -341,7 +481,9 @@ class _NotificationSettingsScreenState
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xffE0E0E0),
           elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         child: const Text(
           "ยกเลิก",
@@ -361,7 +503,9 @@ class _NotificationSettingsScreenState
         style: OutlinedButton.styleFrom(
           backgroundColor: const Color(0xffD7EDFF),
           side: const BorderSide(color: Color(0xffD7EDFF), width: 1.2),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         child: saving
             ? const SizedBox(

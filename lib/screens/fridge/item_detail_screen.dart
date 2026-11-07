@@ -5,11 +5,17 @@ import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/utils/category_icons.dart';
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/services/fridge_images.dart';
+import 'package:test_app/widgets/recipe_flow_widgets.dart';
 
 class ItemDetailScreen extends StatefulWidget {
   final String itemId; // รับไอดีจากหน้าคลัง
 
-  const ItemDetailScreen({super.key, required this.itemId, required Map<String, dynamic> itemData});
+  const ItemDetailScreen({
+    super.key,
+    required this.itemId,
+    required Map<String, dynamic> itemData,
+  });
 
   @override
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
@@ -41,19 +47,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         });
       }
     } catch (e) {
-  if (mounted) {
-    setState(() {
-      _isLoading = false;
-      _item = null;
-    });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _item = null;
+        });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("ดึงข้อมูลไม่สำเร็จ: $e"),
-        backgroundColor: Colors.red,
-      ),
-    );
-  }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("ดึงข้อมูลไม่สำเร็จ: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -182,6 +188,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final totalController = TextEditingController(
       text: _fmtQty(_item!['max_quantity'] ?? _item!['quantity']),
     );
+    // นับเป็นชิ้น: ทำอาหาร 1 ครั้งใช้กี่ชิ้น
+    final perCookController = TextEditingController(
+      text: _fmtQty(_item!['use_per_cook'] ?? 1),
+    );
 
     InputDecoration deco(String label, String unit) => InputDecoration(
       labelText: label,
@@ -226,6 +236,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       ),
                     ],
                   ),
+                  // อธิบายว่าแต่ละแบบหักวัตถุดิบตอนทำอาหารยังไง
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      isPortion
+                          ? '1 ส่วน = ใช้ทำอาหารได้ 1 ครั้ง ทำอาหาร 1 ครั้งหัก 1 ส่วน'
+                          : 'ทำอาหาร 1 ครั้ง หักตาม "ใช้ครั้งละ"',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
                   if (!isPortion) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
@@ -257,6 +280,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                     decoration: deco('ทั้งหมด (ตอนเก็บเข้าตู้เย็น)', unit),
                   ),
+                  if (!isPortion) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: perCookController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: deco('ใช้ครั้งละ (ทำอาหาร 1 ครั้ง)', unit),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -281,11 +314,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   if (remain == null || remain < 0) return;
                   // เหลืออยู่จะมากกว่าทั้งหมดไม่ได้ ถ้ากรอกเกินก็ขยายทั้งหมดตาม
                   if (total == null || total < remain) total = remain;
+                  final perCook = num.tryParse(perCookController.text.trim());
                   Navigator.pop(context);
                   _updateFields({
                     'quantity': remain,
                     'max_quantity': total,
                     'unit': unit,
+                    // แบ่งเป็นส่วนไม่ใช้ช่องนี้ (1 ครั้ง = 1 ส่วนอยู่แล้ว)
+                    'use_per_cook': isPortion || perCook == null || perCook <= 0
+                        ? null
+                        : perCook,
                   });
                 },
                 child: const Text(
@@ -383,9 +421,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       // อัปเดตระยะที่เก็บได้ของช่องที่เก็บอยู่ให้ตรงกับวันหมดอายุที่เลือกด้วย
       // (บันทึกที่มาเป็น "คุณกำหนดเอง" โดยจำค่าเดิมไว้ เลือกกลับเป็นวันเดิมได้)
       if (added != null) {
-        final days = DateTime(picked.year, picked.month, picked.day)
-            .difference(DateTime(added.year, added.month, added.day))
-            .inDays;
+        final days = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+        ).difference(DateTime(added.year, added.month, added.day)).inDays;
         final current = shelfDaysOf(_item!);
         final original = originalShelfSource(
           _item!['shelf_type']?.toString(),
@@ -410,8 +450,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   Future<void> _showStoragePickerDialog() async {
     final current = _item!['storage']?.toString() ?? storageFridge;
     final fridgeDays = _item!['fridge_days'];
-    final freezerDays = _item!['freezer_days'];
     final hasShelfData = fridgeDays != null;
+    final warnFreeze = freezerNotRecommended(_item!);
 
     return showDialog(
       context: context,
@@ -425,11 +465,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final st in [
-                storageFridge,
-                // ไม่มีข้อมูลช่องแช่แข็ง (เช่น ผัก นม) ก็ไม่ต้องมีตัวเลือกนี้
-                if (!hasShelfData || freezerDays != null) storageFreezer,
-              ])
+              // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง นับวันที่เหลือ
+              // เท่าเดิม (ดู storageMoveFields) — เตือนเฉพาะของที่ไม่ควรแช่แข็ง (ไข่)
+              for (final st in [storageFridge, storageFreezer])
                 RadioListTile<String>(
                   value: st,
                   groupValue: current,
@@ -438,24 +476,23 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   subtitle: !hasShelfData
                       ? null
                       : Text(
-                          st == storageFreezer && freezerDays == null
-                              ? "ไม่ควรเก็บในช่องแช่แข็ง"
-                              : daysLeftText(
-                                  (st == current
+                          [
+                            daysLeftText(
+                              (st == current
                                       ? daysLeft(_item!)
                                       : daysLeftAfterMove(_item!, st)) ??
-                                      0,
-                                ),
+                                  0,
+                            ),
+                            if (st == storageFreezer && warnFreeze)
+                              freezerNotRecommendedText,
+                          ].join(' · '),
                         ),
-                  onChanged:
-                      (hasShelfData && st == storageFreezer && freezerDays == null)
-                      ? null
-                      : (val) {
-                          Navigator.pop(context);
-                          if (val != null && val != current) {
-                            _changeStorage(val);
-                          }
-                        },
+                  onChanged: (val) {
+                    Navigator.pop(context);
+                    if (val != null && val != current) {
+                      _changeStorage(val);
+                    }
+                  },
                 ),
             ],
           ),
@@ -490,9 +527,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     if (!thawedInFridge) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("ควรทำให้สุกก่อนแช่แข็งซ้ำ"),
-          ),
+          const SnackBar(content: Text("ควรทำให้สุกก่อนแช่แข็งซ้ำ")),
         );
       }
       return false;
@@ -570,7 +605,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     if (_item!['created_at'] != null) {
       initialDate = parseCreatedAt(_item!['created_at']) ?? now;
     }
-    final firstDate = now.subtract(const Duration(days: 365)); // ย้อนหลังได้ 1 ปี
+    final firstDate = now.subtract(
+      const Duration(days: 365),
+    ); // ย้อนหลังได้ 1 ปี
     if (initialDate.isBefore(firstDate)) initialDate = firstDate;
     if (initialDate.isAfter(now)) initialDate = now;
 
@@ -659,30 +696,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   @override
-Widget build(BuildContext context) {
-  if (_isLoading) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFD8EEFF),
-      body: Center(child: CircularProgressIndicator()),
-    );
-  }
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFD8EEFF),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-  if (_item == null) {
-    return const Scaffold(
-      backgroundColor: Color(0xFFD8EEFF),
-      body: Center(
-        child: Text(
-          "ไม่พบข้อมูลสินค้า",
-          style: TextStyle(
-            fontSize: 18,
-            color: Colors.black,
+    if (_item == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFD8EEFF),
+        body: Center(
+          child: Text(
+            "ไม่พบข้อมูลสินค้า",
+            style: TextStyle(fontSize: 18, color: Colors.black),
           ),
         ),
-      ),
-    );
-  }
+      );
+    }
 
-  final item = _item!;
+    final item = _item!;
 
     return Scaffold(
       backgroundColor: const Color(0xFFD8EEFF),
@@ -739,6 +773,11 @@ Widget build(BuildContext context) {
                 padding: const EdgeInsets.symmetric(horizontal: 35.0),
                 child: Column(
                   children: [
+                    // รูปที่ใช้สแกนวัตถุดิบนี้ — ให้จำได้ว่ามาจากรูปไหน แตะเพื่อดูเต็มจอ
+                    PrivateScanImage(
+                      bucket: fridgeImageBucket,
+                      path: item['image_path']?.toString(),
+                    ),
                     // 🚀 เชื่อมปุ่มแก้ไขชื่อ
                     _buildDetailRow(
                       icon: Icons.restaurant,
@@ -797,7 +836,8 @@ Widget build(BuildContext context) {
                     _buildDetailRow(
                       icon: Icons.add_circle,
                       text:
-                          "จำนวน : เหลือ ${_fmtQty(item['quantity'])} จาก ${_fmtQty(item['max_quantity'] ?? item['quantity'])} ${item['unit'] ?? ''}",
+                          "จำนวน : เหลือ ${_fmtQty(item['quantity'])} จาก ${_fmtQty(item['max_quantity'] ?? item['quantity'])} ${item['unit'] ?? ''}"
+                          "${item['unit'] == portionUnit ? '' : ' · ใช้ครั้งละ ${_fmtQty(item['use_per_cook'] ?? 1)} ${item['unit'] ?? ''}'}",
                       onEdit: _showQuantityDialog,
                     ),
                     const SizedBox(height: 30),
@@ -807,7 +847,7 @@ Widget build(BuildContext context) {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Text(
-                          "ปริมาณที่ตรวจพบจากรูป: ${item['detected_quantity'] ?? '-'} ${item['detected_unit']} "
+                          "ปริมาณที่ตรวจพบจากภาพ: ${item['detected_quantity'] ?? '-'} ${item['detected_unit']} "
                           "(แบ่งเป็น ${item['max_quantity'] ?? '-'} ${item['unit'] ?? ''})",
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -872,5 +912,4 @@ Widget build(BuildContext context) {
       ),
     );
   }
-
 }

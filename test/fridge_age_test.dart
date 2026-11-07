@@ -1,10 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test_app/utils/fridge_age.dart';
 
-String _daysAgo(int days) => DateTime.now()
-    .subtract(Duration(days: days))
-    .toUtc()
-    .toIso8601String();
+String _daysAgo(int days) =>
+    DateTime.now().subtract(Duration(days: days)).toUtc().toIso8601String();
 
 Map<String, dynamic> _chicken({
   required String storage,
@@ -54,15 +52,18 @@ void main() {
     expect(daysLeft(_move(frozen, 'fridge')), 1);
   });
 
-  test('ของที่เกินกำหนดก่อนแช่ ยังเกินกำหนดทั้งในช่องแช่แข็งและหลังย้ายออก', () {
-    final frozen = _move(
-      _chicken(storage: 'fridge', addedDaysAgo: 5),
-      'freezer',
-    );
-    expect(daysLeft(frozen), -3);
-    expect(isOverdue(frozen), isTrue);
-    expect(daysLeft(_move(frozen, 'fridge')), -3);
-  });
+  test(
+    'ของที่เกินกำหนดก่อนแช่ ยังเกินกำหนดทั้งในช่องแช่แข็งและหลังย้ายออก',
+    () {
+      final frozen = _move(
+        _chicken(storage: 'fridge', addedDaysAgo: 5),
+        'freezer',
+      );
+      expect(daysLeft(frozen), -3);
+      expect(isOverdue(frozen), isTrue);
+      expect(daysLeft(_move(frozen, 'fridge')), -3);
+    },
+  );
 
   test('ของที่เหลือ 0 วันตอนแช่ ย้ายออกมาแล้วต้องใช้ภายในวันนี้', () {
     final frozen = _move(
@@ -83,4 +84,20 @@ void main() {
     expect(moved['expiry_date'], item['expiry_date']);
     expect(daysLeft(moved), 4);
   });
+
+  test(
+    'ของที่ไม่มีข้อมูลช่องแช่แข็ง เอาเข้าช่องแช่แข็งได้ แต่ไม่ต่อเวลาให้',
+    () {
+      // ผลไม้เก็บช่องปกติได้ 7 วัน เข้าตู้มา 2 วัน เหลือ 5 วัน
+      final fruit = {
+        'storage': 'fridge',
+        'fridge_days': 7,
+        'freezer_days': null,
+        'created_at': _daysAgo(2),
+      };
+      final moved = _move(fruit, 'freezer');
+      expect(moved['freezer_days'], 5);
+      expect(daysLeft(moved), 5);
+    },
+  );
 }

@@ -76,12 +76,14 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     aheadDays = readOldItemDays(user);
 
     // ของที่ใช้หมดแล้ว (เหลือ 0) ไม่ต้องเตือนอีก เพราะไม่มีของเหลือให้รีบใช้
-    final result = data
-        .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
-        .where((item) => item['created_at'] != null && !isUsedUp(item))
-        .toList()
-      // เหลือวันน้อยที่สุดขึ้นก่อน ตรงกับ "เหลืออีก X วัน" บนหลอดนับของการ์ด
-      ..sort(compareDaysLeft);
+    final result =
+        data
+            .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
+            // (ของเก่าที่ไม่มีวันที่เข้าตู้เย็น ยังแสดงอยู่ นับเป็นเพิ่งใส่)
+            .where((item) => !isUsedUp(item))
+            .toList()
+          // เหลือวันน้อยที่สุดขึ้นก่อน ตรงกับ "เหลืออีก X วัน" บนหลอดนับของการ์ด
+          ..sort(compareDaysLeft);
 
     if (mounted) {
       setState(() {
@@ -194,16 +196,6 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 10),
-          Container(
-            height: 50,
-            width: 50,
-            decoration: const BoxDecoration(
-              color: Color(0xFFFFF7D0),
-              shape: BoxShape.circle,
-            ),
-            child: const Center(child: FilterIcon(size: 20)),
-          ),
         ],
       ),
     );
@@ -272,12 +264,13 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // ให้ชิปทั้ง 5 อันขยายเท่าๆ กันจนเต็มความกว้างการ์ดพอดี
+          // ชิป "ทั้งหมด" + ชิปช่วงวันทั้ง 5 อัน ขยายเท่าๆ กันจนเต็มความกว้างการ์ด
           Row(
             children: [
-              for (int i = 0; i < dayOptions.length; i++) ...[
-                if (i > 0) const SizedBox(width: 6),
-                Expanded(child: _buildDayChip(dayOptions[i])),
+              Expanded(flex: 2, child: _buildDayChip(null)),
+              for (final opt in dayOptions) ...[
+                const SizedBox(width: 6),
+                Expanded(flex: 1, child: _buildDayChip(opt)),
               ],
             ],
           ),
@@ -286,12 +279,13 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     );
   }
 
-  Widget _buildDayChip(Map<String, int?> opt) {
-    final value = opt['value']!;
+  // opt == null คือชิป "ทั้งหมด" (ล้างตัวกรองจำนวนวัน)
+  Widget _buildDayChip(Map<String, int?>? opt) {
+    final value = opt?['value'];
     final selected = selectedDays == value;
     return GestureDetector(
       onTap: () => setState(() {
-        selectedDays = selected ? null : value;
+        selectedDays = (selected || value == null) ? null : value;
         selectedCategory = "ทั้งหมด";
       }),
       child: Container(
@@ -303,7 +297,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           border: selected ? null : Border.all(color: Colors.black12),
         ),
         child: Text(
-          "$value วัน",
+          value == null ? "ทั้งหมด" : "$value วัน",
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontWeight: FontWeight.bold,
@@ -404,7 +398,9 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                   border: selected ? null : Border.all(color: Colors.black12),
                 ),
                 child: Text(
-                  cat == "ทั้งหมด" ? "📦 ทั้งหมด" : "${categoryEmoji(cat)} $cat",
+                  cat == "ทั้งหมด"
+                      ? "📦 ทั้งหมด"
+                      : "${categoryEmoji(cat)} $cat",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.black87,
@@ -464,7 +460,10 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
         children: [
           Row(
             children: [
-              Text(categoryEmoji(category), style: const TextStyle(fontSize: 28)),
+              Text(
+                categoryEmoji(category),
+                style: const TextStyle(fontSize: 28),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -535,13 +534,37 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          // วันที่และเวลาที่เอาเข้าตู้เย็น แสดงทุกการ์ดเป็นบรรทัดของตัวเอง
+          // ของที่ไม่มี created_at (เพิ่มจากที่อื่นที่ไม่ได้ใส่วันที่) บอกให้รู้ว่าไม่ทราบ
+          Row(
+            children: [
+              const Icon(
+                Icons.schedule_rounded,
+                size: 15,
+                color: Colors.black54,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  parseCreatedAt(item['created_at']) == null
+                      ? "ไม่ทราบวันที่เข้าตู้เย็น"
+                      : "เข้าตู้เย็นเมื่อ ${formatDate(item['created_at'].toString())} "
+                            "เวลา ${addedTimeText(item['created_at'])}",
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
           Text(
             [
               if (state.isNotEmpty) state,
               "${storageEmoji(storage)} ${storageLabel(storage)}",
-              "เข้าตู้เย็น ${formatDate(item['created_at'].toString())} "
-                  "${addedTimeText(item['created_at'])}",
             ].join(" · "),
             style: const TextStyle(fontSize: 12, color: Colors.black54),
           ),
@@ -588,7 +611,9 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
       await loadItems();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("${item['name'] ?? 'วัตถุดิบ'} เก็บได้อีก $days วัน")),
+        SnackBar(
+          content: Text("${item['name'] ?? 'วัตถุดิบ'} เก็บได้อีก $days วัน"),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -633,7 +658,10 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     if (confirmed != true || !mounted) return;
 
     try {
-      await supabase.from('fridge_items').delete().eq('item_id', item['item_id']);
+      await supabase
+          .from('fridge_items')
+          .delete()
+          .eq('item_id', item['item_id']);
       await loadItems();
     } catch (e) {
       if (!mounted) return;

@@ -19,6 +19,65 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   List plans = [];
   bool loading = true;
 
+  /// id ของแพลนโปรด — เก็บใน user_metadata ของ Supabase Auth (เหมือนการตั้งค่า
+  /// แจ้งเตือน) ไม่ต้องเพิ่มคอลัมน์ในตาราง meal_plans
+  static const _favKey = 'favorite_plan_ids';
+  Set<String> _favorites = {};
+
+  Set<String> _readFavorites() {
+    final raw = supabase.auth.currentUser?.userMetadata?[_favKey];
+    return raw is List ? {for (final e in raw) e.toString()} : <String>{};
+  }
+
+  Future<void> _saveFavorites(Set<String> ids) =>
+      supabase.auth.updateUser(UserAttributes(data: {_favKey: ids.toList()}));
+
+  /// แพลนโปรดขึ้นก่อน แล้วเรียงใหม่ไปเก่า (ข้อมูลเรียงตาม created_at มาแล้ว)
+  List _sorted(List data) {
+    final fav = [
+      for (final p in data)
+        if (_favorites.contains('${p['id']}')) p,
+    ];
+    final rest = [
+      for (final p in data)
+        if (!_favorites.contains('${p['id']}')) p,
+    ];
+    return [...fav, ...rest];
+  }
+
+  Future<void> _toggleFavorite(dynamic plan) async {
+    final id = '${plan['id']}';
+    final before = {..._favorites};
+    final after = {..._favorites};
+    final adding = !after.contains(id);
+    adding ? after.add(id) : after.remove(id);
+    setState(() {
+      _favorites = after;
+      plans = _sorted(plans);
+    });
+    try {
+      await _saveFavorites(after);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            adding ? "เก็บเป็นแพลนโปรดแล้ว ❤️" : "เอาออกจากแพลนโปรดแล้ว",
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _favorites = before;
+        plans = _sorted(plans);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("บันทึกแพลนโปรดไม่สำเร็จ: $e")));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -36,8 +95,9 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
           .eq('saved', true)
           .order('created_at', ascending: false);
 
+      _favorites = _readFavorites();
       setState(() {
-        plans = data;
+        plans = _sorted(data);
         loading = false;
       });
     } catch (e) {
@@ -50,28 +110,36 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
 
   Future<void> deletePlan(String id) async {
     try {
-      await supabase.rpc(
-        'delete_meal_plan',
-        params: {'plan_uuid': id},
-      );
+      await supabase.rpc('delete_meal_plan', params: {'plan_uuid': id});
+      // ลบแพลนโปรด -> เอา id ออกจากรายการโปรดด้วย (ไม่สำเร็จก็ไม่เป็นไร)
+      if (_favorites.remove(id)) {
+        try {
+          await _saveFavorites(_favorites);
+        } catch (_) {}
+      }
 
       await loadPlans();
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("ลบแพลนเรียบร้อย")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("ลบแพลนเรียบร้อย")));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("ลบไม่สำเร็จ: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("ลบไม่สำเร็จ: $e")));
     }
   }
 
-  String formatDate(String date) {
-    final d = DateTime.parse(date).toLocal();
-    return "${d.day}/${d.month}/${d.year + 543}";
+  // created_at ใน meal_plans ไม่มีค่าเริ่มต้น แผนเก่าบางแผนจึงเป็น null
+  // -> แสดง "-" แทนที่จะทำให้ทั้งหน้าพัง
+  String formatDate(Object? date) {
+    final d = DateTime.tryParse(date?.toString() ?? '')?.toLocal();
+    if (d == null) return '-';
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return "${d.day}/${d.month}/${d.year + 543} เวลา $hh:$mm น.";
   }
 
   @override
@@ -88,15 +156,15 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : plans.isEmpty
-                      ? const Center(child: Text("ยังไม่มีแพลนที่บันทึก"))
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 20),
-                          itemCount: plans.length,
-                          itemBuilder: (context, index) {
-                            final plan = plans[index];
-                            return _buildPlanCard(plan);
-                          },
-                        ),
+                  ? const Center(child: Text("ยังไม่มีแพลนที่บันทึก"))
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      itemCount: plans.length,
+                      itemBuilder: (context, index) {
+                        final plan = plans[index];
+                        return _buildPlanCard(plan);
+                      },
+                    ),
             ),
           ],
         ),
@@ -152,13 +220,34 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      plan['goal'] ?? "Meal Plan",
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            plan['goal'] ?? "Meal Plan",
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: _favorites.contains('${plan['id']}')
+                              ? "เลิกเป็นแพลนโปรด"
+                              : "เก็บเป็นแพลนโปรด",
+                          icon: Icon(
+                            _favorites.contains('${plan['id']}')
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _favorites.contains('${plan['id']}')
+                                ? Colors.redAccent
+                                : Colors.black45,
+                          ),
+                          onPressed: () => _toggleFavorite(plan),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     _infoRow(
@@ -222,18 +311,11 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                     );
                   },
                   child: const Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: Colors.red,
-                        ),
+                        Icon(Icons.delete_outline, size: 18, color: Colors.red),
                         SizedBox(width: 6),
                         Text(
                           "ลบ",
@@ -297,26 +379,6 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Container(
-            height: 50,
-            width: 50,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 5,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const InkWell(
-              customBorder: CircleBorder(),
-              child: Center(child: FilterIcon(size: 20)),
             ),
           ),
         ],

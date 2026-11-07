@@ -47,10 +47,7 @@ class AppBottomNav extends StatelessWidget {
         break;
     }
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    );
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => page));
   }
 
   @override
@@ -64,7 +61,11 @@ class AppBottomNav extends StatelessWidget {
           topRight: Radius.circular(24),
         ),
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2)),
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 8,
+            offset: Offset(0, -2),
+          ),
         ],
       ),
       child: Row(
@@ -74,14 +75,24 @@ class AppBottomNav extends StatelessWidget {
           _item(context, AppTab.scan, const ScannerIcon(size: 24), "สแกน"),
           _item(context, AppTab.inventory, const ListIcon(size: 24), "คลัง"),
           _item(context, AppTab.menu, const ChefIcon(size: 24), "เมนูอาหาร"),
-          _item(context, AppTab.alert, const NotificationIcon(size: 24), "แจ้งเตือน"),
+          _item(
+            context,
+            AppTab.alert,
+            const NotificationIcon(size: 24),
+            "แจ้งเตือน",
+          ),
           _item(context, AppTab.plan, const CalendarIcon(size: 24), "แพลน"),
         ],
       ),
     );
   }
 
-  Widget _item(BuildContext context, AppTab tab, Widget iconWidget, String label) {
+  Widget _item(
+    BuildContext context,
+    AppTab tab,
+    Widget iconWidget,
+    String label,
+  ) {
     final bool active = tab == current;
     return Material(
       color: Colors.transparent,

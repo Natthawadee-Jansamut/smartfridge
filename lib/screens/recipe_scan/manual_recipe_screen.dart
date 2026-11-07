@@ -117,7 +117,8 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
         _ingredients.add(
           _IngredientRow(
             name: (ing['name'] ?? '').toString(),
-            qty: RecipeRepository.parseQuantity(ing['use_quantity']) ??
+            qty:
+                RecipeRepository.parseQuantity(ing['use_quantity']) ??
                 RecipeRepository.leadingNumber(ing['use_quantity']),
             unit: unit.isEmpty ? null : unit,
           ),
@@ -248,12 +249,28 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
     }
 
     final steps = _steps.where((s) => s.ctrl.text.trim().isNotEmpty).toList();
+    final time = RecipeRepository.minutesText(_minutes);
+    final servings = RecipeRepository.servingsText(_servings);
+    final initial = widget.initialRecipe;
 
     return {
-      ...?widget.initialRecipe,
+      ...?initial,
       'recipe_name': name,
-      'time': RecipeRepository.minutesText(_minutes),
-      'servings': RecipeRepository.servingsText(_servings),
+      'time': time,
+      'servings': servings,
+      // ผู้ใช้เปลี่ยนค่าเอง -> ไม่ใช่ค่าที่ AI ประมาณแล้ว
+      'time_estimated':
+          initial?['time_estimated'] == true &&
+          RecipeRepository.minutesText(
+                RecipeRepository.minutesOf(initial?['time']),
+              ) ==
+              time,
+      'servings_estimated':
+          initial?['servings_estimated'] == true &&
+          RecipeRepository.servingsText(
+                RecipeRepository.leadingNumber(initial?['servings']),
+              ) ==
+              servings,
       'ingredients_used': ingredients.map((e) => e['name']).toList(),
       'detailed_ingredients': ingredients,
       'instructions': [
@@ -588,7 +605,9 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
           ? () => setState(() {
               _ingredients.removeAt(i);
               // dispose หลังเฟรมนี้ ไม่งั้น TextField ที่ยังค้างอยู่จะใช้ controller ที่ถูกทำลายแล้ว
-              WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => row.dispose(),
+              );
             })
           : null,
     );
@@ -604,7 +623,9 @@ class _ManualRecipeScreenState extends State<ManualRecipeScreen> {
       onRemove: _steps.length > 1
           ? () => setState(() {
               _steps.removeAt(i);
-              WidgetsBinding.instance.addPostFrameCallback((_) => row.dispose());
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => row.dispose(),
+              );
             })
           : null,
     );

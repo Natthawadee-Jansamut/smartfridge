@@ -48,15 +48,29 @@ int hoursInFridge(dynamic createdAt) {
 /// เดียวกัน จึงไม่ขัดกับการนับวันตามปฏิทิน)
 String fridgeAgeShort(dynamic createdAt) {
   final days = daysInFridge(createdAt);
+  final yesterday = _yesterdayHours(createdAt, days);
+  if (yesterday != null) return 'ใส่เมื่อวาน ($yesterday ชั่วโมงที่แล้ว)';
   if (days > 0) return 'อยู่มา $days วัน';
   final hours = hoursInFridge(createdAt);
   if (hours < 1) return 'ใส่วันนี้ (เพิ่งใส่)';
   return 'ใส่วันนี้ ($hours ชั่วโมงที่แล้ว)';
 }
 
+/// ใส่เมื่อวานแต่ยังไม่ครบ 24 ชั่วโมง (เช่น ใส่ 18:00 ดูตอนเที่ยงคืน) — คืน
+/// จำนวนชั่วโมง ไม่งั้น null การนับวันยังเป็นตามปฏิทิน (= 1 วัน) เหมือนเดิม
+/// แค่เปลี่ยนคำให้ไม่ดูเหมือนอยู่มานานเกินจริง
+int? _yesterdayHours(dynamic createdAt, int days) {
+  if (days != 1) return null;
+  final hours = hoursInFridge(createdAt);
+  return hours < 24 ? hours : null;
+}
+
 /// ข้อความเต็ม ใช้แสดงผลในหน้าคลังและหน้ารายละเอียด
 String fridgeAgeText(dynamic createdAt) {
   final days = daysInFridge(createdAt);
+  final yesterday = _yesterdayHours(createdAt, days);
+  if (yesterday != null)
+    return 'ใส่ตู้เย็นเมื่อวาน ($yesterday ชั่วโมงที่แล้ว)';
   if (days > 0) return 'อยู่ในตู้เย็นมาแล้ว $days วัน';
   final hours = hoursInFridge(createdAt);
   if (hours < 1) return 'ใส่ตู้เย็นวันนี้ (เพิ่งใส่)';
@@ -124,6 +138,27 @@ int readOldItemDays(User? user) {
   return defaultOldItemDays;
 }
 
+/// เวลาเริ่มต้นที่จะแจ้งเตือนในแต่ละวัน ถ้าผู้ใช้ยังไม่ได้ตั้งเอง (09:00)
+const int defaultNotifyHour = 9;
+const int defaultNotifyMinute = 0;
+
+/// อ่านเวลาที่ผู้ใช้อยากรับแจ้งเตือน (notify_time รูปแบบ "HH:mm") จาก
+/// user_metadata ของ Supabase Auth — ยังไม่ได้ตั้ง/อ่านไม่ออก = 09:00
+({int hour, int minute}) readNotifyTime(User? user) {
+  final saved = user?.userMetadata?['notify_time']?.toString() ?? '';
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(saved.trim());
+  if (m != null) {
+    final h = int.parse(m.group(1)!);
+    final min = int.parse(m.group(2)!);
+    if (h < 24 && min < 60) return (hour: h, minute: min);
+  }
+  return (hour: defaultNotifyHour, minute: defaultNotifyMinute);
+}
+
+/// "HH:mm" สำหรับเก็บลง user_metadata และแสดงผล
+String notifyTimeText(int hour, int minute) =>
+    '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
 /// อายุการเก็บรักษา (วัน) ของวัตถุดิบชิ้นนี้ตามช่องที่เก็บ — null ถ้าไม่มีข้อมูล
 num? shelfDaysOf(Map<String, dynamic> item) {
   final raw = item['storage'] == 'freezer'
@@ -173,6 +208,16 @@ Map<String, dynamic> storageMoveFields(
     else
       'thawed_at': now.toUtc().toIso8601String(),
   };
+  // ไม่มีข้อมูลช่องแช่แข็ง (ผัก ผลไม้ ไข่ ฯลฯ) แต่ผู้ใช้ยังอยากแช่แข็ง: ไม่ต่อเวลาให้
+  // นับวันที่เหลืออยู่เท่าเดิมต่อในช่องแช่แข็ง (ผู้ใช้แก้จำนวนวันเองได้)
+  final noFreezerDays =
+      item['freezer_days'] == null ||
+      (num.tryParse('${item['freezer_days']}') ?? 0) <= 0;
+  // (ของเก่าที่ไม่มีข้อมูลระยะเก็บเลย ใช้วันหมดอายุเดิมต่อ ไม่ต้องตั้งค่านี้)
+  if (target == 'freezer' && noFreezerDays && item['fridge_days'] != null) {
+    final left = daysLeft(item);
+    if (left != null) fields['freezer_days'] = left < 0 ? 0 : left;
+  }
   final moved = {...item, ...fields};
   if (shelfDaysOf(moved) != null) {
     fields['expiry_date'] = now
@@ -267,5 +312,7 @@ int compareDaysLeft(Map<String, dynamic> a, Map<String, dynamic> b) {
   if (la != null && lb != null && la != lb) return la.compareTo(lb);
   if (la == null && lb != null) return 1;
   if (la != null && lb == null) return -1;
-  return hoursInFridge(b['created_at']).compareTo(hoursInFridge(a['created_at']));
+  return hoursInFridge(
+    b['created_at'],
+  ).compareTo(hoursInFridge(a['created_at']));
 }

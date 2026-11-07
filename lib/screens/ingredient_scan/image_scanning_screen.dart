@@ -12,9 +12,10 @@ import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
 import 'package:test_app/screens/ingredient_scan/result_screen.dart';
 import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
 
-/// หน้าถ่ายรูปวัตถุดิบเพื่อสแกนเข้าตู้เย็น (ตามดีไซน์ใน Figma: "SCAN")
+/// หน้าถ่ายภาพวัตถุดิบเพื่อสแกนเข้าตู้เย็น (ตามดีไซน์ใน Figma: "SCAN")
 /// รายการ "วัตถุดิบที่เพิ่มล่าสุด" ดึงจาก Supabase จริงเสมอ (ไม่ใช้ตัวเลข mock ของ Figma)
 class ImageScanning extends StatefulWidget {
   const ImageScanning({super.key});
@@ -40,7 +41,8 @@ class _ImageScanningState extends State<ImageScanning> {
           enumValues: [...shelfTypes.map((t) => t.key), 'other'],
         ),
         'fridge_days': Schema.integer(),
-        'freezer_days': Schema.integer(nullable: true),
+        // ตอบจำนวนวันช่องแช่แข็งเสมอ (เป็นหน้าที่ของ AI เมื่อไม่มีข้อมูลในระบบ)
+        'freezer_days': Schema.integer(),
       },
       requiredProperties: [
         'name',
@@ -52,6 +54,7 @@ class _ImageScanningState extends State<ImageScanning> {
         'count_unit',
         'shelf_type',
         'fridge_days',
+        'freezer_days',
       ],
     ),
   );
@@ -183,16 +186,17 @@ class _ImageScanningState extends State<ImageScanning> {
       final prompt = TextPart("""
 วิเคราะห์วัตถุดิบทุกชิ้นในรูป
 - quantity/unit: ปริมาณที่เห็นจริง เช่น 1 แพ็ค, 6 ฟอง, 500 กรัม
-- count_mode: piece ถ้าเห็นเป็นลูก/ชิ้นแยกกันนับได้ชัดเจน (ไข่ มะเขือเทศ หัวหอม ผลไม้ ผักหัว ขวด กล่อง) ไม่งั้น portion (เนื้อสัตว์ ผักใบ ของลูกเล็กจำนวนมาก เช่น มะเขือเทศราชินีทั้งแพ็ค พริก อาหารเหลือ)
+- count_mode: piece ถ้าเห็นเป็นลูก/ชิ้นแยกกันนับได้ชัดเจน (ไข่ มะเขือเทศ หัวหอม ผลไม้ ผักหัว ขวด กล่อง ขนมปังแผ่น ชีสแผ่น) ไม่งั้น portion (เนื้อสัตว์ ผักใบ ของลูกเล็กจำนวนมาก เช่น มะเขือเทศราชินีทั้งแพ็ค พริก อาหารเหลือ)
 - count/count_unit: จำนวนสำหรับหักใช้ ห้ามเป็นกรัม/มล. (portion ใช้ count_unit "ส่วน", 1 ส่วน = ทำอาหาร 1 ครั้ง)
 - shelf_type: ${shelfTypePromptList().replaceAll('\n', ', ')}, other = ไม่ตรงประเภทไหน
-- fridge_days/freezer_days: จำนวนวันที่เก็บได้อย่างปลอดภัยในสภาพที่เห็น (freezer_days = null ถ้าไม่ควรแช่แข็ง)
+- fridge_days/freezer_days: จำนวนวันที่เก็บได้อย่างปลอดภัยในสภาพที่เห็น ในช่องปกติ/ช่องแช่แข็ง (ตอบ freezer_days เสมอ)
 """);
 
       // Gemini ตอบ 503 "high demand" ได้เป็นพักๆ ลองใหม่อัตโนมัติก่อนแจ้ง error
       // และรอได้ถึง 60 วินาที (รูปที่มีหลายชิ้นอาจใช้เวลาเกิน 30 วินาที)
       final response = await generateGemini(
         apiKey: _apiKey,
+        logEvent: AiEvent.scanIngredient,
         content: [
           Content.multi([prompt, DataPart('image/jpeg', imageBytes)]),
         ],
@@ -278,7 +282,7 @@ class _ImageScanningState extends State<ImageScanning> {
       body: SafeArea(
         child: Column(
           children: [
-            const IngredientFlowHeader(title: "ถ่ายรูปวัตถุดิบ"),
+            const IngredientFlowHeader(title: "ถ่ายภาพวัตถุดิบ"),
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
@@ -287,7 +291,7 @@ class _ImageScanningState extends State<ImageScanning> {
                     const SizedBox(height: 15),
                     _IngredientOptionCard(
                       icon: Icons.camera_alt_outlined,
-                      title: "ถ่ายรูปวัตถุดิบ",
+                      title: "ถ่ายภาพวัตถุดิบ",
                       subtitle: "เปิดกล้องเพื่อสแกน",
                       onTap: () => _pickAndAnalyzeImage(ImageSource.camera),
                     ),
@@ -334,7 +338,7 @@ class _ImageScanningState extends State<ImageScanning> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          _buildTipItem("ถ่ายรูปในที่ที่มีแสงสว่างเพียงพอ"),
+                          _buildTipItem("ถ่ายภาพในที่ที่มีแสงสว่างเพียงพอ"),
                           _buildTipItem("จัดวัตถุดิบให้อยู่ตรงกลางเฟรม"),
                           _buildTipItem("หลีกเลี่ยงเงาหรือแสงสะท้อนบนวัตถุ"),
                           _buildTipItem("ถ่ายทีละชิ้นเพื่อความแม่นยำสูงสุด"),
