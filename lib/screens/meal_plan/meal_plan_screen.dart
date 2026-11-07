@@ -99,26 +99,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     }
   }
 
-  /// ปุ่มเลือกเพศ: ชาย / หญิง / ไม่ระบุ
-  Widget _buildSexSelector() {
-    const options = [
-      (value: PlanGoal.male, label: "ชาย"),
-      (value: PlanGoal.female, label: "หญิง"),
-      (value: null, label: "ไม่ระบุ"),
-    ];
-    return Wrap(
-      spacing: 8,
-      children: [
-        for (final o in options)
-          ChoiceChip(
-            label: Text(o.label),
-            selected: sex == o.value,
-            onSelected: (_) => setState(() => sex = o.value),
-          ),
-      ],
-    );
-  }
-
   Future<void> createMealPlan() async {
     final user = supabase.auth.currentUser;
 
@@ -900,97 +880,25 @@ $extraRule
 
               buildTitle(Icons.track_changes, "เป้าหมาย"),
 
-              buildChoiceCard(
-                "ลดน้ำหนัก",
+              _buildGoalSelector(),
 
-                "ควบคุม Calories",
+              const SizedBox(height: 20),
 
-                goal == "ลดน้ำหนัก",
+              buildTitle(Icons.person_outline, "เกี่ยวกับคุณ (ไม่บังคับ)"),
 
-                () {
-                  setState(() {
-                    goal = "ลดน้ำหนัก";
-                  });
-                },
-              ),
+              _buildAboutYouCard(),
 
-              buildChoiceCard(
-                "รักษาน้ำหนัก",
+              const SizedBox(height: 20),
 
-                "Balance สุขภาพ",
+              buildTitle(Icons.local_fire_department, "เป้าต่อวัน"),
 
-                goal == "รักษาน้ำหนัก",
-
-                () {
-                  setState(() {
-                    goal = "รักษาน้ำหนัก";
-                  });
-                },
-              ),
-
-              buildChoiceCard(
-                "เพิ่มกล้ามเนื้อ",
-
-                "High Protein",
-
-                goal == "เพิ่มกล้ามเนื้อ",
-
-                () {
-                  setState(() {
-                    goal = "เพิ่มกล้ามเนื้อ";
-                  });
-                },
-              ),
+              _buildDailyTargetCard(),
 
               const SizedBox(height: 20),
 
               buildTitle(Icons.brunch_dining, "จำนวนมื้อต่อวัน"),
 
               _buildMealCounter(),
-
-              const SizedBox(height: 20),
-
-              buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
-
-              const Text(
-                "เพศ (ใช้คำนวณแคลอรีตามธงโภชนาการ)",
-                style: TextStyle(fontSize: 13, color: Colors.black54),
-              ),
-
-              const SizedBox(height: 6),
-
-              _buildSexSelector(),
-
-              const SizedBox(height: 15),
-
-              buildInput(
-                "น้ำหนักตัว (ไม่บังคับ)",
-                weightController,
-                "กก.",
-                hint: "ใช้คำนวณโปรตีนให้เหมาะกับคุณ",
-                // อัปเดตค่าเริ่มต้นในช่องด้านล่างทันทีที่พิมพ์
-                onChanged: (_) => setState(() {}),
-              ),
-
-              const SizedBox(height: 15),
-
-              buildInput(
-                "Calories ต่อวัน",
-                calorieController,
-                "kcal",
-                hint:
-                    "ไม่กรอก = ${_goalDefaults.calories} kcal ตามเป้าหมาย",
-              ),
-
-              const SizedBox(height: 15),
-
-              buildInput(
-                "Protein ต่อวัน",
-                proteinController,
-                "g",
-                hint:
-                    "ไม่กรอก = ${_goalDefaults.protein} g ${_defaultSource()}",
-              ),
 
               const SizedBox(height: 20),
 
@@ -1206,101 +1114,224 @@ $extraRule
     );
   }
 
-  Widget buildChoiceCard(
-    String title,
+  // ---------------------------------------------------------------------------
+  // ส่วนเป้าหมาย / เกี่ยวกับคุณ / เป้าต่อวัน
+  // ผู้ใช้ส่วนใหญ่แค่เลือกเป้าหมาย ระบบคำนวณเป้าต่อวันให้เอง ช่องกรอกแคลอรี/โปรตีน
+  // ซ่อนไว้หลังปุ่ม "ปรับเอง" ไม่ให้หน้ารก
+  // ---------------------------------------------------------------------------
 
-    String sub,
+  /// กรอกเป้าแคลอรี/โปรตีนเอง (เปิดช่องกรอก) — เปิดค้างไว้ถ้ามีค่าในช่องอยู่แล้ว
+  bool _editTargets = false;
 
-    bool selected,
+  bool get _hasCustomTargets =>
+      calorieController.text.trim().isNotEmpty ||
+      proteinController.text.trim().isNotEmpty;
 
-    VoidCallback tap,
-  ) {
-    return GestureDetector(
-      onTap: tap,
+  /// เป้าต่อวันที่จะใช้จริง: ค่าที่กรอกเอง หรือค่าแนะนำ
+  int get _effectiveCalories =>
+      int.tryParse(calorieController.text) ?? _goalDefaults.calories;
+  int get _effectiveProtein =>
+      int.tryParse(proteinController.text) ?? _goalDefaults.protein;
 
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-
-        padding: const EdgeInsets.all(15),
-
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xfffff7d0) : Colors.white,
-
-          borderRadius: BorderRadius.circular(20),
-        ),
-
-        child: Row(
-          children: [
-            Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
-            ),
-
-            const SizedBox(width: 15),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                Text(
-                  title,
-
-                  style: const TextStyle(
-                    fontSize: 16,
-
-                    fontWeight: FontWeight.bold,
+  /// เป้าหมาย 3 ปุ่มเรียงแถวเดียว
+  Widget _buildGoalSelector() {
+    const goals = [
+      (value: PlanGoal.loseWeight, icon: "🥗", sub: "คุมแคลอรี"),
+      (value: PlanGoal.maintain, icon: "⚖️", sub: "สมดุล"),
+      (value: PlanGoal.gainMuscle, icon: "💪", sub: "โปรตีนสูง"),
+    ];
+    return Row(
+      children: [
+        for (final g in goals) ...[
+          if (g != goals.first) const SizedBox(width: 8),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => goal = g.value),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: goal == g.value
+                      ? const Color(0xfffff7d0)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: goal == g.value
+                        ? const Color(0xffFFD191)
+                        : Colors.transparent,
+                    width: 1.5,
                   ),
                 ),
+                child: Column(
+                  children: [
+                    Text(g.icon, style: const TextStyle(fontSize: 22)),
+                    const SizedBox(height: 4),
+                    Text(
+                      g.value,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      g.sub,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 
-                Text(sub),
+  /// เพศ + น้ำหนักตัว ในการ์ดเดียว (กดเพศเดิมซ้ำ = ยกเลิกการเลือก)
+  Widget _buildAboutYouCard() {
+    Widget sexChip(String value, String label) => ChoiceChip(
+      label: Text(label),
+      selected: sex == value,
+      onSelected: (_) => setState(() => sex = sex == value ? null : value),
+    );
+    return Container(
+      padding: const EdgeInsets.fromLTRB(15, 10, 15, 10),
+      decoration: boxDecoration(),
+      child: Row(
+        children: [
+          sexChip(PlanGoal.male, "ชาย"),
+          const SizedBox(width: 6),
+          sexChip(PlanGoal.female, "หญิง"),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: weightController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              textAlign: TextAlign.end,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                hintText: "น้ำหนัก",
+                suffixText: "กก.",
+                border: InputBorder.none,
+                isDense: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// สรุปเป้าต่อวันเป็นตัวเลขใหญ่ + ปุ่ม "ปรับเอง" เปิดช่องกรอก
+  Widget _buildDailyTargetCard() {
+    final editing = _editTargets || _hasCustomTargets;
+    final basis = [
+      goal,
+      if (sex != null) sex == PlanGoal.female ? "หญิง" : "ชาย",
+      _weightKg == null
+          ? "น้ำหนักอ้างอิง ${PlanGoal.referenceWeightKg} กก."
+          : "${weightController.text.trim()} กก.",
+    ].join(" · ");
+
+    Widget number(String value, String unit, String label) => Expanded(
+      child: Column(
+        children: [
+          Text.rich(
+            TextSpan(
+              text: value,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+              children: [
+                TextSpan(
+                  text: " $unit",
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+
+    Widget field(TextEditingController c, String hint, String unit) =>
+        Expanded(
+          child: TextField(
+            controller: c,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            onChanged: (_) => setState(() {}),
+            decoration: InputDecoration(
+              hintText: hint,
+              suffixText: unit,
+              isDense: true,
+              filled: true,
+              fillColor: const Color(0xffF4F8FC),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: boxDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              number("$_effectiveCalories", "kcal", "พลังงาน"),
+              number("$_effectiveProtein", "g", "โปรตีน"),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _hasCustomTargets ? "กำหนดเอง" : "คำนวณจาก: $basis",
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          if (editing) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                field(calorieController, "${_goalDefaults.calories}", "kcal"),
+                const SizedBox(width: 8),
+                field(proteinController, "${_goalDefaults.protein}", "g"),
               ],
             ),
           ],
-        ),
+          Align(
+            alignment: Alignment.center,
+            child: TextButton(
+              onPressed: () => setState(() {
+                if (editing) {
+                  // กลับไปใช้ค่าแนะนำ
+                  calorieController.clear();
+                  proteinController.clear();
+                  _editTargets = false;
+                } else {
+                  _editTargets = true;
+                }
+              }),
+              child: Text(editing ? "ใช้ค่าแนะนำ" : "ปรับเอง"),
+            ),
+          ),
+        ],
       ),
     );
   }
-
-  Widget buildInput(
-    String label,
-
-    TextEditingController controller,
-
-    String suffix, {
-    String? hint,
-    ValueChanged<String>? onChanged,
-  }) {
-    return Container(
-      decoration: boxDecoration(),
-
-      child: TextField(
-        controller: controller,
-
-        onChanged: onChanged,
-
-        keyboardType: TextInputType.number,
-
-        decoration: InputDecoration(
-          labelText: label,
-
-          hintText: hint,
-
-          // แสดง hint (ค่าเริ่มต้นตามเป้าหมาย) ตลอด ไม่ต้องรอกดช่องก่อน
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-
-          suffixText: suffix,
-
-          border: InputBorder.none,
-
-          contentPadding: const EdgeInsets.all(15),
-        ),
-      ),
-    );
-  }
-
-  /// ที่มาของโปรตีนเริ่มต้น: คิดจากน้ำหนักตัว หรือน้ำหนักอ้างอิง 60 กก.
-  String _defaultSource() => _weightKg == null
-      ? "(คิดจากน้ำหนัก ${PlanGoal.referenceWeightKg} กก.)"
-      : "(คิดจากน้ำหนักตัว)";
 
   BoxDecoration boxDecoration() {
     return BoxDecoration(
