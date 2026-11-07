@@ -208,6 +208,16 @@ Map<String, dynamic> storageMoveFields(
     else
       'thawed_at': now.toUtc().toIso8601String(),
   };
+  // ไม่มีข้อมูลช่องแช่แข็ง (ผัก ผลไม้ ไข่ ฯลฯ) แต่ผู้ใช้ยังอยากแช่แข็ง: ไม่ต่อเวลาให้
+  // นับวันที่เหลืออยู่เท่าเดิมต่อในช่องแช่แข็ง (ผู้ใช้แก้จำนวนวันเองได้)
+  final noFreezerDays =
+      item['freezer_days'] == null ||
+      (num.tryParse('${item['freezer_days']}') ?? 0) <= 0;
+  // (ของเก่าที่ไม่มีข้อมูลระยะเก็บเลย ใช้วันหมดอายุเดิมต่อ ไม่ต้องตั้งค่านี้)
+  if (target == 'freezer' && noFreezerDays && item['fridge_days'] != null) {
+    final left = daysLeft(item);
+    if (left != null) fields['freezer_days'] = left < 0 ? 0 : left;
+  }
   final moved = {...item, ...fields};
   if (shelfDaysOf(moved) != null) {
     fields['expiry_date'] = now

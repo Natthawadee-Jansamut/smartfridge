@@ -451,8 +451,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   Future<void> _showStoragePickerDialog() async {
     final current = _item!['storage']?.toString() ?? storageFridge;
     final fridgeDays = _item!['fridge_days'];
-    final freezerDays = _item!['freezer_days'];
     final hasShelfData = fridgeDays != null;
+    final freezerOk = freezerRecommended(_item!);
 
     return showDialog(
       context: context,
@@ -466,11 +466,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              for (final st in [
-                storageFridge,
-                // ไม่มีข้อมูลช่องแช่แข็ง (เช่น ผัก นม) ก็ไม่ต้องมีตัวเลือกนี้
-                if (!hasShelfData || freezerDays != null) storageFreezer,
-              ])
+              // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง (ผัก นม ไข่ ฯลฯ)
+              // แค่ขึ้นว่าไม่แนะนำ และนับวันที่เหลือเท่าเดิม (ดู storageMoveFields)
+              for (final st in [storageFridge, storageFreezer])
                 RadioListTile<String>(
                   value: st,
                   groupValue: current,
@@ -479,26 +477,23 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   subtitle: !hasShelfData
                       ? null
                       : Text(
-                          st == storageFreezer && freezerDays == null
-                              ? "ไม่ควรเก็บในช่องแช่แข็ง"
-                              : daysLeftText(
-                                  (st == current
-                                          ? daysLeft(_item!)
-                                          : daysLeftAfterMove(_item!, st)) ??
-                                      0,
-                                ),
+                          [
+                            daysLeftText(
+                              (st == current
+                                      ? daysLeft(_item!)
+                                      : daysLeftAfterMove(_item!, st)) ??
+                                  0,
+                            ),
+                            if (st == storageFreezer && !freezerOk)
+                              freezerNotRecommendedText,
+                          ].join(' · '),
                         ),
-                  onChanged:
-                      (hasShelfData &&
-                          st == storageFreezer &&
-                          freezerDays == null)
-                      ? null
-                      : (val) {
-                          Navigator.pop(context);
-                          if (val != null && val != current) {
-                            _changeStorage(val);
-                          }
-                        },
+                  onChanged: (val) {
+                    Navigator.pop(context);
+                    if (val != null && val != current) {
+                      _changeStorage(val);
+                    }
+                  },
                 ),
             ],
           ),

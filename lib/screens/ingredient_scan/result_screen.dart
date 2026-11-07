@@ -855,7 +855,12 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     widget.onUpdate('storage', storage);
     widget.onUpdate('food_state', foodState);
     widget.onUpdate('fridge_days', shelfLife.fridgeDays);
-    widget.onUpdate('freezer_days', shelfLife.freezerDays);
+    // ไม่มีข้อมูลช่องแช่แข็งแต่ผู้ใช้เลือกแช่แข็ง: ใช้จำนวนวันเท่าช่องปกติ (ไม่ต่อเวลา)
+    widget.onUpdate(
+      'freezer_days',
+      shelfLife.freezerDays ??
+          (storage == storageFreezer ? shelfLife.fridgeDays : null),
+    );
     widget.onUpdate(
       'expiry_days',
       int.tryParse(expiryController.text) ?? shelfLife.fridgeDays,
@@ -868,13 +873,18 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       if (newState != null) foodState = newState;
       shelfLife = _resolve();
       if (newStorage != null) storage = newStorage;
-      if (shelfLife.daysFor(storage) == null) storage = storageFridge;
-      expiryController.text = shelfLife.daysFor(storage).toString();
+      expiryController.text = _defaultDays.toString();
     });
     _pushShelfLife();
   }
 
-  int? get _defaultDays => shelfLife.daysFor(storage);
+  int get _defaultDays => shelfLife.daysFor(storage) ?? shelfLife.fridgeDays;
+
+  /// ประเภทนี้มีข้อมูลช่องแช่แข็งไหม — ไม่รู้ประเภท: กรอกเองไม่เตือน (ไม่รู้ว่าเป็น
+  /// อะไร), สแกนแล้ว AI บอกว่าไม่ควรแช่แข็ง (ไม่ให้จำนวนวันมา) ก็เตือน
+  bool get _freezerRecommended => shelfType != null
+      ? shelfType!.freezerRecommendedFor(foodState)
+      : (_isManual || shelfLife.freezerDays != null);
 
   bool get _isManual => widget.initialData['manual'] == true;
 
@@ -920,9 +930,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   // AI ประเมินให้ / ผู้ใช้กำหนดเอง ผู้ใช้จะได้รู้ว่าตัวเลขเชื่อได้แค่ไหน
   Widget _buildShelfSource() {
     final stateText = foodState.isEmpty ? "" : " ($foodState)";
-    final defaultText = _defaultDays == null
-        ? ""
-        : formatShelfDays(_defaultDays!);
+    final defaultText = formatShelfDays(_defaultDays);
 
     final IconData icon;
     final Color color;
@@ -938,6 +946,12 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       color = const Color(0xffE67E22);
       title = "ค่าเริ่มต้น $defaultText";
       detail = "เลือกประเภทวัตถุดิบ หรือแก้จำนวนวันให้ตรงกับของจริง";
+    } else if (storage == storageFreezer && !_freezerRecommended) {
+      // ไม่มีข้อมูลช่องแช่แข็ง -> ไม่บอกแหล่งที่มา แค่เตือนว่าไม่แนะนำ
+      icon = Icons.warning_amber_rounded;
+      color = const Color(0xffE67E22);
+      title = "${storageLabel(storage)} นับเก็บได้ $defaultText เท่าช่องปกติ";
+      detail = freezerNotRecommendedText;
     } else if (shelfType != null) {
       icon = Icons.verified_outlined;
       color = const Color(0xff3F9142);
@@ -1023,7 +1037,6 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   }
 
   Widget _buildStorageSection() {
-    final canFreeze = shelfLife.freezerDays != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1045,20 +1058,19 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
               selected: storage == storageFridge,
               onTap: () => _changeStorage(newStorage: storageFridge),
             ),
-            // แสดงตัวเลือกช่องแช่แข็งเฉพาะวัตถุดิบที่มีข้อมูลการแช่แข็ง
-            if (canFreeze)
-              _buildChip(
-                label: "${storageEmoji(storageFreezer)} ช่องแช่แข็ง",
-                selected: storage == storageFreezer,
-                onTap: () => _changeStorage(newStorage: storageFreezer),
-              ),
+            // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็งแค่ขึ้นว่าไม่แนะนำ
+            _buildChip(
+              label: "${storageEmoji(storageFreezer)} ช่องแช่แข็ง",
+              selected: storage == storageFreezer,
+              onTap: () => _changeStorage(newStorage: storageFreezer),
+            ),
           ],
         ),
-        if (shelfType?.noFreeze ?? false)
+        if (!_freezerRecommended)
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
-              "*ไม่ควรเก็บในช่องแช่แข็ง",
+              "*$freezerNotRecommendedText",
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ),

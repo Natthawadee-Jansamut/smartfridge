@@ -4,7 +4,7 @@ import 'package:test_app/utils/shelf_life.dart';
 // ที่มาของตัวเลขตามสไลด์อายุการเก็บรักษา
 // (S = springnews, B = The Beefchelor, SU = SUPALAI, M = Maeban)
 void main() {
-  String src(String key, String state, String storage) =>
+  String? src(String key, String state, String storage) =>
       findShelfType(key)!.sourceFor(state, storage);
 
   test('เนื้อไก่: ดิบ/สุก ช่องปกติ B, ดิบ ช่องแช่แข็ง S', () {
@@ -55,6 +55,31 @@ void main() {
     );
     expect(r.fridgeDays, 7);
     expect(r.freezerDays, isNull);
+  });
+
+  test('ของที่ไม่มีข้อมูลช่องแช่แข็ง: เก็บได้ แต่ไม่บอกที่มา แค่เตือน', () {
+    for (final key in ['fruit', 'leafy_veg', 'milk', 'bread']) {
+      expect(src(key, '', storageFreezer), isNull, reason: key);
+    }
+    expect(src('egg', stateRaw, storageFreezer), isNull);
+    expect(src('chicken', stateCooked, storageFreezer), isNull);
+    expect(
+      shelfSourceShort({
+        'shelf_type': 'fruit',
+        'storage': storageFreezer,
+        'freezer_days': 5,
+      }),
+      freezerNotRecommendedText,
+    );
+    expect(freezerRecommended({'shelf_type': 'fruit'}), isFalse);
+    expect(
+      freezerRecommended({'shelf_type': 'chicken', 'food_state': stateRaw}),
+      isTrue,
+    );
+  });
+
+  test('หน่วยนับมี แผ่น', () {
+    expect(pieceUnits, contains('แผ่น'));
   });
 
   test('การ์ดในตู้เย็นใช้ที่มาตามสถานะและช่องที่เก็บ', () {

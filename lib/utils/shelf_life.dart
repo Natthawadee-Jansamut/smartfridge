@@ -62,12 +62,22 @@ class ShelfType {
       states.keys.where((s) => s.isNotEmpty).toList();
 
   /// แหล่งอ้างอิงของตัวเลขตามสถานะ (ดิบ/สุก ฯลฯ) และช่องที่เก็บ
-  String sourceFor(String? state, String? storage) {
+  /// null = ไม่มีข้อมูลอ้างอิงของช่องนั้น (เช่น ผัก ผลไม้ ไข่ ในช่องแช่แข็ง)
+  String? sourceFor(String? state, String? storage) {
+    if (storage == storageFreezer && !freezerRecommendedFor(state)) return null;
     final rule = states[state] ?? states.values.first;
     final specific = storage == storageFreezer
         ? rule.freezerSource
         : rule.fridgeSource;
     return specific ?? source;
+  }
+
+  /// มีข้อมูลช่องแช่แข็งจากแหล่งอ้างอิงไหม (ไม่มี = ไม่แนะนำให้แช่แข็ง แต่ผู้ใช้
+  /// ยังเลือกเก็บช่องแช่แข็งเองได้)
+  bool freezerRecommendedFor(String? state) {
+    if (noFreeze) return false;
+    final rule = states[state] ?? states.values.first;
+    return rule.freezer != null;
   }
 }
 
@@ -86,6 +96,7 @@ const List<String> pieceUnits = [
   "ฟอง",
   "ผล",
   "ลูก",
+  "แผ่น",
   "หัว",
   "ต้น",
   "กำ",
@@ -354,10 +365,24 @@ String shelfSourceShort(Map<String, dynamic> item) {
       item['food_state']?.toString(),
       item['storage']?.toString(),
     );
-    return 'ข้อมูลจาก $src';
+    return src == null ? freezerNotRecommendedText : 'ข้อมูลจาก $src';
   }
   if (item['fridge_days'] != null) return 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง';
   return 'ไม่มีข้อมูลระยะที่เก็บได้';
+}
+
+/// ข้อความเมื่อผู้ใช้เก็บของที่ไม่มีข้อมูลช่องแช่แข็งไว้ในช่องแช่แข็ง (ไม่บอกที่มา)
+const String freezerNotRecommendedText = 'ไม่แนะนำให้เก็บในช่องแช่แข็ง';
+
+/// วัตถุดิบนี้ (ตามประเภทเดิมก่อนผู้ใช้แก้วัน) มีข้อมูลช่องแช่แข็งไหม
+/// ไม่รู้ประเภท (AI ประเมิน / ของเก่า) -> ดูว่ามีจำนวนวันช่องแช่แข็งไหม
+bool freezerRecommended(Map<String, dynamic> item) {
+  final key = originalShelfSource(item['shelf_type']?.toString(), null).key;
+  final type = findShelfType(key);
+  if (type != null) {
+    return type.freezerRecommendedFor(item['food_state']?.toString());
+  }
+  return item['freezer_days'] != null;
 }
 
 /// ชนิดของเมื่อเกินระยะที่เก็บได้แล้ว: ไม่ควรเสี่ยง (ทิ้ง) / ตรวจด้วยตาได้
