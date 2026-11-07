@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:test_app/services/reauth.dart';
 
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
@@ -10,6 +11,14 @@ class ChangePasswordScreen extends StatefulWidget {
 
 class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final supabase = Supabase.instance.client;
+
+  /// รหัสผ่านปัจจุบัน — ต้องถูกก่อนถึงเปลี่ยนได้ (กันคนหยิบโทรศัพท์ที่ล็อกอินค้างไว้)
+  final currentPasswordController = TextEditingController();
+
+  bool hideCurrent = true;
+
+  /// ข้อความเตือนสีแดงใต้ช่องรหัสผ่านปัจจุบัน (null = ไม่มี)
+  String? currentError;
 
   final passwordController = TextEditingController();
 
@@ -23,6 +32,8 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
   @override
   void dispose() {
+    currentPasswordController.dispose();
+
     passwordController.dispose();
 
     confirmPasswordController.dispose();
@@ -49,9 +60,17 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
 
   Future<void> changePassword() async {
+    final current = currentPasswordController.text.trim();
+
     final password = passwordController.text.trim();
 
     final confirm = confirmPasswordController.text.trim();
+
+    if (current.isEmpty) {
+      setState(() => currentError = "กรุณากรอกรหัสผ่านปัจจุบัน");
+
+      return;
+    }
 
     if (!passwordValid) {
       showMessage("รหัสผ่านไม่ตรงตามเงื่อนไข");
@@ -65,11 +84,26 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       return;
     }
 
+    if (password == current) {
+      showMessage("รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านปัจจุบัน");
+
+      return;
+    }
+
     setState(() {
       loading = true;
     });
 
     try {
+      // ยืนยันตัวตนด้วยรหัสผ่านปัจจุบันก่อน
+      if (!await verifyCurrentPassword(current)) {
+        if (mounted) {
+          setState(() => currentError = "รหัสผ่านปัจจุบันไม่ถูกต้อง");
+        }
+
+        return;
+      }
+
       await supabase.auth.updateUser(UserAttributes(password: password));
 
       if (mounted) {
@@ -133,8 +167,9 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
     VoidCallback toggle,
 
-    Function(String) onChanged,
-  ) {
+    Function(String) onChanged, {
+    String? errorText,
+  }) {
     return TextField(
       controller: controller,
 
@@ -144,6 +179,21 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
 
       decoration: InputDecoration(
         labelText: label,
+
+        // เตือนสีแดงใต้ช่อง (ขอบแดง + ข้อความ) แบบเดียวกับหน้าสร้างแพลน
+        errorText: errorText,
+
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+
+          borderSide: const BorderSide(color: Color(0xffD93025), width: 1.5),
+        ),
+
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+
+          borderSide: const BorderSide(color: Color(0xffD93025), width: 1.5),
+        ),
 
         prefixIcon: const Icon(Icons.lock_outline, color: Color(0xff5189C9)),
 
@@ -172,7 +222,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
       backgroundColor: const Color(0xffD8EEFF),
 
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
 
           child: Column(
@@ -210,6 +260,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               ),
 
               const SizedBox(height: 35),
+
+              buildPasswordField(
+                "รหัสผ่านปัจจุบัน",
+
+                currentPasswordController,
+
+                hideCurrent,
+
+                () {
+                  setState(() {
+                    hideCurrent = !hideCurrent;
+                  });
+                },
+
+                (value) {
+                  // เริ่มพิมพ์ใหม่ -> ซ่อนข้อความเตือนเดิม
+                  if (currentError != null) {
+                    setState(() => currentError = null);
+                  }
+                },
+
+                errorText: currentError,
+              ),
+
+              const SizedBox(height: 20),
 
               buildPasswordField(
                 "รหัสผ่านใหม่",
@@ -261,7 +336,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
                 },
               ),
 
-              const Spacer(),
+              const SizedBox(height: 30),
 
               SizedBox(
                 width: double.infinity,
