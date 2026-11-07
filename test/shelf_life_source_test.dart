@@ -57,22 +57,22 @@ void main() {
     expect(r.freezerDays, isNull);
   });
 
-  test('ของที่ไม่มีข้อมูลช่องแช่แข็ง: เก็บได้ แต่ไม่บอกที่มา แค่เตือน', () {
+  test('ช่องแช่แข็งที่ระบบไม่มีข้อมูล: ไม่บอกแหล่งที่มา ใช้ค่าจาก AI', () {
     for (final key in ['fruit', 'leafy_veg', 'milk', 'bread']) {
       expect(src(key, '', storageFreezer), isNull, reason: key);
     }
     expect(src('egg', stateRaw, storageFreezer), isNull);
     expect(src('chicken', stateCooked, storageFreezer), isNull);
-    // สแกนเข้าช่องแช่แข็งตั้งแต่แรก: จำนวนวันมาจาก AI
+    // สแกนเข้าช่องแช่แข็งตั้งแต่แรก: AI ประเมิน ไม่เตือน
     expect(
       shelfSourceShort({
         'shelf_type': 'fruit',
         'storage': storageFreezer,
-        'freezer_days': 5,
+        'freezer_days': 60,
       }),
-      'ข้อมูลจาก AI · $freezerNotRecommendedText',
+      'AI ประเมินให้ ควรตรวจสอบอีกครั้ง',
     );
-    // ย้ายเข้าช่องแช่แข็งทีหลัง: นับวันที่เหลือเดิม ไม่ใช่ข้อมูลจาก AI
+    // ย้ายเข้าช่องแช่แข็งทีหลัง: นับวันที่เหลือเดิมต่อ
     expect(
       shelfSourceShort({
         'shelf_type': 'fruit',
@@ -80,12 +80,23 @@ void main() {
         'freezer_days': 5,
         'storage_changed_at': '2026-11-07T00:00:00Z',
       }),
-      freezerNotRecommendedText,
+      'นับวันที่เหลือต่อจากช่องปกติ',
     );
-    expect(freezerRecommended({'shelf_type': 'fruit'}), isFalse);
+  });
+
+  test('เตือนว่าไม่แนะนำให้แช่แข็งเฉพาะไข่', () {
+    expect(freezerNotRecommended({'shelf_type': 'egg'}), isTrue);
+    for (final key in ['fruit', 'leafy_veg', 'milk', 'bread', 'chicken']) {
+      expect(freezerNotRecommended({'shelf_type': key}), isFalse, reason: key);
+    }
     expect(
-      freezerRecommended({'shelf_type': 'chicken', 'food_state': stateRaw}),
-      isTrue,
+      shelfSourceShort({
+        'shelf_type': 'egg',
+        'food_state': stateRaw,
+        'storage': storageFreezer,
+        'freezer_days': 30,
+      }),
+      'AI ประเมินให้ ควรตรวจสอบอีกครั้ง · $freezerNotRecommendedText',
     );
   });
 

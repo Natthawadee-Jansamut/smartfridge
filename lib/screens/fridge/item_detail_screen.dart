@@ -451,7 +451,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final current = _item!['storage']?.toString() ?? storageFridge;
     final fridgeDays = _item!['fridge_days'];
     final hasShelfData = fridgeDays != null;
-    final freezerOk = freezerRecommended(_item!);
+    final warnFreeze = freezerNotRecommended(_item!);
 
     return showDialog(
       context: context,
@@ -465,8 +465,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง (ผัก นม ไข่ ฯลฯ)
-              // แค่ขึ้นว่าไม่แนะนำ และนับวันที่เหลือเท่าเดิม (ดู storageMoveFields)
+              // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง นับวันที่เหลือ
+              // เท่าเดิม (ดู storageMoveFields) — เตือนเฉพาะของที่ไม่ควรแช่แข็ง (ไข่)
               for (final st in [storageFridge, storageFreezer])
                 RadioListTile<String>(
                   value: st,
@@ -483,7 +483,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                       : daysLeftAfterMove(_item!, st)) ??
                                   0,
                             ),
-                            if (st == storageFreezer && !freezerOk)
+                            if (st == storageFreezer && warnFreeze)
                               freezerNotRecommendedText,
                           ].join(' · '),
                         ),

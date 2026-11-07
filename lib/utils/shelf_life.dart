@@ -64,7 +64,7 @@ class ShelfType {
   /// แหล่งอ้างอิงของตัวเลขตามสถานะ (ดิบ/สุก ฯลฯ) และช่องที่เก็บ
   /// null = ไม่มีข้อมูลอ้างอิงของช่องนั้น (เช่น ผัก ผลไม้ ไข่ ในช่องแช่แข็ง)
   String? sourceFor(String? state, String? storage) {
-    if (storage == storageFreezer && !freezerRecommendedFor(state)) return null;
+    if (storage == storageFreezer && !hasFreezerData(state)) return null;
     final rule = states[state] ?? states.values.first;
     final specific = storage == storageFreezer
         ? rule.freezerSource
@@ -72,9 +72,9 @@ class ShelfType {
     return specific ?? source;
   }
 
-  /// มีข้อมูลช่องแช่แข็งจากแหล่งอ้างอิงไหม (ไม่มี = ไม่แนะนำให้แช่แข็ง แต่ผู้ใช้
-  /// ยังเลือกเก็บช่องแช่แข็งเองได้)
-  bool freezerRecommendedFor(String? state) {
+  /// มีข้อมูลช่องแช่แข็งจากแหล่งอ้างอิงไหม — ไม่มี: ของที่สแกนใช้จำนวนวันที่ AI
+  /// ประเมิน (เป็นหน้าที่ของ AI เมื่อระบบไม่มีข้อมูล) ของที่กรอกเองให้ผู้ใช้กรอก
+  bool hasFreezerData(String? state) {
     if (noFreeze) return false;
     final rule = states[state] ?? states.values.first;
     return rule.freezer != null;
@@ -366,28 +366,25 @@ String shelfSourceShort(Map<String, dynamic> item) {
       item['storage']?.toString(),
     );
     if (src != null) return 'ข้อมูลจาก $src';
-    // ไม่มีข้อมูลช่องแช่แข็ง: สแกนเข้าช่องแช่แข็งตั้งแต่แรก = จำนวนวันมาจาก AI
-    // (ย้ายเข้าช่องแช่แข็งทีหลัง = นับวันที่เหลือเดิมต่อ ไม่ใช่ข้อมูลจาก AI)
-    return item['storage_changed_at'] == null
-        ? 'ข้อมูลจาก AI · $freezerNotRecommendedText'
-        : freezerNotRecommendedText;
+    // ไม่มีข้อมูลช่องแช่แข็งในระบบ: สแกนเข้าช่องแช่แข็งตั้งแต่แรก = AI ประเมิน
+    // (ย้ายเข้าช่องแช่แข็งทีหลัง = นับวันที่เหลือเดิมต่อ) — เตือนเฉพาะของที่ไม่ควร
+    // แช่แข็ง (ไข่)
+    final base = item['storage_changed_at'] == null
+        ? 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง'
+        : 'นับวันที่เหลือต่อจากช่องปกติ';
+    return type.noFreeze ? '$base · $freezerNotRecommendedText' : base;
   }
   if (item['fridge_days'] != null) return 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง';
   return 'ไม่มีข้อมูลระยะที่เก็บได้';
 }
 
-/// ข้อความเมื่อผู้ใช้เก็บของที่ไม่มีข้อมูลช่องแช่แข็งไว้ในช่องแช่แข็ง (ไม่บอกที่มา)
+/// คำเตือนสำหรับของที่ไม่ควรแช่แข็ง (ไข่) — ผู้ใช้ยังเลือกเก็บช่องแช่แข็งได้
 const String freezerNotRecommendedText = 'ไม่แนะนำให้เก็บในช่องแช่แข็ง';
 
-/// วัตถุดิบนี้ (ตามประเภทเดิมก่อนผู้ใช้แก้วัน) มีข้อมูลช่องแช่แข็งไหม
-/// ไม่รู้ประเภท (AI ประเมิน / ของเก่า) -> ดูว่ามีจำนวนวันช่องแช่แข็งไหม
-bool freezerRecommended(Map<String, dynamic> item) {
+/// ควรเตือนว่าไม่แนะนำให้แช่แข็งไหม (ตามประเภทเดิมก่อนผู้ใช้แก้วัน) — เฉพาะไข่
+bool freezerNotRecommended(Map<String, dynamic> item) {
   final key = originalShelfSource(item['shelf_type']?.toString(), null).key;
-  final type = findShelfType(key);
-  if (type != null) {
-    return type.freezerRecommendedFor(item['food_state']?.toString());
-  }
-  return item['freezer_days'] != null;
+  return findShelfType(key)?.noFreeze ?? false;
 }
 
 /// ชนิดของเมื่อเกินระยะที่เก็บได้แล้ว: ไม่ควรเสี่ยง (ทิ้ง) / ตรวจด้วยตาได้

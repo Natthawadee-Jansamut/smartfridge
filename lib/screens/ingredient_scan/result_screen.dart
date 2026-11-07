@@ -75,7 +75,6 @@ class _ResultScreenState extends State<ResultScreen> {
   void _prepareStorage(Map item) {
     item['gemini_fridge_days'] = item['fridge_days'];
     item['gemini_freezer_days'] = item['freezer_days'];
-    item['gemini_freezer_ok'] = item['freezer_ok'];
     final typeKey = findShelfType(item['shelf_type']?.toString())?.key;
     final state = defaultStateFor(typeKey);
     final life = resolveShelfLife(
@@ -910,14 +909,15 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     return (v == null || v <= 0) ? null : v.round();
   }
 
-  /// ประเภทนี้มีข้อมูลช่องแช่แข็งไหม — ไม่รู้ประเภท: กรอกเองไม่เตือน (ไม่รู้ว่าเป็น
-  /// อะไร), สแกนแล้ว AI บอกว่าไม่แนะนำให้แช่แข็ง (freezer_ok = false) ก็เตือน
-  bool get _freezerRecommended {
-    if (shelfType != null) return shelfType!.freezerRecommendedFor(foodState);
-    if (_isManual) return true;
-    return widget.initialData['gemini_freezer_ok'] != false &&
-        shelfLife.freezerDays != null;
-  }
+  /// เตือนว่าไม่แนะนำให้แช่แข็ง เฉพาะของที่ไม่ควรแช่แข็ง (ไข่)
+  bool get _warnFreeze => shelfType?.noFreeze ?? false;
+
+  /// ช่องแช่แข็งของประเภทที่ระบบไม่มีข้อมูล -> ใช้จำนวนวันจาก AI (ของที่สแกน)
+  /// หรือให้ผู้ใช้กรอกเอง (ของที่กรอกเอง)
+  bool get _noFreezerData =>
+      storage == storageFreezer &&
+      shelfType != null &&
+      !shelfType!.hasFreezerData(foodState);
 
   bool get _isManual => widget.initialData['manual'] == true;
 
@@ -966,7 +966,6 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
     final defaultText = _defaultDays == null
         ? ""
         : formatShelfDays(_defaultDays!);
-    final noFreezerData = storage == storageFreezer && !_freezerRecommended;
 
     final IconData icon;
     final Color color;
@@ -976,21 +975,27 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       icon = Icons.edit_outlined;
       color = const Color(0xff5189C9);
       title = "คุณกำหนดเอง";
-      detail = noFreezerData
-          ? (_defaultDays == null
-                ? freezerNotRecommendedText
-                : "AI ประเมินไว้ $defaultText · $freezerNotRecommendedText")
+      final warn = _warnFreeze && storage == storageFreezer
+          ? " · $freezerNotRecommendedText"
+          : "";
+      detail = _defaultDays == null
+          ? "ไม่มีข้อมูลสำหรับช่องแช่แข็ง$warn"
+          : _noFreezerData
+          ? "AI ประเมินไว้ $defaultText$warn"
           : "ค่าแนะนำคือ $defaultText";
-    } else if (noFreezerData) {
-      // ไม่มีข้อมูลอ้างอิงช่องแช่แข็ง -> ไม่บอกแหล่งที่มา ไม่เดาจำนวนวันให้
-      icon = Icons.warning_amber_rounded;
+    } else if (_noFreezerData) {
+      // ระบบไม่มีข้อมูลช่องแช่แข็ง -> ของที่สแกนใช้ค่าที่ AI ประเมิน, กรอกเองให้กรอก
+      final warn = _warnFreeze ? " · $freezerNotRecommendedText" : "";
+      icon = _warnFreeze
+          ? Icons.warning_amber_rounded
+          : Icons.auto_awesome_outlined;
       color = const Color(0xffE67E22);
       if (_defaultDays == null) {
-        title = freezerNotRecommendedText;
-        detail = "ไม่มีข้อมูลสำหรับช่องแช่แข็ง กรอกจำนวนวันที่เก็บได้เอง";
+        title = "ไม่มีข้อมูลสำหรับช่องแช่แข็ง";
+        detail = "กรอกจำนวนวันที่เก็บได้เอง$warn";
       } else {
         title = "AI ประเมินให้ว่าเก็บได้ $defaultText";
-        detail = "ข้อมูลจาก AI · $freezerNotRecommendedText";
+        detail = "ควรตรวจสอบอีกครั้ง$warn";
       }
     } else if (_isManual && shelfType == null) {
       icon = Icons.info_outline;
@@ -1111,7 +1116,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
             ),
           ],
         ),
-        if (!_freezerRecommended)
+        if (_warnFreeze)
           const Padding(
             padding: EdgeInsets.only(top: 4),
             child: Text(
