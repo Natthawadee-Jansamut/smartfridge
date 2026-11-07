@@ -53,6 +53,22 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
     if (user == null) return;
 
+    // ต้องกรอกแคลอรีและโปรตีนต่อวันเอง (ไม่มีค่าเริ่มต้น) — ผู้ใช้กำหนดตาม
+    // เป้าหมายของตัวเอง แพลนจะได้ใช้ตัวเลขที่ตรงกับเป้าหมายจริง
+    final targetCal = int.tryParse(calorieController.text.trim());
+    final targetProtein = int.tryParse(proteinController.text.trim());
+    if (targetCal == null ||
+        targetCal <= 0 ||
+        targetProtein == null ||
+        targetProtein <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("กรุณากรอก Calories และ Protein ต่อวันให้ครบ"),
+        ),
+      );
+      return;
+    }
+
     setState(() {
       loading = true;
     });
@@ -206,9 +222,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       }
 
       // เป้าต่อวันเป็นเพดาน: ยอดรวมทั้งวันห้ามเกิน และขาดได้ไม่เกิน 100 kcal / 10 g
-      // (ดู PlanTargets) ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
-      final targetCal = int.tryParse(calorieController.text) ?? 2000;
-      final targetProtein = int.tryParse(proteinController.text) ?? 100;
+      // (ดู PlanTargets) ใช้ค่าที่ผู้ใช้กรอก (ตรวจไว้แล้วตอนต้นฟังก์ชัน)
       final targets = PlanTargets(
         dayCal: targetCal,
         dayProtein: targetProtein,
@@ -440,9 +454,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
             'meals_per_day': meals,
 
-            'target_calories': int.tryParse(calorieController.text) ?? 2000,
+            'target_calories': targetCal,
 
-            'target_protein': int.tryParse(proteinController.text) ?? 100,
+            'target_protein': targetProtein,
 
             'diet_type': diet,
           })
