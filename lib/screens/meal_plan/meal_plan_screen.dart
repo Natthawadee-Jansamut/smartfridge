@@ -10,6 +10,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/plan_targets.dart';
+import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -203,9 +204,13 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       }
 
       // เป้าต่อวันเป็นเพดาน: ยอดรวมทั้งวันห้ามเกิน และขาดได้ไม่เกิน 100 kcal / 10 g
-      // (ดู PlanTargets) ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
-      final targetCal = int.tryParse(calorieController.text) ?? 2000;
-      final targetProtein = int.tryParse(proteinController.text) ?? 100;
+      // (ดู PlanTargets) ไม่กรอก -> ใช้ค่าเริ่มต้นตามเป้าหมาย (ดู PlanGoal)
+      // ค่าเดียวกับที่บันทึกลง meal_plans
+      final goalDefaults = PlanGoal.defaultTargets(goal);
+      final targetCal =
+          int.tryParse(calorieController.text) ?? goalDefaults.calories;
+      final targetProtein =
+          int.tryParse(proteinController.text) ?? goalDefaults.protein;
       final targets = PlanTargets(
         dayCal: targetCal,
         dayProtein: targetProtein,
@@ -229,10 +234,18 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           )
           .toList();
       matched.shuffle();
+      // คะแนนความเหมาะกับเป้าหมาย (ลดน้ำหนัก: โปรตีนต่อแคลอรีสูง,
+      // เพิ่มกล้ามเนื้อ: โปรตีนสูง) ทุกเมนูอยู่ในช่วงเป้าต่อมื้ออยู่แล้ว
+      double goalScore(Map m) => PlanGoal.score(
+        goal,
+        RecipeRepository.toNum(m['calories']),
+        RecipeRepository.toNum(m['protein']),
+      );
       matched.sort((a, b) {
         final aExp = usesExpiringIngredient(a['ingredients'] as List) ? 0 : 1;
         final bExp = usesExpiringIngredient(b['ingredients'] as List) ? 0 : 1;
-        return aExp.compareTo(bExp);
+        if (aExp != bExp) return aExp.compareTo(bExp);
+        return goalScore(b).compareTo(goalScore(a));
       });
 
       // ช่องมื้ออาหารทั้งสัปดาห์ (วัน x จำนวนมื้อต่อวัน)
@@ -300,6 +313,24 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             }
             return fitsMealTarget(r['calories'], r['protein']);
           }).toList();
+          // คงลำดับเดิม (ซื้อเพิ่มน้อยก่อน -> ใช้ของที่ควรใช้ก่อน) แล้วค่อยเลือก
+          // เมนูที่เหมาะกับเป้าหมายก่อนในกลุ่มเดียวกัน
+          final libOrder = {
+            for (var i = 0; i < suitable.length; i++) suitable[i]: i,
+          };
+          suitable.sort((a, b) {
+            final byMissing = (a['missing'] as List).length.compareTo(
+              (b['missing'] as List).length,
+            );
+            if (byMissing != 0) return byMissing;
+            final byFirst =
+                (b['uses_first'] == true ? 1 : 0) -
+                (a['uses_first'] == true ? 1 : 0);
+            if (byFirst != 0) return byFirst;
+            final byGoal = goalScore(b).compareTo(goalScore(a));
+            if (byGoal != 0) return byGoal;
+            return libOrder[a]!.compareTo(libOrder[b]!);
+          });
           for (
             var i = reuseCount;
             i < slotGrid.length && libraryMeals.length < suitable.length;
@@ -352,9 +383,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
             'meals_per_day': meals,
 
-            'target_calories': int.tryParse(calorieController.text) ?? 2000,
+            'target_calories': targetCal,
 
-            'target_protein': int.tryParse(proteinController.text) ?? 100,
+            'target_protein': targetProtein,
 
             'diet_type': diet,
           })
@@ -429,7 +460,7 @@ ${expiringList.isEmpty ? "ไม่มี" : expiringList}
 
 เป้าหมาย:
 
-$goal
+$goal (${PlanGoal.promptRule(goal)})
 
 
 
@@ -847,11 +878,23 @@ $extraRule
 
               buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
 
-              buildInput("Calories ต่อวัน", calorieController, "kcal"),
+              buildInput(
+                "Calories ต่อวัน",
+                calorieController,
+                "kcal",
+                hint:
+                    "ไม่กรอก = ${PlanGoal.defaultTargets(goal).calories} kcal ตามเป้าหมาย",
+              ),
 
               const SizedBox(height: 15),
 
-              buildInput("Protein ต่อวัน", proteinController, "g"),
+              buildInput(
+                "Protein ต่อวัน",
+                proteinController,
+                "g",
+                hint:
+                    "ไม่กรอก = ${PlanGoal.defaultTargets(goal).protein} g ตามเป้าหมาย",
+              ),
 
               const SizedBox(height: 20),
 
@@ -1126,8 +1169,9 @@ $extraRule
 
     TextEditingController controller,
 
-    String suffix,
-  ) {
+    String suffix, {
+    String? hint,
+  }) {
     return Container(
       decoration: boxDecoration(),
 
@@ -1138,6 +1182,11 @@ $extraRule
 
         decoration: InputDecoration(
           labelText: label,
+
+          hintText: hint,
+
+          // แสดง hint (ค่าเริ่มต้นตามเป้าหมาย) ตลอด ไม่ต้องรอกดช่องก่อน
+          floatingLabelBehavior: FloatingLabelBehavior.always,
 
           suffixText: suffix,
 

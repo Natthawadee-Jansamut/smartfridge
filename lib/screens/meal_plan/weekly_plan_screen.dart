@@ -765,6 +765,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         fridgeOnly: !MealRegenerate.planAllowsBuying(meals),
         hint: hint,
         dietType: dietType,
+        goal: goal,
       );
       await loadMeals();
       if (!mounted) return;
