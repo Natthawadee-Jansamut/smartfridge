@@ -7,7 +7,6 @@ import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/gemini_retry.dart';
-import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
@@ -27,7 +26,6 @@ class MealRegenerate {
     required bool fridgeOnly,
     String? hint,
     String? dietType,
-    String? goal,
   }) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
@@ -62,7 +60,7 @@ class MealRegenerate {
           requireNutrition: true,
           excludeNames: {...otherNames, oldName},
         );
-        final fitting = candidates.where((r) {
+        final pick = candidates.where((r) {
           if (dietType != null &&
               dietType != 'ไม่มี' &&
               !(r['diet_tags'] as List).contains(dietType)) {
@@ -70,17 +68,7 @@ class MealRegenerate {
           }
           final cal = RecipeRepository.toNum(r['calories']);
           return oldCal <= 0 || (cal >= oldCal * 0.65 && cal <= oldCal * 1.35);
-        }).toList();
-        // เลือกเมนูที่เหมาะกับเป้าหมายของแพลนก่อน (คะแนนเท่ากัน = คงลำดับเดิม)
-        double goalScore(Map<String, dynamic> r) => PlanGoal.score(
-          goal,
-          RecipeRepository.toNum(r['calories']),
-          RecipeRepository.toNum(r['protein']),
-        );
-        Map<String, dynamic>? pick;
-        for (final r in fitting) {
-          if (pick == null || goalScore(r) > goalScore(pick)) pick = r;
-        }
+        }).firstOrNull;
         if (pick != null) {
           final libIngredients = [
             for (final ing in RecipeRepository.ingredientsOf(pick))
@@ -132,7 +120,6 @@ class MealRegenerate {
 คุณเป็น AI Nutritionist ช่วยเปลี่ยนเมนูอาหาร 1 มื้อในแพลนของผู้ใช้
 มื้อเดิม: $oldName (${meal['calories'] ?? '-'} kcal, โปรตีน ${meal['protein'] ?? '-'} g)
 ข้อจำกัดอาหาร: ${dietType ?? 'ไม่มี'}
-${goal == null ? '' : 'เป้าหมาย: $goal (${PlanGoal.promptRule(goal)})'}
 ${userHint.isEmpty ? '' : 'ผู้ใช้อยากได้: $userHint'}
 
 วัตถุดิบที่มีในตู้เย็น:

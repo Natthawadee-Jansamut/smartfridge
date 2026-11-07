@@ -10,7 +10,6 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/plan_targets.dart';
-import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -45,79 +44,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
   final calorieController = TextEditingController();
 
   final proteinController = TextEditingController();
-
-  /// น้ำหนักตัว (กก.) ใช้คำนวณค่าเริ่มต้นของโปรตีนตามเป้าหมาย (ไม่บังคับ)
-  /// จำไว้ใน user_metadata.weight_kg (แนวทางเดียวกับ notify_days) ครั้งหน้าไม่ต้องกรอกซ้ำ
-  final weightController = TextEditingController();
-
-  double? get _weightKg => PlanGoal.validWeight(weightController.text);
-
-  /// เพศ ('male' / 'female' / null = ไม่ระบุ) ใช้เลือกพลังงานพื้นฐาน
-  /// (ธงโภชนาการ: ชาย 2,000 / หญิง 1,600 kcal) จำไว้ใน user_metadata.sex
-  String? sex;
-
-  ({int calories, int protein}) get _goalDefaults =>
-      PlanGoal.defaultTargets(goal, weightKg: _weightKg, sex: sex);
-
-  @override
-  void initState() {
-    super.initState();
-    final meta = supabase.auth.currentUser?.userMetadata;
-    sex = PlanGoal.validSex(meta?['sex']);
-    final saved = PlanGoal.validWeight(meta?['weight_kg']);
-    if (saved != null) {
-      weightController.text = saved == saved.roundToDouble()
-          ? saved.toInt().toString()
-          : saved.toString();
-    }
-  }
-
-  @override
-  void dispose() {
-    calorieController.dispose();
-    proteinController.dispose();
-    weightController.dispose();
-    super.dispose();
-  }
-
-  /// จำน้ำหนักตัวและเพศที่กรอกไว้ (ไม่สำเร็จก็สร้างแพลนต่อได้ตามปกติ)
-  /// เก็บใน user_metadata ของ Supabase Auth — ไม่ต้องเพิ่มตาราง/คอลัมน์
-  Future<void> _rememberProfile() async {
-    final meta = supabase.auth.currentUser?.userMetadata;
-    final data = <String, dynamic>{
-      if (_weightKg != null &&
-          PlanGoal.validWeight(meta?['weight_kg']) != _weightKg)
-        'weight_kg': _weightKg,
-      // เลือก "ไม่ระบุ" -> ล้างค่าที่เคยจำไว้
-      if (PlanGoal.validSex(meta?['sex']) != sex) 'sex': sex,
-    };
-    if (data.isEmpty) return;
-    try {
-      await supabase.auth.updateUser(UserAttributes(data: data));
-    } catch (e) {
-      debugPrint('บันทึกน้ำหนักตัว/เพศไม่สำเร็จ: $e');
-    }
-  }
-
-  /// ปุ่มเลือกเพศ: ชาย / หญิง / ไม่ระบุ
-  Widget _buildSexSelector() {
-    const options = [
-      (value: PlanGoal.male, label: "ชาย"),
-      (value: PlanGoal.female, label: "หญิง"),
-      (value: null, label: "ไม่ระบุ"),
-    ];
-    return Wrap(
-      spacing: 8,
-      children: [
-        for (final o in options)
-          ChoiceChip(
-            label: Text(o.label),
-            selected: sex == o.value,
-            onSelected: (_) => setState(() => sex = o.value),
-          ),
-      ],
-    );
-  }
 
   Future<void> createMealPlan() async {
     final user = supabase.auth.currentUser;
@@ -277,14 +203,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       }
 
       // เป้าต่อวันเป็นเพดาน: ยอดรวมทั้งวันห้ามเกิน และขาดได้ไม่เกิน 100 kcal / 10 g
-      // (ดู PlanTargets) ไม่กรอก -> ใช้ค่าเริ่มต้นตามเป้าหมาย (ดู PlanGoal)
-      // ค่าเดียวกับที่บันทึกลง meal_plans
-      final goalDefaults = _goalDefaults;
-      await _rememberProfile();
-      final targetCal =
-          int.tryParse(calorieController.text) ?? goalDefaults.calories;
-      final targetProtein =
-          int.tryParse(proteinController.text) ?? goalDefaults.protein;
+      // (ดู PlanTargets) ค่าเริ่มต้นตรงกับที่บันทึกลง meal_plans (2000 kcal / 100 g)
+      final targetCal = int.tryParse(calorieController.text) ?? 2000;
+      final targetProtein = int.tryParse(proteinController.text) ?? 100;
       final targets = PlanTargets(
         dayCal: targetCal,
         dayProtein: targetProtein,
@@ -308,18 +229,10 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           )
           .toList();
       matched.shuffle();
-      // คะแนนความเหมาะกับเป้าหมาย (ลดน้ำหนัก: โปรตีนต่อแคลอรีสูง,
-      // เพิ่มกล้ามเนื้อ: โปรตีนสูง) ทุกเมนูอยู่ในช่วงเป้าต่อมื้ออยู่แล้ว
-      double goalScore(Map m) => PlanGoal.score(
-        goal,
-        RecipeRepository.toNum(m['calories']),
-        RecipeRepository.toNum(m['protein']),
-      );
       matched.sort((a, b) {
         final aExp = usesExpiringIngredient(a['ingredients'] as List) ? 0 : 1;
         final bExp = usesExpiringIngredient(b['ingredients'] as List) ? 0 : 1;
-        if (aExp != bExp) return aExp.compareTo(bExp);
-        return goalScore(b).compareTo(goalScore(a));
+        return aExp.compareTo(bExp);
       });
 
       // ช่องมื้ออาหารทั้งสัปดาห์ (วัน x จำนวนมื้อต่อวัน)
@@ -387,24 +300,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             }
             return fitsMealTarget(r['calories'], r['protein']);
           }).toList();
-          // คงลำดับเดิม (ซื้อเพิ่มน้อยก่อน -> ใช้ของที่ควรใช้ก่อน) แล้วค่อยเลือก
-          // เมนูที่เหมาะกับเป้าหมายก่อนในกลุ่มเดียวกัน
-          final libOrder = {
-            for (var i = 0; i < suitable.length; i++) suitable[i]: i,
-          };
-          suitable.sort((a, b) {
-            final byMissing = (a['missing'] as List).length.compareTo(
-              (b['missing'] as List).length,
-            );
-            if (byMissing != 0) return byMissing;
-            final byFirst =
-                (b['uses_first'] == true ? 1 : 0) -
-                (a['uses_first'] == true ? 1 : 0);
-            if (byFirst != 0) return byFirst;
-            final byGoal = goalScore(b).compareTo(goalScore(a));
-            if (byGoal != 0) return byGoal;
-            return libOrder[a]!.compareTo(libOrder[b]!);
-          });
           for (
             var i = reuseCount;
             i < slotGrid.length && libraryMeals.length < suitable.length;
@@ -457,9 +352,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
             'meals_per_day': meals,
 
-            'target_calories': targetCal,
+            'target_calories': int.tryParse(calorieController.text) ?? 2000,
 
-            'target_protein': targetProtein,
+            'target_protein': int.tryParse(proteinController.text) ?? 100,
 
             'diet_type': diet,
           })
@@ -534,7 +429,7 @@ ${expiringList.isEmpty ? "ไม่มี" : expiringList}
 
 เป้าหมาย:
 
-$goal (${PlanGoal.promptRule(goal)})
+$goal
 
 
 
@@ -952,45 +847,11 @@ $extraRule
 
               buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
 
-              const Text(
-                "เพศ (ใช้คำนวณแคลอรีตามธงโภชนาการ)",
-                style: TextStyle(fontSize: 13, color: Colors.black54),
-              ),
-
-              const SizedBox(height: 6),
-
-              _buildSexSelector(),
+              buildInput("Calories ต่อวัน", calorieController, "kcal"),
 
               const SizedBox(height: 15),
 
-              buildInput(
-                "น้ำหนักตัว (ไม่บังคับ)",
-                weightController,
-                "กก.",
-                hint: "ใช้คำนวณโปรตีนให้เหมาะกับคุณ",
-                // อัปเดตค่าเริ่มต้นในช่องด้านล่างทันทีที่พิมพ์
-                onChanged: (_) => setState(() {}),
-              ),
-
-              const SizedBox(height: 15),
-
-              buildInput(
-                "Calories ต่อวัน",
-                calorieController,
-                "kcal",
-                hint:
-                    "ไม่กรอก = ${_goalDefaults.calories} kcal ตามเป้าหมาย",
-              ),
-
-              const SizedBox(height: 15),
-
-              buildInput(
-                "Protein ต่อวัน",
-                proteinController,
-                "g",
-                hint:
-                    "ไม่กรอก = ${_goalDefaults.protein} g ${_defaultSource()}",
-              ),
+              buildInput("Protein ต่อวัน", proteinController, "g"),
 
               const SizedBox(height: 20),
 
@@ -1206,8 +1067,6 @@ $extraRule
     );
   }
 
-  // การ์ดตัวเลือกเป้าหมาย — ชื่อ 16 ตัวหนา / คำอธิบาย 13 สีเทา (ขนาดเดียวกับคำอธิบาย
-  // ของสวิตช์ "ใช้เฉพาะของในตู้เย็น") ให้ลำดับความสำคัญของตัวอักษรชัดและสมดุล
   Widget buildChoiceCard(
     String title,
 
@@ -1223,62 +1082,38 @@ $extraRule
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
 
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.all(15),
 
         decoration: BoxDecoration(
           color: selected ? const Color(0xfffff7d0) : Colors.white,
 
           borderRadius: BorderRadius.circular(20),
-
-          // ขอบสีเดียวกับพื้นหลังตอนไม่เลือก ขนาดการ์ดจะได้ไม่ขยับตอนกดเลือก
-          border: Border.all(
-            color: selected ? const Color(0xffFFD191) : Colors.white,
-            width: 1.5,
-          ),
         ),
 
         child: Row(
           children: [
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              size: 22,
-              color: selected ? const Color(0xffE6A23C) : Colors.black38,
             ),
 
-            const SizedBox(width: 14),
+            const SizedBox(width: 15),
 
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
 
-                children: [
-                  Text(
-                    title,
+              children: [
+                Text(
+                  title,
 
-                    style: const TextStyle(
-                      fontSize: 16,
+                  style: const TextStyle(
+                    fontSize: 16,
 
-                      fontWeight: FontWeight.bold,
-
-                      height: 1.3,
-                    ),
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
 
-                  const SizedBox(height: 2),
-
-                  Text(
-                    sub,
-
-                    style: const TextStyle(
-                      fontSize: 13,
-
-                      color: Colors.black54,
-
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
+                Text(sub),
+              ],
             ),
           ],
         ),
@@ -1286,33 +1121,23 @@ $extraRule
     );
   }
 
-
   Widget buildInput(
     String label,
 
     TextEditingController controller,
 
-    String suffix, {
-    String? hint,
-    ValueChanged<String>? onChanged,
-  }) {
+    String suffix,
+  ) {
     return Container(
       decoration: boxDecoration(),
 
       child: TextField(
         controller: controller,
 
-        onChanged: onChanged,
-
         keyboardType: TextInputType.number,
 
         decoration: InputDecoration(
           labelText: label,
-
-          hintText: hint,
-
-          // แสดง hint (ค่าเริ่มต้นตามเป้าหมาย) ตลอด ไม่ต้องรอกดช่องก่อน
-          floatingLabelBehavior: FloatingLabelBehavior.always,
 
           suffixText: suffix,
 
@@ -1323,11 +1148,6 @@ $extraRule
       ),
     );
   }
-
-  /// ที่มาของโปรตีนเริ่มต้น: คิดจากน้ำหนักตัว หรือน้ำหนักอ้างอิง 60 กก.
-  String _defaultSource() => _weightKg == null
-      ? "(คิดจากน้ำหนัก ${PlanGoal.referenceWeightKg} กก.)"
-      : "(คิดจากน้ำหนักตัว)";
 
   BoxDecoration boxDecoration() {
     return BoxDecoration(
