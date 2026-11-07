@@ -11,6 +11,7 @@ import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/services/meal_regenerate.dart';
 import 'package:test_app/services/plan_allocation.dart';
+import 'package:test_app/services/diet_check.dart';
 
 class WeeklyPlanScreen extends StatefulWidget {
   final String planId;
@@ -362,6 +363,121 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         .replaceFirst(RegExp(r'\.$'), '');
   }
 
+  /// การ์ดแจ้งปัญหาของแพลน — ระบบพยายามทำตามที่ผู้ใช้กำหนดแล้ว (ให้ AI ทำใหม่)
+  /// แต่ยังไม่ได้ จึงบอกให้ผู้ใช้รู้และแก้เองได้ (กด "เปลี่ยนเมนู"):
+  /// 1. วันที่แคลอรี/โปรตีนรวมไม่ตรงเป้า
+  /// 2. เมนูที่อาจขัดกับข้อจำกัดอาหาร (ตรวจจากชื่อวัตถุดิบ)
+  /// 3. แพลนแบบใช้เฉพาะของในตู้ แต่ของในตู้ไม่พอ
+  Widget _planWarningsCard(
+    List<Map<String, String>> weekDays,
+    Map<String, List<dynamic>> grouped,
+  ) {
+    final warnings = <String>[];
+
+    // 1. ยอดรวมรายวันไม่อยู่ในช่วงเป้า
+    if (targetCalories > 0 && targetProtein > 0) {
+      final t = PlanTargets(
+        dayCal: targetCalories,
+        dayProtein: targetProtein,
+        meals: 1,
+      );
+      final badDays = <String>[];
+      for (final d in weekDays) {
+        final dayMeals = grouped[d["en"]] ?? const [];
+        if (dayMeals.isEmpty) continue;
+        num cal = 0, pro = 0;
+        for (final m in dayMeals) {
+          cal += num.tryParse('${m['calories']}') ?? 0;
+          pro += num.tryParse('${m['protein']}') ?? 0;
+        }
+        if (!t.dayFits(cal, pro)) badDays.add(d["th"] ?? '');
+      }
+      if (badDays.isNotEmpty) {
+        warnings.add(
+          "แคลอรี/โปรตีนรวมยังไม่ตรงเป้า: ${badDays.join(', ')} "
+          "(ดูว่าเกินหรือขาดที่การ์ดของแต่ละวัน)",
+        );
+      }
+    }
+
+    // 2. เมนูที่อาจขัดกับข้อจำกัดอาหาร
+    final thaiDay = {for (final d in weekDays) d["en"]: d["th"] ?? ''};
+    for (final m in meals) {
+      if (m is! Map) continue;
+      final wrong = DietCheck.violations(
+        dietType,
+        DietCheck.namesOf(m['ingredients']),
+      );
+      if (wrong.isEmpty) continue;
+      warnings.add(
+        "\"${m['food_name'] ?? ''}\" (${thaiDay[m['day']] ?? m['day']}) "
+        "มี ${wrong.join(', ')} ซึ่งอาจขัดกับข้อจำกัดอาหาร \"$dietType\"",
+      );
+    }
+
+    // 3. ใช้เฉพาะของในตู้ (ไม่มีของต้องซื้อตอนสร้าง) แต่ของในตู้ไม่พอ
+    if (!MealRegenerate.planAllowsBuying(meals)) {
+      final short = PlanAllocation.shoppingList(
+        meals: meals,
+        allocation: _allocation,
+        dayLabel: (key) => thaiDay[key] ?? key,
+      );
+      if (short.isNotEmpty) {
+        warnings.add(
+          "แพลนนี้ใช้เฉพาะของในตู้เย็น แต่ของในตู้ไม่พอ ${short.length} รายการ "
+          "(ดูรายการต้องซื้อด้านล่าง)",
+        );
+      }
+    }
+
+    if (warnings.isEmpty) return const SizedBox.shrink();
+    const red = Color(0xffD93025);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDECEA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: red),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: red, size: 20),
+              SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  "แพลนนี้ยังไม่ตรงกับที่คุณกำหนดทั้งหมด",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: red,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (final w in warnings)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                "• $w",
+                style: const TextStyle(fontSize: 13, color: Colors.black87),
+              ),
+            ),
+          const SizedBox(height: 6),
+          const Text(
+            "กด \"เปลี่ยนเมนู\" ที่มื้อนั้นเพื่อให้ระบบหาเมนูใหม่",
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// การ์ดด้านบน: รายการของที่ต้องซื้อทั้งสัปดาห์ = ส่วนที่ขาดจริงของทุกมื้อ
   /// (ของในตู้จองให้มื้อที่ใกล้ถึงก่อน) — ซื้อมาสแกนเข้าตู้ รายการจะลดลงเอง
   Widget _shoppingListCard(List<Map<String, String>> weekDays) {
@@ -520,6 +636,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                   : ListView(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       children: [
+                        _planWarningsCard(weekDays, grouped),
                         _shoppingListCard(weekDays),
                         ...weekDays.map((day) {
                           final dayMeals = grouped[day["en"]] ?? [];
@@ -723,7 +840,7 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           children: [
             Text(
               "AI จะสร้างเมนูใหม่แทน \"${meal['food_name'] ?? ''}\" "
-              "แคลอรีและโปรตีนใกล้เคียงเดิม",
+              "ให้แคลอรีและโปรตีนรวมของวันนี้อยู่ในเป้าของแพลน",
               style: const TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 12),
@@ -766,13 +883,31 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         hint: hint,
         dietType: dietType,
         goal: goal,
+        // งบของมื้อนี้คิดจากเป้าต่อวันของแพลน − มื้ออื่นในวันเดียวกัน
+        targets: PlanTargets(
+          dayCal: targetCalories,
+          dayProtein: targetProtein,
+          meals: 1,
+        ),
+        sameDayMeals: [
+          for (final m in meals)
+            if (m['day'] == meal['day'] && m['id']?.toString() != id) m,
+        ],
       );
       await loadMeals();
       if (!mounted) return;
+      final warning = updated['warning']?.toString();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("เปลี่ยนเป็น \"${updated['food_name']}\" แล้ว ✅"),
-          backgroundColor: Colors.green,
+          content: Text(
+            warning == null
+                ? "เปลี่ยนเป็น \"${updated['food_name']}\" แล้ว ✅"
+                : "เปลี่ยนเป็น \"${updated['food_name']}\" แล้ว แต่$warning",
+          ),
+          backgroundColor: warning == null
+              ? Colors.green
+              : const Color(0xffE67E22),
+          duration: Duration(seconds: warning == null ? 4 : 8),
         ),
       );
     } catch (e) {

@@ -9,6 +9,7 @@ import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/services/plan_goal.dart';
+import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
@@ -29,6 +30,8 @@ class MealRegenerate {
     String? hint,
     String? dietType,
     String? goal,
+    PlanTargets? targets,
+    List<dynamic> sameDayMeals = const [],
   }) async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
@@ -50,6 +53,39 @@ class MealRegenerate {
       oldName,
     }.where((n) => n.trim().isNotEmpty).join(', ');
     final userHint = (hint ?? '').trim();
+
+    // งบแคลอรี/โปรตีนของมื้อนี้ = เป้าต่อวันที่ผู้ใช้ตั้ง − มื้ออื่นของวันเดียวกัน
+    // (ช่วงเดียวกับตอนสร้างแพลน) — แพลนเก่าที่ไม่มีเป้า หรือมื้ออื่นกินงบหมดแล้ว
+    // ใช้วิธีเดิม (ใกล้มื้อเดิม) แล้วแจ้งผู้ใช้
+    final otherCal = sameDayMeals.whereType<Map>().fold<num>(
+      0,
+      (a, m) => a + RecipeRepository.toNum(m['calories']),
+    );
+    final otherPro = sameDayMeals.whereType<Map>().fold<num>(
+      0,
+      (a, m) => a + RecipeRepository.toNum(m['protein']),
+    );
+    final rawBudget =
+        targets == null || targets.dayCal <= 0 || targets.dayProtein <= 0
+        ? null
+        : targets.slotBudget(
+            fixedCal: otherCal,
+            fixedProtein: otherPro,
+            slots: 1,
+          );
+    final budget = rawBudget == null || rawBudget.calMax <= 0
+        ? null
+        : rawBudget;
+    String? warning = rawBudget != null && budget == null
+        ? 'มื้ออื่นของวันนี้รวมกันเกินเป้าแคลอรีแล้ว ยอดรวมวันนี้จะเกินเป้า'
+        : null;
+    bool inBudget(num cal, num pro) =>
+        budget != null &&
+        cal >= budget.calMin &&
+        cal <= budget.calMax &&
+        pro >= budget.proteinMin &&
+        pro <= budget.proteinMax;
+    String r(num v) => v.round().toString();
 
     // ===== ลองหยิบจากคลังสูตรกลางก่อน (ไม่ใช้ AI) =====
     // ข้ามถ้าผู้ใช้พิมพ์ความต้องการมา (คลังเลือกตามคำขอไม่ได้ ให้ AI ทำแทน)
@@ -75,6 +111,9 @@ class MealRegenerate {
           ];
           if (!DietCheck.fits(dietType, names)) return false;
           final cal = RecipeRepository.toNum(r['calories']);
+          if (budget != null) {
+            return inBudget(cal, RecipeRepository.toNum(r['protein']));
+          }
           return oldCal <= 0 || (cal >= oldCal * 0.65 && cal <= oldCal * 1.35);
         }).toList();
         // เลือกเมนูที่เหมาะกับเป้าหมายของแพลนก่อน (คะแนนเท่ากัน = คงลำดับเดิม)
@@ -126,7 +165,7 @@ class MealRegenerate {
             result: AiResult.cacheHit,
             recipeId: pick['recipe_id'],
           );
-          return {...meal, ...update};
+          return {...meal, ...update, if (warning != null) 'warning': warning};
         }
       } catch (e) {
         // ค้นคลังไม่สำเร็จ -> ใช้ AI ต่อตามปกติ
@@ -146,7 +185,8 @@ ${fridgeList.isEmpty ? 'ไม่มี' : fridgeList}
 
 กฎ:
 - สร้างเมนูใหม่ 1 เมนู ห้ามซ้ำกับเมนูเหล่านี้: $avoid
-- calories และ protein ให้ใกล้มื้อเดิม และต้องคำนวณจากวัตถุดิบและปริมาณจริงเท่านั้น ห้ามปั้นตัวเลข
+${budget == null ? '- calories และ protein ให้ใกล้มื้อเดิม' : '- calories ต้องอยู่ในช่วง ${r(budget.calMin)}-${r(budget.calMax)} kcal และ protein ${r(budget.proteinMin)}-${r(budget.proteinMax)} g (งบที่เหลือของวันนี้ตามเป้าที่ผู้ใช้ตั้ง ห้ามเกิน)'}
+- calories และ protein ต้องคำนวณจากวัตถุดิบและปริมาณจริงเท่านั้น ห้ามปั้นตัวเลข
 ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู้เย็นเท่านั้น ห้ามใช้ของที่ไม่มีในรายการ' : '''- ใช้วัตถุดิบในตู้เย็นก่อน ซื้อเพิ่มได้เท่าที่จำเป็น (ของหาง่าย ราคาไม่แพง)
 - วัตถุดิบที่ไม่มีในตู้เย็น ให้ใส่ "to_buy": true'''}
 - ถือว่าบ้านมีของพื้นฐานอยู่แล้ว ไม่ต้องซื้อ: ${ShoppingSuggestion.stapleNamesForPrompt()}
@@ -194,14 +234,31 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
         dietType,
         DietCheck.namesOf(decoded['ingredients']),
       );
-      if (wrong.isEmpty) break;
+      final cal = RecipeRepository.toNum(decoded['calories']);
+      final pro = RecipeRepository.toNum(decoded['protein']);
+      final offBudget = budget != null && !inBudget(cal, pro);
+      if (wrong.isEmpty && !offBudget) break;
       if (attempt == 1) {
-        throw 'เมนูที่ได้ยังมี ${wrong.join(', ')} ซึ่งขัดกับข้อจำกัดอาหาร '
-            '"$dietType" กรุณาลองใหม่ หรือพิมพ์บอกสิ่งที่ไม่ต้องการ';
+        if (wrong.isNotEmpty) {
+          throw 'เมนูที่ได้ยังมี ${wrong.join(', ')} ซึ่งขัดกับข้อจำกัดอาหาร '
+              '"$dietType" กรุณาลองใหม่ หรือพิมพ์บอกสิ่งที่ไม่ต้องการ';
+        }
+        // ลองใหม่แล้วยังไม่อยู่ในงบ: ใช้เมนูนี้ แต่บอกผู้ใช้ว่ายอดวันนี้จะไม่ตรงเป้า
+        warning =
+            'เมนูใหม่ ${r(cal)} kcal โปรตีน ${r(pro)} g ไม่อยู่ในงบที่เหลือของวันนี้ '
+            '(${r(budget!.calMin)}-${r(budget.calMax)} kcal, '
+            '${r(budget.proteinMin)}-${r(budget.proteinMax)} g) '
+            'ยอดรวมวันนี้จะไม่ตรงเป้า ลองเปลี่ยนเมนูอีกครั้งได้';
+        break;
       }
-      extraRule =
+      extraRule = [
+        if (wrong.isNotEmpty)
           '\n- เมนูก่อนหน้า "${decoded['food_name']}" ใช้ ${wrong.join(', ')} '
-          'ซึ่งผิดข้อจำกัดอาหาร "$dietType" ห้ามใช้วัตถุดิบเหล่านี้หรือประเภทเดียวกัน';
+              'ซึ่งผิดข้อจำกัดอาหาร "$dietType" ห้ามใช้วัตถุดิบเหล่านี้หรือประเภทเดียวกัน',
+        if (offBudget)
+          '\n- เมนูก่อนหน้าได้ ${r(cal)} kcal โปรตีน ${r(pro)} g ซึ่งไม่อยู่ในช่วงที่กำหนด '
+              'ปรับวัตถุดิบหรือปริมาณให้อยู่ในช่วงให้ได้',
+      ].join();
     }
 
     bool inFridge(String name) {
@@ -271,7 +328,7 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
       'recipe_id': recipeId,
     };
     await supabase.from('weekly_meals').update(update).eq('id', meal['id']);
-    return {...meal, ...update};
+    return {...meal, ...update, if (warning != null) 'warning': warning};
   }
 
   static bool inFridgeOf(List<Map<String, dynamic>> fridge, String name) {
