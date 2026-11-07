@@ -74,7 +74,10 @@ void main() {
   });
 
   test('ของที่ไม่มีข้อมูลระยะเก็บยังใช้วันหมดอายุเดิม', () {
-    final expiry = DateTime.now().add(const Duration(days: 4, hours: 1));
+    // เที่ยงวันของอีก 4 วันข้างหน้า — เดิมใช้ now + 4 วัน 1 ชั่วโมง ถ้ารันเทสต์
+    // หลัง 23:00 จะข้ามเที่ยงคืนเป็น 5 วัน (นับวันตามปฏิทิน) เทสต์เลยพังตามเวลา
+    final now = DateTime.now();
+    final expiry = DateTime(now.year, now.month, now.day + 4, 12);
     final item = <String, dynamic>{
       'storage': 'fridge',
       'created_at': _daysAgo(1),
