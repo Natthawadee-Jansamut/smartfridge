@@ -11,10 +11,16 @@ class DeductRequest {
   /// หน่วยที่สูตรใช้ (เช่น "กรัม", "ฟอง") — ว่าง = ไม่รู้หน่วย ถือว่าตรงกับในตู้เย็น
   final String unit;
 
+  /// ของพื้นฐาน/เครื่องปรุง (ข้าว น้ำปลา ซีอิ๊ว ซอสต่างๆ) — ถ้ามีในตู้เย็น
+  /// ให้เริ่มที่ "ไม่ได้ใช้" เพราะสูตรใช้ทีละช้อน แต่ในตู้มักเก็บเป็นขวด/ถุง
+  /// ไม่งั้นค่าเริ่มต้นจะหักทั้งขวดโดยไม่ตั้งใจ ผู้ใช้กดเพิ่มเองได้
+  final bool isStaple;
+
   const DeductRequest({
     required this.name,
     required this.suggested,
     this.unit = '',
+    this.isStaple = false,
   });
 }
 
@@ -157,7 +163,13 @@ class _DeductConfirmSheetState extends State<_DeductConfirmSheet> {
           : null;
       num amount;
       String? warning;
-      if (unitMismatch) {
+      if (req.isStaple && lots.isNotEmpty) {
+        amount = 0;
+        warning =
+            "ของพื้นฐาน ไม่หักให้อัตโนมัติ"
+            "${recipeUnit.isNotEmpty && req.suggested > 0 ? ' (สูตรใช้ ${_fmt(req.suggested)} $recipeUnit)' : ''}"
+            " — ถ้าใช้หมดกดเพิ่มได้";
+      } else if (unitMismatch) {
         amount = perCook > 0 ? perCook : 1;
         warning =
             "สูตรใช้ ${_fmt(req.suggested)} $recipeUnit — "

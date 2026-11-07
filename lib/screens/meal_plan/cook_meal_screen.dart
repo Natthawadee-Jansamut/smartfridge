@@ -532,6 +532,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
               unit: (ing['quantity']?.toString() ?? '')
                   .replaceFirst(RegExp(r'^\s*[\d.,/\s]+'), '')
                   .trim(),
+              isStaple: ShoppingSuggestion.isStaple(ing['name'].toString()),
             ),
       ],
     );

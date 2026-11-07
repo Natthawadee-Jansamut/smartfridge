@@ -356,6 +356,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               name: needed['name'].toString(),
               suggested: _toNum(needed['use_quantity']),
               unit: (needed['unit'] ?? '').toString(),
+              isStaple: RecipeRepository.isStapleIngredient(
+                Map<String, dynamic>.from(needed),
+              ),
             ),
       ],
     );
