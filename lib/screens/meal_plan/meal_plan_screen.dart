@@ -559,7 +559,7 @@ ${expiringList.isEmpty ? "ไม่มี" : expiringList}
 
 เป้าหมาย:
 
-$goal
+$goal (${PlanGoal.promptRule(goal)})
 
 
 

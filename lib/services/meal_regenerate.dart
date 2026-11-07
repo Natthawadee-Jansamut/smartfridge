@@ -138,6 +138,7 @@ class MealRegenerate {
 คุณเป็น AI Nutritionist ช่วยเปลี่ยนเมนูอาหาร 1 มื้อในแพลนของผู้ใช้
 มื้อเดิม: $oldName (${meal['calories'] ?? '-'} kcal, โปรตีน ${meal['protein'] ?? '-'} g)
 ข้อจำกัดอาหาร: ${dietType ?? 'ไม่มี'}
+${goal == null ? '' : 'เป้าหมาย: $goal (${PlanGoal.promptRule(goal)})'}
 ${userHint.isEmpty ? '' : 'ผู้ใช้อยากได้: $userHint'}
 
 วัตถุดิบที่มีในตู้เย็น:

@@ -16,6 +16,12 @@ void main() {
     );
   });
 
+  test('กติกาใน prompt ต่างกันตามเป้าหมาย', () {
+    expect(PlanGoal.promptRule(PlanGoal.loseWeight), contains('เลี่ยงของทอด'));
+    expect(PlanGoal.promptRule(PlanGoal.gainMuscle), contains('โปรตีนสูง'));
+    expect(PlanGoal.promptRule(PlanGoal.maintain), contains('สมดุล'));
+  });
+
   test('รักษาน้ำหนัก / ไม่รู้เป้าหมาย: ไม่เปลี่ยนลำดับเดิม', () {
     expect(
       PlanGoal.score(PlanGoal.maintain, 400, 40),
