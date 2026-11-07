@@ -944,7 +944,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
       title =
           "${shelfType!.label}$stateText ${storageLabel(storage)} "
           "เก็บได้ $defaultText";
-      detail = "ข้อมูลจาก ${shelfType!.source}";
+      detail = "ข้อมูลจาก ${shelfType!.sourceFor(foodState, storage)}";
     } else {
       icon = Icons.auto_awesome_outlined;
       color = const Color(0xffE67E22);
