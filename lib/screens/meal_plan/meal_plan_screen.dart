@@ -1206,6 +1206,8 @@ $extraRule
     );
   }
 
+  // การ์ดตัวเลือกเป้าหมาย — ชื่อ 16 ตัวหนา / คำอธิบาย 13 สีเทา (ขนาดเดียวกับคำอธิบาย
+  // ของสวิตช์ "ใช้เฉพาะของในตู้เย็น") ให้ลำดับความสำคัญของตัวอักษรชัดและสมดุล
   Widget buildChoiceCard(
     String title,
 
@@ -1221,44 +1223,69 @@ $extraRule
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
 
-        padding: const EdgeInsets.all(15),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
 
         decoration: BoxDecoration(
           color: selected ? const Color(0xfffff7d0) : Colors.white,
 
           borderRadius: BorderRadius.circular(20),
+
+          // ขอบสีเดียวกับพื้นหลังตอนไม่เลือก ขนาดการ์ดจะได้ไม่ขยับตอนกดเลือก
+          border: Border.all(
+            color: selected ? const Color(0xffFFD191) : Colors.white,
+            width: 1.5,
+          ),
         ),
 
         child: Row(
           children: [
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              size: 22,
+              color: selected ? const Color(0xffE6A23C) : Colors.black38,
             ),
 
-            const SizedBox(width: 15),
+            const SizedBox(width: 14),
 
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
 
-              children: [
-                Text(
-                  title,
+                children: [
+                  Text(
+                    title,
 
-                  style: const TextStyle(
-                    fontSize: 16,
+                    style: const TextStyle(
+                      fontSize: 16,
 
-                    fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.bold,
+
+                      height: 1.3,
+                    ),
                   ),
-                ),
 
-                Text(sub),
-              ],
+                  const SizedBox(height: 2),
+
+                  Text(
+                    sub,
+
+                    style: const TextStyle(
+                      fontSize: 13,
+
+                      color: Colors.black54,
+
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
   }
+
 
   Widget buildInput(
     String label,
