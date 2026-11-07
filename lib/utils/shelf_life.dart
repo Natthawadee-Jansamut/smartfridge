@@ -365,7 +365,12 @@ String shelfSourceShort(Map<String, dynamic> item) {
       item['food_state']?.toString(),
       item['storage']?.toString(),
     );
-    return src == null ? freezerNotRecommendedText : 'ข้อมูลจาก $src';
+    if (src != null) return 'ข้อมูลจาก $src';
+    // ไม่มีข้อมูลช่องแช่แข็ง: สแกนเข้าช่องแช่แข็งตั้งแต่แรก = จำนวนวันมาจาก AI
+    // (ย้ายเข้าช่องแช่แข็งทีหลัง = นับวันที่เหลือเดิมต่อ ไม่ใช่ข้อมูลจาก AI)
+    return item['storage_changed_at'] == null
+        ? 'ข้อมูลจาก AI · $freezerNotRecommendedText'
+        : freezerNotRecommendedText;
   }
   if (item['fridge_days'] != null) return 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง';
   return 'ไม่มีข้อมูลระยะที่เก็บได้';

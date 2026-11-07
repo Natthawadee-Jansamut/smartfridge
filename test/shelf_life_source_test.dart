@@ -63,11 +63,22 @@ void main() {
     }
     expect(src('egg', stateRaw, storageFreezer), isNull);
     expect(src('chicken', stateCooked, storageFreezer), isNull);
+    // สแกนเข้าช่องแช่แข็งตั้งแต่แรก: จำนวนวันมาจาก AI
     expect(
       shelfSourceShort({
         'shelf_type': 'fruit',
         'storage': storageFreezer,
         'freezer_days': 5,
+      }),
+      'ข้อมูลจาก AI · $freezerNotRecommendedText',
+    );
+    // ย้ายเข้าช่องแช่แข็งทีหลัง: นับวันที่เหลือเดิม ไม่ใช่ข้อมูลจาก AI
+    expect(
+      shelfSourceShort({
+        'shelf_type': 'fruit',
+        'storage': storageFreezer,
+        'freezer_days': 5,
+        'storage_changed_at': '2026-11-07T00:00:00Z',
       }),
       freezerNotRecommendedText,
     );

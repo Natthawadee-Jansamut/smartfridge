@@ -75,6 +75,7 @@ class _ResultScreenState extends State<ResultScreen> {
   void _prepareStorage(Map item) {
     item['gemini_fridge_days'] = item['fridge_days'];
     item['gemini_freezer_days'] = item['freezer_days'];
+    item['gemini_freezer_ok'] = item['freezer_ok'];
     final typeKey = findShelfType(item['shelf_type']?.toString())?.key;
     final state = defaultStateFor(typeKey);
     final life = resolveShelfLife(
@@ -910,10 +911,13 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
   }
 
   /// ประเภทนี้มีข้อมูลช่องแช่แข็งไหม — ไม่รู้ประเภท: กรอกเองไม่เตือน (ไม่รู้ว่าเป็น
-  /// อะไร), สแกนแล้ว AI บอกว่าไม่ควรแช่แข็ง (ไม่ให้จำนวนวันมา) ก็เตือน
-  bool get _freezerRecommended => shelfType != null
-      ? shelfType!.freezerRecommendedFor(foodState)
-      : (_isManual || shelfLife.freezerDays != null);
+  /// อะไร), สแกนแล้ว AI บอกว่าไม่แนะนำให้แช่แข็ง (freezer_ok = false) ก็เตือน
+  bool get _freezerRecommended {
+    if (shelfType != null) return shelfType!.freezerRecommendedFor(foodState);
+    if (_isManual) return true;
+    return widget.initialData['gemini_freezer_ok'] != false &&
+        shelfLife.freezerDays != null;
+  }
 
   bool get _isManual => widget.initialData['manual'] == true;
 
@@ -986,7 +990,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
         detail = "ไม่มีข้อมูลสำหรับช่องแช่แข็ง กรอกจำนวนวันที่เก็บได้เอง";
       } else {
         title = "AI ประเมินให้ว่าเก็บได้ $defaultText";
-        detail = "$freezerNotRecommendedText ควรตรวจสอบอีกครั้ง";
+        detail = "ข้อมูลจาก AI · $freezerNotRecommendedText";
       }
     } else if (_isManual && shelfType == null) {
       icon = Icons.info_outline;

@@ -41,7 +41,10 @@ class _ImageScanningState extends State<ImageScanning> {
           enumValues: [...shelfTypes.map((t) => t.key), 'other'],
         ),
         'fridge_days': Schema.integer(),
-        'freezer_days': Schema.integer(nullable: true),
+        // ตอบจำนวนวันช่องแช่แข็งเสมอ (เป็นหน้าที่ของ AI เมื่อไม่มีข้อมูลในตาราง)
+        // แล้วบอกแยกว่าแนะนำให้แช่แข็งไหม
+        'freezer_days': Schema.integer(),
+        'freezer_ok': Schema.boolean(),
       },
       requiredProperties: [
         'name',
@@ -53,6 +56,8 @@ class _ImageScanningState extends State<ImageScanning> {
         'count_unit',
         'shelf_type',
         'fridge_days',
+        'freezer_days',
+        'freezer_ok',
       ],
     ),
   );
@@ -187,7 +192,8 @@ class _ImageScanningState extends State<ImageScanning> {
 - count_mode: piece ถ้าเห็นเป็นลูก/ชิ้นแยกกันนับได้ชัดเจน (ไข่ มะเขือเทศ หัวหอม ผลไม้ ผักหัว ขวด กล่อง ขนมปังแผ่น ชีสแผ่น) ไม่งั้น portion (เนื้อสัตว์ ผักใบ ของลูกเล็กจำนวนมาก เช่น มะเขือเทศราชินีทั้งแพ็ค พริก อาหารเหลือ)
 - count/count_unit: จำนวนสำหรับหักใช้ ห้ามเป็นกรัม/มล. (portion ใช้ count_unit "ส่วน", 1 ส่วน = ทำอาหาร 1 ครั้ง)
 - shelf_type: ${shelfTypePromptList().replaceAll('\n', ', ')}, other = ไม่ตรงประเภทไหน
-- fridge_days/freezer_days: จำนวนวันที่เก็บได้อย่างปลอดภัยในสภาพที่เห็น (freezer_days = null ถ้าไม่ควรแช่แข็ง)
+- fridge_days/freezer_days: จำนวนวันที่เก็บได้อย่างปลอดภัยในสภาพที่เห็น ในช่องปกติ/ช่องแช่แข็ง (ตอบ freezer_days เสมอ แม้ไม่ควรแช่แข็ง)
+- freezer_ok: false ถ้าไม่แนะนำให้แช่แข็ง (เช่น ผักใบ ไข่ทั้งฟอง นม)
 """);
 
       // Gemini ตอบ 503 "high demand" ได้เป็นพักๆ ลองใหม่อัตโนมัติก่อนแจ้ง error
