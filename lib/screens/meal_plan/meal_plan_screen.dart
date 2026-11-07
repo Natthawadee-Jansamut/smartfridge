@@ -46,7 +46,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   final proteinController = TextEditingController();
 
-  /// น้ำหนักตัว (กก.) ใช้คำนวณค่าเริ่มต้นของแคลอรี/โปรตีนตามเป้าหมาย (ไม่บังคับ)
+  /// น้ำหนักตัว (กก.) ใช้คำนวณค่าเริ่มต้นของโปรตีนตามเป้าหมาย (ไม่บังคับ)
   /// จำไว้ใน user_metadata.weight_kg (แนวทางเดียวกับ notify_days) ครั้งหน้าไม่ต้องกรอกซ้ำ
   final weightController = TextEditingController();
 
@@ -928,7 +928,7 @@ $extraRule
                 "น้ำหนักตัว (ไม่บังคับ)",
                 weightController,
                 "กก.",
-                hint: "ใช้คำนวณแคลอรี/โปรตีนให้เหมาะกับคุณ",
+                hint: "ใช้คำนวณโปรตีนให้เหมาะกับคุณ",
                 // อัปเดตค่าเริ่มต้นในช่องด้านล่างทันทีที่พิมพ์
                 onChanged: (_) => setState(() {}),
               ),
@@ -940,7 +940,7 @@ $extraRule
                 calorieController,
                 "kcal",
                 hint:
-                    "ไม่กรอก = ${_goalDefaults.calories} kcal ${_defaultSource()}",
+                    "ไม่กรอก = ${_goalDefaults.calories} kcal ตามเป้าหมาย",
               ),
 
               const SizedBox(height: 15),
@@ -1258,9 +1258,10 @@ $extraRule
     );
   }
 
-  /// ที่มาของค่าเริ่มต้น: คิดจากน้ำหนักตัว หรือค่ากลางตามเป้าหมาย
-  String _defaultSource() =>
-      _weightKg == null ? "(ค่ากลางตามเป้าหมาย)" : "(คิดจากน้ำหนักตัว)";
+  /// ที่มาของโปรตีนเริ่มต้น: คิดจากน้ำหนักตัว หรือน้ำหนักอ้างอิง 60 กก.
+  String _defaultSource() => _weightKg == null
+      ? "(คิดจากน้ำหนัก ${PlanGoal.referenceWeightKg} กก.)"
+      : "(คิดจากน้ำหนักตัว)";
 
   BoxDecoration boxDecoration() {
     return BoxDecoration(

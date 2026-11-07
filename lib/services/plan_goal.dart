@@ -2,14 +2,13 @@
 ///
 /// ใช้ 3 ที่:
 /// 1. ค่าเริ่มต้นของแคลอรี/โปรตีนต่อวัน เมื่อผู้ใช้ไม่ได้กรอกเอง
-///    — กรอกน้ำหนักตัว: คำนวณต่อ กก. ตามเป้าหมาย / ไม่กรอก: ใช้ค่ากลาง
-///    (อิงผู้ใหญ่หนักประมาณ 60 กก.)
+///    (แหล่งอ้างอิงของแต่ละตัวเลขอยู่ที่ค่าคงที่ด้านล่าง)
 /// 2. ลำดับเมนูที่หยิบจากแพลนเก่า/คลังสูตรกลาง (ในช่วงเป้าต่อมื้อเหมือนกัน
 ///    เลือกเมนูที่เหมาะกับเป้าหมายก่อน)
 /// 3. กติกาใน prompt ของ Gemini (สร้างแพลน / เปลี่ยนเมนู)
 ///
-/// ค่าเริ่มต้นเป็นค่าประมาณทั่วไป ไม่ได้คิดเพศ อายุ ส่วนสูง หรือกิจกรรม
-/// ผู้ใช้ควรกรอกเป้าของตัวเองถ้ารู้ (เช่น จากนักโภชนาการ)
+/// ค่าเริ่มต้นเป็นค่าแนะนำทั่วไปสำหรับผู้ใหญ่สุขภาพดี ไม่ได้คิดเพศ อายุ ส่วนสูง
+/// หรือโรคประจำตัว ผู้ใช้ควรกรอกเป้าของตัวเองถ้ารู้ (เช่น จากแพทย์/นักโภชนาการ)
 class PlanGoal {
   static const loseWeight = 'ลดน้ำหนัก';
   static const maintain = 'รักษาน้ำหนัก';
@@ -19,27 +18,35 @@ class PlanGoal {
   static const minWeightKg = 30;
   static const maxWeightKg = 200;
 
+  /// น้ำหนักตัวที่ใช้แทนเมื่อผู้ใช้ไม่ได้กรอก (ประมาณผู้ใหญ่ไทย)
+  static const referenceWeightKg = 60;
+
   /// โปรตีน (g ต่อน้ำหนักตัว 1 กก. ต่อวัน) ตามเป้าหมาย
-  /// คนทั่วไป ~0.8–1.0, ลดน้ำหนัก ~1.2–1.6 (ช่วยรักษากล้ามเนื้อ),
-  /// เพิ่มกล้ามเนื้อ ~1.6–2.2 (ควบคู่การออกกำลังกาย) — ใช้ค่ากลางของแต่ละช่วง
+  /// - รักษาน้ำหนัก 0.8: ค่าแนะนำพื้นฐานสำหรับผู้ใหญ่ (RDA)
+  /// - ลดน้ำหนัก 1.4: meta-analysis 2024 (PMID 39002131) พบว่าโปรตีน
+  ///   มากกว่า 1.3 g/กก. ช่วยรักษากล้ามเนื้อระหว่างลดน้ำหนัก (ต่ำกว่า 1.0 เสี่ยงเสีย)
+  /// - เพิ่มกล้ามเนื้อ 1.8: ISSN Position Stand 2017 (PMID 28642676) แนะนำ
+  ///   1.4–2.0 g/กก. สำหรับคนออกกำลังกาย และ Iraki et al. 2019
+  ///   (PMID 31247944) แนะนำ 1.6–2.2 g/กก. ช่วงเพิ่มกล้ามเนื้อ
   static double proteinPerKg(String? goal) => switch (goal) {
     loseWeight => 1.4,
     gainMuscle => 1.8,
-    _ => 1.0,
+    _ => 0.8,
   };
 
-  /// พลังงาน (kcal ต่อน้ำหนักตัว 1 กก. ต่อวัน) สำหรับรักษาน้ำหนัก (กิจกรรมเบา-ปานกลาง)
-  static const maintainKcalPerKg = 32;
+  /// พลังงานพื้นฐานต่อวัน: 2,000 kcal ตามธงโภชนาการของกรมอนามัย (ระดับ
+  /// วัยรุ่นและชายวัยทำงาน; ระดับ 1,600 สำหรับหญิงวัยทำงานและผู้สูงอายุ)
+  /// ไม่คิดจากน้ำหนักตัว เพราะพลังงานที่ใช้จริงขึ้นกับเพศ อายุ ส่วนสูง และ
+  /// กิจกรรมด้วย การคูณน้ำหนักอย่างเดียวไม่มีแหล่งอ้างอิงสำหรับคนทั่วไป
+  static const baseCalories = 2000;
 
-  /// ลดน้ำหนัก: กินน้อยกว่าที่ใช้วันละ ~400 kcal / เพิ่มกล้ามเนื้อ: มากกว่า ~300 kcal
-  static int _calorieShift(String? goal) => switch (goal) {
-    loseWeight => -400,
-    gainMuscle => 300,
-    _ => 0,
-  };
+  /// ลดน้ำหนัก: ลด 500 kcal/วัน (ค่าต่ำสุดของช่วง 500–750 ใน 2013
+  /// AHA/ACC/TOS Guideline for the Management of Overweight and Obesity)
+  static const loseDeficit = 500;
 
-  /// แคลอรีต่ำสุดที่ยอมให้เป็นค่าเริ่มต้น (กันค่าต่ำเกินไปสำหรับคนตัวเล็ก)
-  static const minCalories = 1200;
+  /// เพิ่มกล้ามเนื้อ: มากกว่าพลังงานพื้นฐาน 15% (ค่ากลางของ 10–20% ใน
+  /// Iraki et al. 2019)
+  static const gainSurplusRatio = 0.15;
 
   /// น้ำหนักตัวที่ใช้ได้ หรือ null ถ้าไม่ได้กรอก/อยู่นอกช่วง
   static double? validWeight(Object? v) {
@@ -49,25 +56,22 @@ class PlanGoal {
   }
 
   /// ค่าเริ่มต้น (kcal, g โปรตีน) ต่อวัน เมื่อผู้ใช้ไม่ได้กรอกเป้า
-  /// [weightKg] = น้ำหนักตัว (null = ไม่รู้ ใช้ค่ากลาง)
+  /// - แคลอรี: ตามเป้าหมาย (ไม่ขึ้นกับน้ำหนัก)
+  /// - โปรตีน: น้ำหนักตัว × g ต่อ กก. ตามเป้าหมาย ปัดทีละ 5 g
+  ///   ([weightKg] = null -> ใช้ [referenceWeightKg])
   static ({int calories, int protein}) defaultTargets(
     String? goal, {
     double? weightKg,
   }) {
-    final w = validWeight(weightKg);
-    if (w == null) {
-      // ค่ากลาง ≈ ผู้ใหญ่หนัก 60 กก.
-      return switch (goal) {
-        loseWeight => (calories: 1600, protein: 80),
-        gainMuscle => (calories: 2300, protein: 110),
-        _ => (calories: 2000, protein: 60),
-      };
-    }
-    int roundTo(num v, int step) => (v / step).round() * step;
-    final cal = w * maintainKcalPerKg + _calorieShift(goal);
+    final w = validWeight(weightKg) ?? referenceWeightKg;
+    final calories = switch (goal) {
+      loseWeight => baseCalories - loseDeficit,
+      gainMuscle => (baseCalories * (1 + gainSurplusRatio)).round(),
+      _ => baseCalories,
+    };
     return (
-      calories: roundTo(cal < minCalories ? minCalories : cal, 50),
-      protein: roundTo(w * proteinPerKg(goal), 5),
+      calories: calories,
+      protein: ((w * proteinPerKg(goal)) / 5).round() * 5,
     );
   }
 
