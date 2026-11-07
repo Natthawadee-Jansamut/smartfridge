@@ -19,6 +19,65 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   List plans = [];
   bool loading = true;
 
+  /// id ของแพลนโปรด — เก็บใน user_metadata ของ Supabase Auth (เหมือนการตั้งค่า
+  /// แจ้งเตือน) ไม่ต้องเพิ่มคอลัมน์ในตาราง meal_plans
+  static const _favKey = 'favorite_plan_ids';
+  Set<String> _favorites = {};
+
+  Set<String> _readFavorites() {
+    final raw = supabase.auth.currentUser?.userMetadata?[_favKey];
+    return raw is List ? {for (final e in raw) e.toString()} : <String>{};
+  }
+
+  Future<void> _saveFavorites(Set<String> ids) =>
+      supabase.auth.updateUser(UserAttributes(data: {_favKey: ids.toList()}));
+
+  /// แพลนโปรดขึ้นก่อน แล้วเรียงใหม่ไปเก่า (ข้อมูลเรียงตาม created_at มาแล้ว)
+  List _sorted(List data) {
+    final fav = [
+      for (final p in data)
+        if (_favorites.contains('${p['id']}')) p,
+    ];
+    final rest = [
+      for (final p in data)
+        if (!_favorites.contains('${p['id']}')) p,
+    ];
+    return [...fav, ...rest];
+  }
+
+  Future<void> _toggleFavorite(dynamic plan) async {
+    final id = '${plan['id']}';
+    final before = {..._favorites};
+    final after = {..._favorites};
+    final adding = !after.contains(id);
+    adding ? after.add(id) : after.remove(id);
+    setState(() {
+      _favorites = after;
+      plans = _sorted(plans);
+    });
+    try {
+      await _saveFavorites(after);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            adding ? "เก็บเป็นแพลนโปรดแล้ว ❤️" : "เอาออกจากแพลนโปรดแล้ว",
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _favorites = before;
+        plans = _sorted(plans);
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("บันทึกแพลนโปรดไม่สำเร็จ: $e")));
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -36,8 +95,9 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
           .eq('saved', true)
           .order('created_at', ascending: false);
 
+      _favorites = _readFavorites();
       setState(() {
-        plans = data;
+        plans = _sorted(data);
         loading = false;
       });
     } catch (e) {
@@ -51,6 +111,12 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   Future<void> deletePlan(String id) async {
     try {
       await supabase.rpc('delete_meal_plan', params: {'plan_uuid': id});
+      // ลบแพลนโปรด -> เอา id ออกจากรายการโปรดด้วย (ไม่สำเร็จก็ไม่เป็นไร)
+      if (_favorites.remove(id)) {
+        try {
+          await _saveFavorites(_favorites);
+        } catch (_) {}
+      }
 
       await loadPlans();
 
@@ -154,13 +220,34 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      plan['goal'] ?? "Meal Plan",
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            plan['goal'] ?? "Meal Plan",
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: _favorites.contains('${plan['id']}')
+                              ? "เลิกเป็นแพลนโปรด"
+                              : "เก็บเป็นแพลนโปรด",
+                          icon: Icon(
+                            _favorites.contains('${plan['id']}')
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _favorites.contains('${plan['id']}')
+                                ? Colors.redAccent
+                                : Colors.black45,
+                          ),
+                          onPressed: () => _toggleFavorite(plan),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     _infoRow(

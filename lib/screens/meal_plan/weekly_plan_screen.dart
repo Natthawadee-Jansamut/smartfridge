@@ -5,7 +5,6 @@ import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/screens/meal_plan/cook_meal_screen.dart';
 import 'package:test_app/screens/meal_plan/my_plan_screen.dart';
-import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/meal_nutrition.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
@@ -30,9 +29,6 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
   /// recipe_id -> สูตรนี้ AI สร้างตอนทำแพลนนี้ (true) หรือมาจากคลังสูตรเดิม (false)
   /// ดูจากเวลาที่สูตรถูกเพิ่มเข้าคลังกลาง เทียบกับเวลาสร้างแพลน
   Map<String, bool> _aiMade = {};
-
-  /// recipe_id ที่ผู้ใช้กดหัวใจไว้
-  Set<String> _favorites = {};
   bool loading = true;
   bool saved = false;
 
@@ -79,14 +75,13 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           .eq('id', widget.planId)
           .single();
 
-      // ที่มาของสูตร + สถานะหัวใจ (ไม่สำเร็จก็ไม่เป็นไร แค่ไม่แสดงป้าย)
+      // ที่มาของสูตร (ไม่สำเร็จก็ไม่เป็นไร แค่ไม่แสดงป้าย)
       final recipeIds = {
         for (final m in response)
           if (m['recipe_id'] != null) m['recipe_id'].toString(),
       };
       final planCreated = DateTime.tryParse('${plan['created_at'] ?? ''}');
       final aiMade = <String, bool>{};
-      var favorites = <String>{};
       if (recipeIds.isNotEmpty) {
         try {
           final rows = await supabase
@@ -98,16 +93,14 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
             if (created == null || planCreated == null) continue;
             aiMade[r['id'].toString()] = !created.isBefore(planCreated);
           }
-          favorites = await RecipeRepository.favoriteRecipeIds(recipeIds);
         } catch (e) {
-          debugPrint('โหลดที่มาของสูตร/หัวใจไม่สำเร็จ: $e');
+          debugPrint('โหลดที่มาของสูตรไม่สำเร็จ: $e');
         }
       }
 
       setState(() {
         meals = response;
         _aiMade = aiMade;
-        _favorites = favorites;
         fridgeItems = fridge;
         saved = plan['saved'] ?? false;
         targetCalories = num.tryParse('${plan['target_calories']}') ?? 0;
@@ -330,42 +323,6 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
           color: ai ? const Color(0xff6A4BC4) : const Color(0xff2F6DB0),
         ),
       ),
-    );
-  }
-
-  /// หัวใจ: เก็บสูตรของมื้อนี้เป็นสูตรโปรดในคลังของผู้ใช้
-  Widget _favoriteButton(dynamic meal) {
-    final id = meal['recipe_id']?.toString();
-    if (id == null) return const SizedBox.shrink();
-    final fav = _favorites.contains(id);
-    return IconButton(
-      visualDensity: VisualDensity.compact,
-      tooltip: fav ? "เลิกเป็นสูตรโปรด" : "เก็บเป็นสูตรโปรด",
-      icon: Icon(
-        fav ? Icons.favorite : Icons.favorite_border,
-        color: fav ? Colors.redAccent : Colors.black45,
-      ),
-      onPressed: () async {
-        setState(() => fav ? _favorites.remove(id) : _favorites.add(id));
-        try {
-          await RecipeRepository.setFavoriteByRecipe(id, !fav);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                fav ? "เอาออกจากสูตรโปรดแล้ว" : "เก็บเป็นสูตรโปรดแล้ว ❤️",
-              ),
-              duration: const Duration(seconds: 2),
-            ),
-          );
-        } catch (e) {
-          if (!mounted) return;
-          setState(() => fav ? _favorites.add(id) : _favorites.remove(id));
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text("บันทึกสูตรโปรดไม่สำเร็จ: $e")),
-          );
-        }
-      },
     );
   }
 
@@ -630,8 +587,6 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
                                               ),
                                               const SizedBox(width: 8),
                                               _sourceChip(meal),
-                                              const Spacer(),
-                                              _favoriteButton(meal),
                                             ],
                                           ),
                                           const SizedBox(height: 5),
