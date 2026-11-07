@@ -46,6 +46,51 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   final proteinController = TextEditingController();
 
+  /// น้ำหนักตัว (กก.) ใช้คำนวณค่าเริ่มต้นของแคลอรี/โปรตีนตามเป้าหมาย (ไม่บังคับ)
+  /// จำไว้ใน user_metadata.weight_kg (แนวทางเดียวกับ notify_days) ครั้งหน้าไม่ต้องกรอกซ้ำ
+  final weightController = TextEditingController();
+
+  double? get _weightKg => PlanGoal.validWeight(weightController.text);
+
+  ({int calories, int protein}) get _goalDefaults =>
+      PlanGoal.defaultTargets(goal, weightKg: _weightKg);
+
+  @override
+  void initState() {
+    super.initState();
+    final saved = PlanGoal.validWeight(
+      supabase.auth.currentUser?.userMetadata?['weight_kg'],
+    );
+    if (saved != null) {
+      weightController.text = saved == saved.roundToDouble()
+          ? saved.toInt().toString()
+          : saved.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    calorieController.dispose();
+    proteinController.dispose();
+    weightController.dispose();
+    super.dispose();
+  }
+
+  /// จำน้ำหนักตัวที่กรอกไว้ (ไม่สำเร็จก็สร้างแพลนต่อได้ตามปกติ)
+  Future<void> _rememberWeight() async {
+    final w = _weightKg;
+    if (w == null) return;
+    final saved = PlanGoal.validWeight(
+      supabase.auth.currentUser?.userMetadata?['weight_kg'],
+    );
+    if (saved == w) return;
+    try {
+      await supabase.auth.updateUser(UserAttributes(data: {'weight_kg': w}));
+    } catch (e) {
+      debugPrint('บันทึกน้ำหนักตัวไม่สำเร็จ: $e');
+    }
+  }
+
   Future<void> createMealPlan() async {
     final user = supabase.auth.currentUser;
 
@@ -206,7 +251,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       // เป้าต่อวันเป็นเพดาน: ยอดรวมทั้งวันห้ามเกิน และขาดได้ไม่เกิน 100 kcal / 10 g
       // (ดู PlanTargets) ไม่กรอก -> ใช้ค่าเริ่มต้นตามเป้าหมาย (ดู PlanGoal)
       // ค่าเดียวกับที่บันทึกลง meal_plans
-      final goalDefaults = PlanGoal.defaultTargets(goal);
+      final goalDefaults = _goalDefaults;
+      await _rememberWeight();
       final targetCal =
           int.tryParse(calorieController.text) ?? goalDefaults.calories;
       final targetProtein =
@@ -879,11 +925,22 @@ $extraRule
               buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
 
               buildInput(
+                "น้ำหนักตัว (ไม่บังคับ)",
+                weightController,
+                "กก.",
+                hint: "ใช้คำนวณแคลอรี/โปรตีนให้เหมาะกับคุณ",
+                // อัปเดตค่าเริ่มต้นในช่องด้านล่างทันทีที่พิมพ์
+                onChanged: (_) => setState(() {}),
+              ),
+
+              const SizedBox(height: 15),
+
+              buildInput(
                 "Calories ต่อวัน",
                 calorieController,
                 "kcal",
                 hint:
-                    "ไม่กรอก = ${PlanGoal.defaultTargets(goal).calories} kcal ตามเป้าหมาย",
+                    "ไม่กรอก = ${_goalDefaults.calories} kcal ${_defaultSource()}",
               ),
 
               const SizedBox(height: 15),
@@ -893,7 +950,7 @@ $extraRule
                 proteinController,
                 "g",
                 hint:
-                    "ไม่กรอก = ${PlanGoal.defaultTargets(goal).protein} g ตามเป้าหมาย",
+                    "ไม่กรอก = ${_goalDefaults.protein} g ${_defaultSource()}",
               ),
 
               const SizedBox(height: 20),
@@ -1171,12 +1228,15 @@ $extraRule
 
     String suffix, {
     String? hint,
+    ValueChanged<String>? onChanged,
   }) {
     return Container(
       decoration: boxDecoration(),
 
       child: TextField(
         controller: controller,
+
+        onChanged: onChanged,
 
         keyboardType: TextInputType.number,
 
@@ -1197,6 +1257,10 @@ $extraRule
       ),
     );
   }
+
+  /// ที่มาของค่าเริ่มต้น: คิดจากน้ำหนักตัว หรือค่ากลางตามเป้าหมาย
+  String _defaultSource() =>
+      _weightKg == null ? "(ค่ากลางตามเป้าหมาย)" : "(คิดจากน้ำหนักตัว)";
 
   BoxDecoration boxDecoration() {
     return BoxDecoration(
