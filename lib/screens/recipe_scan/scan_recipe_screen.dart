@@ -114,6 +114,10 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
       Map<String, dynamic>? scanned;
       // สูตรในระบบที่เจอ — ส่งไปหน้าผลลัพธ์ให้สลับกลับมาใช้ได้ แม้เลือก AI ไปแล้ว
       var systemOptions = <Map<String, dynamic>>[if (found != null) found];
+      // หน้าต่างให้เลือกสูตร (สูตรจากรูป vs สูตรในระบบ) — null = ไม่ต้องถาม
+      // จำไว้ เผื่อผู้ใช้กดเข้าไปดูรายละเอียดแล้วกดย้อนกลับ จะได้กลับมาเทียบสูตรอื่นได้อีก
+      ({String title, String subtitle, List<Map<String, dynamic>> options})?
+      chooser;
       if (found == null) {
         // 2) ขั้นที่ 1 (ประหยัด token): ถาม AI สั้นๆ ว่าเมนูอะไร มีวัตถุดิบ/วิธีทำไหม
         final info = await RecipeAiService.identifyRecipeImage(
@@ -125,92 +129,101 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         final (exact, similar) = await _searchByName(info.name);
         found = exact;
         systemOptions = [if (exact != null) exact, ...similar];
+        final similarChooser = (
+          title: 'พบสูตรที่ชื่อคล้าย "${info.name}"',
+          subtitle: 'เป็นเมนูเดียวกันไหม? เลือกสูตรที่ต้องการใช้',
+          options: similar,
+        );
 
         if (info.isNameOnly) {
           // รูปมีแค่ชื่อเมนู -> ถ้าให้ AI อ่านต่อ AI ต้องแต่งสูตรเองทั้งสูตร
           if (found != null) {
             // เจอชื่อตรงในระบบ -> ใช้สูตรในระบบเลย ไม่ต้องเรียก AI ขั้นที่ 2
           } else if (similar.isNotEmpty) {
-            closeLoader?.call();
-            closeLoader = null;
-            if (!mounted) return;
-            final choice = await _chooseRecipe(
-              title: 'พบสูตรที่ชื่อคล้าย "${info.name}"',
-              subtitle: 'เป็นเมนูเดียวกันไหม? เลือกสูตรที่ต้องการใช้',
-              scanned: null,
-              options: similar,
-            );
-            if (choice == null || !mounted) return; // ปิดหน้าต่างไป = ยกเลิก
-            if (identical(choice, _useImage)) {
-              scanned = await readFullRecipe('AI กำลังสร้างสูตรอาหาร...');
-            } else {
-              found = choice;
-            }
+            chooser = similarChooser;
           } else {
             scanned = await readFullRecipe('AI กำลังสร้างสูตรอาหาร...');
           }
         } else {
           // รูปมีสูตรจริง -> อ่านสูตรเต็มจากรูป แล้วเทียบกับสูตรในระบบ
           scanned = await readFullRecipe('AI กำลังอ่านสูตรอาหารจากรูป...');
-          closeLoader?.call();
-          closeLoader = null;
-          if (!mounted) return;
 
           //    - ชื่อตรง + วัตถุดิบใกล้เคียงสูตรในระบบ -> ใช้สูตรในระบบ
           //    - ชื่อตรง แต่สูตรต่างกัน -> ถามผู้ใช้
           //    - ชื่อคล้ายกัน -> ถามผู้ใช้ทุกครั้ง
-          List<Map<String, dynamic>>? options;
-          String? title, subtitle;
           if (found != null) {
             final close =
                 RecipeRepository.ingredientSimilarity(found, scanned) >= 0.7;
             if (!close) {
-              options = [found];
-              title = 'พบสูตร "${info.name}" ในระบบแล้ว';
-              subtitle = 'แต่สูตรในรูปของคุณต่างออกไป ต้องการใช้สูตรไหน?';
+              chooser = (
+                title: 'พบสูตร "${info.name}" ในระบบแล้ว',
+                subtitle: 'แต่สูตรในรูปของคุณต่างออกไป ต้องการใช้สูตรไหน?',
+                options: [found],
+              );
             }
           } else if (similar.isNotEmpty) {
-            options = similar;
-            title = 'พบสูตรที่ชื่อคล้าย "${info.name}"';
-            subtitle = 'เป็นเมนูเดียวกันไหม? เลือกสูตรที่ต้องการใช้';
-          }
-          if (options != null) {
-            final choice = await _chooseRecipe(
-              title: title!,
-              subtitle: subtitle!,
-              scanned: scanned,
-              options: options,
-            );
-            if (choice == null || !mounted) return; // ปิดหน้าต่างไป = ยกเลิก
-            found = identical(choice, _useImage) ? null : choice;
+            chooser = similarChooser;
           }
         }
       }
-      closeLoader?.call();
-      closeLoader = null;
-      final useDatabase = found != null;
-      if (!mounted) return;
 
-      final saved = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          // ส่งรูปที่อัปโหลดไปด้วย ให้ผู้ใช้เทียบว่า AI อ่านสูตรถูกไหม
-          builder: (_) => ScanRecipeResultScreen(
-            recipe: useDatabase ? found! : scanned!,
-            imageBytes: bytes,
-            imageHash: imageHash,
-            fromDatabase: useDatabase,
-            // ใช้สูตรในระบบ -> เก็บผลจาก AI ไว้ เผื่อผู้ใช้อยากใช้สูตรจากรูปแทน
-            scannedRecipe: useDatabase ? scanned : null,
-            systemRecipes: systemOptions,
+      while (true) {
+        closeLoader?.call();
+        closeLoader = null;
+        if (!mounted) return;
+
+        if (chooser != null) {
+          final choice = await _chooseRecipe(
+            title: chooser.title,
+            subtitle: chooser.subtitle,
+            // AI อ่าน/สร้างสูตรไปแล้ว -> แสดงสูตรนั้นเลย (ไม่เรียก AI ซ้ำ)
+            // ยังไม่ได้อ่าน (รูปมีแค่ชื่อเมนู) -> เป็นปุ่มให้ AI สร้าง
+            scanned: scanned,
+            options: chooser.options,
+          );
+          if (!mounted) return;
+          if (choice == null) {
+            // ปิดหน้าต่าง = ยกเลิก กลับหน้าสแกน
+            _fetchRecentRecipes();
+            return;
+          }
+          if (identical(choice, _useImage)) {
+            scanned ??= await readFullRecipe('AI กำลังสร้างสูตรอาหาร...');
+            closeLoader?.call();
+            closeLoader = null;
+            found = null;
+          } else {
+            found = choice;
+          }
+          if (!mounted) return;
+        }
+
+        final useDatabase = found != null;
+        final saved = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(
+            // ส่งรูปที่อัปโหลดไปด้วย ให้ผู้ใช้เทียบว่า AI อ่านสูตรถูกไหม
+            builder: (_) => ScanRecipeResultScreen(
+              recipe: useDatabase ? found! : scanned!,
+              imageBytes: bytes,
+              imageHash: imageHash,
+              fromDatabase: useDatabase,
+              // ใช้สูตรในระบบ -> เก็บผลจาก AI ไว้ เผื่อผู้ใช้อยากใช้สูตรจากรูปแทน
+              scannedRecipe: useDatabase ? scanned : null,
+              systemRecipes: systemOptions,
+            ),
           ),
-        ),
-      );
-      if (!mounted) return;
-      if (saved == true) {
-        Navigator.pop(context, true); // กลับไปหน้าคลังสูตร
-      } else {
+        );
+        if (!mounted) return;
+        if (saved == true) {
+          Navigator.pop(context, true); // กลับไปหน้าคลังสูตร
+          return;
+        }
+        // กดย้อนกลับจากหน้ารายละเอียด -> กลับไปหน้าต่างเลือกสูตร ให้ดู/เทียบสูตรอื่นต่อ
+        // (กด "สแกนใหม่" หรือไม่มีหน้าต่างเลือกสูตร -> กลับหน้าสแกนตามเดิม)
+        if (saved == null && chooser != null) continue;
         _fetchRecentRecipes();
+        return;
       }
     } catch (e) {
       closeLoader?.call();
