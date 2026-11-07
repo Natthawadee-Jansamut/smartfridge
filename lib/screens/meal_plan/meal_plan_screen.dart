@@ -10,6 +10,8 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/plan_targets.dart';
+import 'package:test_app/services/plan_allocation.dart';
+import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
@@ -221,10 +223,14 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       // เมนูเก่าที่วัตถุดิบครบพอใช้ได้เลยตอนนี้ และขนาดมื้อใกล้เป้า — สุ่มลำดับก่อน
       // แล้วเอาเมนูที่ใช้ของที่อยู่ในตู้เย็นนานขึ้นก่อน เพื่อความหลากหลายและช่วยเคลียร์ของเก่า
+      // เมนูเก่าต้องผ่านข้อจำกัดอาหารที่เลือกตอนนี้ด้วย (เมนูเก่าไม่มีป้ายข้อจำกัด
+      // อาหาร เลยตรวจจากชื่อวัตถุดิบ — เคยทำแพลนปกติแล้วตอนนี้เลือกมังสวิรัติ
+      // จะได้ไม่หยิบเมนูที่มีเนื้อสัตว์มาใส่)
       final matched = library
           .where(
             (m) =>
                 fitsMealTarget(m['calories'], m['protein']) &&
+                DietCheck.fits(diet, DietCheck.namesOf(m['ingredients'])) &&
                 allIngredientsAvailable(m['ingredients'] as List),
           )
           .toList();
@@ -252,15 +258,44 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         }
       }
 
-      final reuseCount = matched.length < slotGrid.length
-          ? matched.length
-          : slotGrid.length;
+      // ===============================
+      // จองของในตู้ให้เมนูที่หยิบมาใช้ซ้ำ "รวมกันทั้งสัปดาห์" (เดิมเช็กทีละเมนู
+      // อกไก่ 1 ชิ้นเลยทำให้ทุกเมนูที่ใช้อกไก่ผ่าน) — ใช้วิธีจองเดียวกับหน้าแพลน
+      // รายสัปดาห์ (PlanAllocation): มื้อที่ใกล้ถึงก่อนได้ของก่อน
+      // ===============================
+      final planStart = DateTime.now();
+      final usableFridge = List<Map<String, dynamic>>.from(
+        fridgeItems,
+      ).where((e) => !isOverdue(e)).toList();
+      // เมนูที่หยิบมาใช้แล้ว + จำนวนของที่ขาดได้ของแต่ละเมนู
+      // (เมนูเก่า = ห้ามขาด, คลังกลาง = ขาดได้ 1 อย่างถ้าซื้อเพิ่มได้)
+      final picked = <({Map<String, dynamic> meal, int maxShort})>[];
+
+      /// เพิ่ม [meal] ได้ไหม โดยทุกเมนูที่หยิบไว้แล้วยังมีของพอเหมือนเดิม
+      bool fitsStock(Map<String, dynamic> meal, int maxShort) {
+        final trial = [...picked, (meal: meal, maxShort: maxShort)];
+        final alloc = PlanAllocation.allocate(
+          meals: [
+            for (var k = 0; k < trial.length; k++)
+              {...trial[k].meal, 'id': '$k'},
+          ],
+          fridgeItems: usableFridge,
+          planStart: planStart,
+        );
+        for (var k = 0; k < trial.length; k++) {
+          final short = (alloc['$k'] ?? const []).where((st) => !st.have);
+          if (short.length > trial[k].maxShort) return false;
+        }
+        return true;
+      }
+
+      final freeSlots = [...slotGrid];
 
       final reusedMeals = <Map<String, dynamic>>[];
-      for (var i = 0; i < reuseCount; i++) {
-        final slot = slotGrid[i];
-        final source = matched[i];
-        reusedMeals.add({
+      for (final source in matched) {
+        if (freeSlots.isEmpty) break;
+        final slot = freeSlots.first;
+        final meal = <String, dynamic>{
           'day': slot['day'],
           'meal_type': slot['meal_type'],
           'food_name': source['food_name'],
@@ -269,7 +304,11 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
           'ingredients': source['ingredients'],
           'steps': source['steps'],
           'recipe_id': source['recipe_id'],
-        });
+        };
+        if (!fitsStock(meal, 0)) continue;
+        picked.add((meal: meal, maxShort: 0));
+        reusedMeals.add(meal);
+        freeSlots.removeAt(0);
       }
 
       // ===============================
@@ -278,12 +317,10 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       // มีแคลอรี/โปรตีน ตรงข้อจำกัดอาหาร และแคลอรีใกล้เป้าต่อมื้อ
       // ===============================
       final libraryMeals = <Map<String, dynamic>>[];
-      if (reuseCount < slotGrid.length) {
+      if (freeSlots.isNotEmpty) {
         try {
           final candidates = await RecipeRepository.findRecipesForFridge(
-            fridgeItems: List<Map<String, dynamic>>.from(
-              fridgeItems,
-            ).where((e) => !isOverdue(e)).toList(),
+            fridgeItems: usableFridge,
             maxMissing: fridgeOnly ? 0 : 1,
             limit: 60,
             requireNutrition: true,
@@ -298,17 +335,19 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             if (diet != 'ไม่มี' && !(r['diet_tags'] as List).contains(diet)) {
               return false;
             }
+            // ตรวจซ้ำจากชื่อวัตถุดิบ กันเมนูที่เคยถูกติดป้ายผิด
+            final names = [
+              for (final ing in RecipeRepository.ingredientsOf(r)) ing['name'],
+            ];
+            if (!DietCheck.fits(diet, names)) return false;
             return fitsMealTarget(r['calories'], r['protein']);
           }).toList();
-          for (
-            var i = reuseCount;
-            i < slotGrid.length && libraryMeals.length < suitable.length;
-            i++
-          ) {
-            final r = suitable[libraryMeals.length];
-            libraryMeals.add({
-              'day': slotGrid[i]['day'],
-              'meal_type': slotGrid[i]['meal_type'],
+          for (final r in suitable) {
+            if (freeSlots.isEmpty) break;
+            final slot = freeSlots.first;
+            final meal = <String, dynamic>{
+              'day': slot['day'],
+              'meal_type': slot['meal_type'],
               'food_name': r['recipe_name'],
               'calories': RecipeRepository.toNum(r['calories']).round(),
               'protein': RecipeRepository.toNum(r['protein']).round(),
@@ -323,7 +362,12 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               ],
               'steps': RecipeRepository.stepTextsOf(r),
               'recipe_id': r['recipe_id'],
-            });
+            };
+            final maxShort = fridgeOnly ? 0 : 1;
+            if (!fitsStock(meal, maxShort)) continue;
+            picked.add((meal: meal, maxShort: maxShort));
+            libraryMeals.add(meal);
+            freeSlots.removeAt(0);
             logAiRequest(
               event: AiEvent.mealPlan,
               result: AiResult.cacheHit,
@@ -337,7 +381,23 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       // ช่องที่เหลือ (ถ้ามี) ค่อยให้ Gemini สร้างเสริมเฉพาะส่วนที่ขาด — ถ้า
       // เมนูเก่าครบพอทั้งสัปดาห์แล้ว ช่องนี้จะว่างและไม่ต้องเรียก Gemini เลย
-      final remainingSlots = slotGrid.sublist(reuseCount + libraryMeals.length);
+      final remainingSlots = freeSlots;
+
+      // ของที่เหลือในตู้หลังจองให้เมนูข้างบนแล้ว — บอก Gemini เฉพาะส่วนนี้
+      // ไม่งั้น AI จะเอาของที่ถูกจองไปแล้วมาใช้ซ้ำ
+      final fridgeListForAi = picked.isEmpty
+          ? fridgeList
+          : inventoryPromptList(
+              PlanAllocation.leftoverStock(
+                meals: [
+                  for (var k = 0; k < picked.length; k++)
+                    {...picked[k].meal, 'id': '$k'},
+                ],
+                fridgeItems: usableFridge,
+                planStart: planStart,
+              ),
+              withPerCook: true,
+            );
 
       // ===============================
       // สร้างข้อมูล plan
@@ -417,7 +477,7 @@ ${fridgeOnly ? "ใช้วัตถุดิบจากตู้เย็น�
 
 วัตถุดิบที่มี:
 
-$fridgeList
+${fridgeListForAi.isEmpty ? 'ไม่มี (ของในตู้ถูกจองให้มื้ออื่นหมดแล้ว)' : fridgeListForAi}
 
 
 
@@ -647,6 +707,42 @@ $extraRule
           }
         }
 
+        // ตรวจข้อจำกัดอาหารของเมนูจาก AI (ดูจากชื่อวัตถุดิบ) — ผิด ให้ AI ทำมื้อนั้น
+        // ใหม่ 1 รอบ ยังผิดอีก ใช้ในแพลนได้แต่ไม่ติดป้ายข้อจำกัดอาหาร (กันลามไป
+        // ผู้ใช้คนอื่นที่หยิบเมนูจากคลังกลางตามป้าย)
+        List<String> dietViolations(Map m) =>
+            DietCheck.violations(diet, DietCheck.namesOf(m['ingredients']));
+        final wrongDiet = [
+          for (final m in geminiMeals.whereType<Map>())
+            if (dietViolations(m).isNotEmpty) m,
+        ];
+        if (wrongDiet.isNotEmpty) {
+          try {
+            final fixed = await askGemini(
+              budgetFor(wrongDiet, [
+                ...fixedMeals,
+                for (final m in geminiMeals.whereType<Map>())
+                  if (!wrongDiet.contains(m)) m,
+              ]),
+              extraRule:
+                  '- รอบนี้แก้เมนูที่ผิดข้อจำกัดอาหาร "$diet" (${wrongDiet.map((m) => '${m['food_name']}: ${dietViolations(m).join('/')}').join(', ')}) ห้ามใช้วัตถุดิบเหล่านี้หรือวัตถุดิบประเภทเดียวกัน',
+            );
+            for (final f in fixed.whereType<Map>()) {
+              if (dietViolations(f).isNotEmpty) continue;
+              final k = geminiMeals.indexWhere(
+                (m) =>
+                    m is Map &&
+                    m['day'] == f['day'] &&
+                    m['meal_type'] == f['meal_type'] &&
+                    wrongDiet.contains(m),
+              );
+              if (k >= 0) geminiMeals[k] = f;
+            }
+          } catch (e) {
+            debugPrint('แก้เมนูที่ผิดข้อจำกัดอาหารไม่สำเร็จ (ใช้ผลเดิม): $e');
+          }
+        }
+
         // เก็บเมนูใหม่จาก AI ลงคลังสูตรกลาง ครั้งหน้า (ของผู้ใช้คนไหนก็ได้) จะได้
         // หยิบจากคลังแทนการเรียก AI
         for (final m in geminiMeals.whereType<Map>()) {
@@ -677,7 +773,10 @@ $extraRule
             },
             caloriesPerServing: RecipeRepository.toNum(m['calories']),
             proteinPerServing: RecipeRepository.toNum(m['protein']),
-            dietTags: [if (diet != 'ไม่มี') diet],
+            // ติดป้ายข้อจำกัดอาหารเฉพาะเมนูที่วัตถุดิบผ่านการตรวจจริง
+            dietTags: [
+              if (diet != 'ไม่มี' && dietViolations(m).isEmpty) diet,
+            ],
           );
           if (id != null) m['recipe_id'] = id;
         }

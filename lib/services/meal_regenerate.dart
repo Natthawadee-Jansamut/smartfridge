@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
@@ -66,6 +67,11 @@ class MealRegenerate {
               !(r['diet_tags'] as List).contains(dietType)) {
             return false;
           }
+          // ตรวจซ้ำจากชื่อวัตถุดิบ กันเมนูที่เคยถูกติดป้ายข้อจำกัดอาหารผิด
+          final names = [
+            for (final ing in RecipeRepository.ingredientsOf(r)) ing['name'],
+          ];
+          if (!DietCheck.fits(dietType, names)) return false;
           final cal = RecipeRepository.toNum(r['calories']);
           return oldCal <= 0 || (cal >= oldCal * 0.65 && cal <= oldCal * 1.35);
         }).firstOrNull;
@@ -141,29 +147,48 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
 "steps":["หั่นอกไก่","ผัดจนสุก","จัดใส่จาน"]}
 ''';
 
-    final res = await generateGemini(
-      apiKey: ApiKeys.mealPlanScreen,
-      logEvent: AiEvent.mealPlan,
-      content: [Content.text(prompt)],
-      generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        temperature: 0.8,
-      ),
-      timeout: const Duration(seconds: 60),
-    );
+    // เมนูจาก AI ต้องผ่านข้อจำกัดอาหาร (ตรวจจากชื่อวัตถุดิบ) — ผิด ให้ AI ทำใหม่
+    // อีก 1 รอบ ยังผิดอีก แจ้งผู้ใช้ ไม่บันทึกเมนูที่ผิดลงแพลน/คลังกลาง
+    Map json = const {};
+    var extraRule = '';
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final res = await generateGemini(
+        apiKey: ApiKeys.mealPlanScreen,
+        logEvent: AiEvent.mealPlan,
+        content: [Content.text(prompt + extraRule)],
+        generationConfig: GenerationConfig(
+          responseMimeType: 'application/json',
+          temperature: 0.8,
+        ),
+        timeout: const Duration(seconds: 60),
+      );
 
-    final text = (res.text ?? '')
-        .replaceAll('```json', '')
-        .replaceAll('```', '')
-        .trim();
-    final start = text.indexOf('{');
-    final end = text.lastIndexOf('}');
-    if (start == -1 || end <= start) {
-      throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
-    }
-    final json = jsonDecode(text.substring(start, end + 1));
-    if (json is! Map || (json['food_name'] ?? '').toString().trim().isEmpty) {
-      throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
+      final text = (res.text ?? '')
+          .replaceAll('```json', '')
+          .replaceAll('```', '')
+          .trim();
+      final start = text.indexOf('{');
+      final end = text.lastIndexOf('}');
+      if (start == -1 || end <= start) {
+        throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
+      }
+      final decoded = jsonDecode(text.substring(start, end + 1));
+      if (decoded is! Map || (decoded['food_name'] ?? '').toString().trim().isEmpty) {
+        throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
+      }
+      json = decoded;
+      final wrong = DietCheck.violations(
+        dietType,
+        DietCheck.namesOf(decoded['ingredients']),
+      );
+      if (wrong.isEmpty) break;
+      if (attempt == 1) {
+        throw 'เมนูที่ได้ยังมี ${wrong.join(', ')} ซึ่งขัดกับข้อจำกัดอาหาร '
+            '"$dietType" กรุณาลองใหม่ หรือพิมพ์บอกสิ่งที่ไม่ต้องการ';
+      }
+      extraRule =
+          '\n- เมนูก่อนหน้า "${decoded['food_name']}" ใช้ ${wrong.join(', ')} '
+          'ซึ่งผิดข้อจำกัดอาหาร "$dietType" ห้ามใช้วัตถุดิบเหล่านี้หรือประเภทเดียวกัน';
     }
 
     bool inFridge(String name) {

@@ -75,14 +75,38 @@ class PlanAllocation {
     required List<dynamic> meals,
     required List<Map<String, dynamic>> fridgeItems,
     DateTime? planStart,
+  }) => _allocate(meals, fridgeItems, planStart, null);
+
+  /// ของในตู้ที่เหลือหลังจองให้ [meals] แล้ว (รูปแบบเดียวกับ fridge_items แต่
+  /// quantity = จำนวนที่ยังไม่ถูกจอง) — ใช้บอก AI ว่าเหลืออะไรให้ใช้กับมื้อที่เหลือ
+  static List<Map<String, dynamic>> leftoverStock({
+    required List<dynamic> meals,
+    required List<Map<String, dynamic>> fridgeItems,
+    DateTime? planStart,
   }) {
+    final lots = <Map<String, dynamic>>[];
+    _allocate(meals, fridgeItems, planStart, lots);
+    return [
+      for (final l in lots)
+        if ((l['left'] as num) > 0)
+          {...(l['src'] as Map<String, dynamic>), 'quantity': l['left']},
+    ];
+  }
+
+  static Map<String, List<IngredientStatus>> _allocate(
+    List<dynamic> meals,
+    List<Map<String, dynamic>> fridgeItems,
+    DateTime? planStart,
+    List<Map<String, dynamic>>? lotsOut,
+  ) {
     // ของที่ยังใช้ได้ (ไม่หมด ไม่เกินกำหนด) — จำนวนคงเหลือหลังจองแต่ละลอต
     final lots = [
       for (final f in fridgeItems)
         if (!isUsedUp(f) &&
             !isOverdue(f) &&
             (f['name'] ?? '').toString().trim().isNotEmpty)
-          {
+          <String, dynamic>{
+            'src': f,
             'name': f['name'].toString(),
             'unit': (f['unit'] ?? '').toString().trim(),
             'left': RecipeRepository.toNum(f['quantity']),
@@ -172,6 +196,7 @@ class PlanAllocation {
       final id = meal['id']?.toString();
       if (id != null) result[id] = statuses;
     }
+    lotsOut?.addAll(lots);
     return result;
   }
 
