@@ -1353,7 +1353,7 @@ $extraRule
             ),
           ),
         ),
-        if (showError)
+        if (error != null)
           Padding(
             padding: const EdgeInsets.only(left: 12, top: 6),
             child: Row(
