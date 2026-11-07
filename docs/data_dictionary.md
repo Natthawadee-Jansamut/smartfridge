@@ -1,10 +1,12 @@
 # SmartFridge.AI — Data Dictionary (Supabase / PostgreSQL)
 
-อัปเดตล่าสุด: 5 พ.ย. 2026 · อ้างอิง migration `supabase/migrations/20261104000000_global_recipes.sql` และ `20261104000100_contract_legacy_recipes.sql`
+อัปเดตล่าสุด: 7 พ.ย. 2026 · อ้างอิง migration `supabase/migrations/20261104000000_global_recipes.sql` และ `20261104000100_contract_legacy_recipes.sql`
+
+**ตรวจกับฐานข้อมูลจริงแล้ว (7 พ.ย. 2026):** ชื่อตารางและชื่อคอลัมน์ทุกตัวในเอกสารนี้ยืนยันแล้วว่ามีอยู่บน Supabase โดยถามผ่าน REST API ทีละคอลัมน์ด้วย anon key — ที่ API เห็นมี 10 ตารางใน schema `public` · **ยังไม่ได้ยืนยัน:** ชนิดข้อมูล, NOT NULL/default, constraint, index และ RLS policy (ต้องใช้ SQL Editor หรือ service_role key)
 
 **สัญลักษณ์**
 
-- **\*** = ตารางเดิมที่ไม่มีไฟล์ DDL ในโปรเจกต์ — ชื่อคอลัมน์และชนิดข้อมูล **อนุมานจากโค้ด Flutter** ควรยืนยันอีกครั้งใน Supabase Table Editor
+- **\*** = ตารางเดิมที่ไม่มีไฟล์ DDL ในโปรเจกต์ — ชื่อคอลัมน์ยืนยันกับ Supabase แล้ว แต่ **ชนิดข้อมูลและข้อจำกัดยังอนุมานจากโค้ด Flutter** ควรยืนยันอีกครั้งใน Supabase Table Editor
 - **ที่มาของข้อมูล:** `ผู้ใช้กรอก` · `Gemini API` · `ระบบ (DB)` = ค่า default / trigger / ฟังก์ชันในฐานข้อมูล · `แอปคำนวณ` = โค้ด Flutter คำนวณก่อนบันทึก
 - ทุกตารางอยู่ใน schema `public` · `auth.users` คือตารางผู้ใช้ของ Supabase Auth
 
@@ -16,7 +18,6 @@ auth.users ─1:1─ profiles
     ├─1:N─ fridge_items ───────────────N:1─┐
     ├─1:N─ user_saved_recipes ─N:1─┐       │
     ├─1:N─ ai_request_logs ────N:1─┤       │
-    ├─1:N─ scanned_recipes_legacy ─┤ (global_recipe_id)
     └─1:N─ meal_plans ─1:N─ weekly_meals ─N:1─┤
                                      ▼        ▼
                                   recipes ─M:N─ ingredients ─1:N─ ingredient_aliases
@@ -34,8 +35,8 @@ auth.users ─1:1─ profiles
 | fridge_items\* | วัตถุดิบในตู้เย็นของผู้ใช้ | เดิม + เพิ่มคอลัมน์ |
 | meal_plans\* | หัวแผนอาหาร | เดิม |
 | weekly_meals\* | มื้ออาหารในแผน | เดิม + เพิ่มคอลัมน์ |
-| scanned_recipes_legacy\* | คลังสูตรเดิม (อ่านอย่างเดียว) | เลิกใช้ |
-| profiles\* | ข้อมูลผู้ใช้ | ไม่มีโค้ดแอปอ้างถึง |
+| profiles\* | ข้อมูลผู้ใช้ (first_name, last_name, phone) | มีบน Supabase แต่ไม่มีโค้ดแอปอ้างถึง |
+| ~~scanned_recipes_legacy~~ | คลังสูตรเดิม | **ไม่พบผ่าน API แล้ว** (ถูกลบ หรือไม่ได้เปิดให้ API เห็น) |
 
 ---
 
@@ -79,9 +80,9 @@ auth.users ─1:1─ profiles
 | category | หมวดหมู่ | TEXT | NULL ได้ (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
 | is_staple | ของพื้นฐาน ไม่นับเป็นของที่ขาด | BOOLEAN | NOT NULL, default `false` เช่น เกลือ น้ำปลา = `true` | — | ข้อมูลตั้งต้น / ผู้ดูแลระบบ | ไม่แสดง (มีผลกับ "ขาด: ..." ใน AiRecipeScreen) |
 | default_unit | หน่วยปกติ | TEXT | NULL ได้ (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
-| fridge_days | ระยะเก็บในตู้เย็น (วัน) | INTEGER | NULL ได้, ≥ 0 (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
-| freezer_days | ระยะเก็บในช่องแช่แข็ง (วัน) | INTEGER | NULL ได้, ≥ 0 (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
 | created_at | วันที่สร้าง | TIMESTAMPTZ | NOT NULL, default `now()` | — | ระบบ (DB) | ไม่แสดง |
+
+> ไม่มีคอลัมน์ `fridge_days` / `freezer_days` ในตารางนี้บน Supabase — ระยะเก็บรักษาอยู่ในตาราง shelf life ในโค้ดแอป และเก็บต่อแถวที่ `fridge_items`
 
 ### 2.1 ingredient_aliases — ชื่อเรียกอื่นของวัตถุดิบ
 
@@ -119,9 +120,8 @@ RLS: เจ้าของ account เท่านั้น (SELECT / INSERT / U
 | id | รหัส Bookmark (แอปใช้เป็น `recipe['id']` สำหรับแก้/ลบ) | UUID | NOT NULL, default `gen_random_uuid()` | PK | ระบบ (DB) | ไม่แสดง |
 | user_id | เจ้าของ | UUID | NOT NULL, default `auth.uid()` | FK → auth.users(id) ON DELETE CASCADE | ระบบ (DB) | ไม่แสดง |
 | recipe_id | สูตรกลางที่บันทึก | UUID | NOT NULL | FK → recipes(id) ON DELETE CASCADE | ระบบ (DB) จาก `save_recipe()` | ไม่แสดง (ใช้ดึงสูตร) |
-| overrides | ส่วนที่ผู้ใช้แก้เอง (ทับสูตรกลางเฉพาะคนนี้) | JSONB | NULL ได้, ต้องเป็น object เช่น `{"recipe_name": "...", "image_url": "..."}` | — | ผู้ใช้กรอก (แก้ไขสูตร) | SavedRecipesScreen, RecipeDetailScreen, ManualRecipeScreen (รวมกับสูตรกลางแล้ว) |
-| is_favorite | สูตรโปรด | BOOLEAN | NOT NULL, default `false` | — | — (ยังไม่มีปุ่มในแอป) | ยังไม่แสดง |
-| notes | บันทึกส่วนตัว | TEXT | NULL ได้ | — | — (ยังไม่มีในแอป) | ยังไม่แสดง |
+| overrides | ส่วนที่ผู้ใช้แก้เอง (ทับสูตรกลางเฉพาะคนนี้) | JSONB | NULL ได้, ต้องเป็น object · คีย์ที่ใช้: `recipe_name`, `time`, `servings`, `time_estimated`, `servings_estimated`, `ingredients_used`, `detailed_ingredients`, `instructions`, `ai_step_indexes`, `image_url`, `scan_image_path` (path ใน bucket ส่วนตัว `recipe-scan-images`) | — | ผู้ใช้กรอก (แก้ไขสูตร) / แอปคำนวณ (รูปที่สแกน) | SavedRecipesScreen, RecipeDetailScreen, ManualRecipeScreen (รวมกับสูตรกลางแล้ว) |
+| is_favorite | สูตรโปรด | BOOLEAN | NOT NULL, default `false` | — | ผู้ใช้กด (ปุ่มหัวใจใน SavedRecipesScreen) | SavedRecipesScreen |
 | created_at | วันที่บันทึก | TIMESTAMPTZ | NOT NULL, default `now()` | — | ระบบ (DB) | ScanRecipeScreen ("สูตรล่าสุด" เวลาที่ผ่านมา), เรียงลำดับใน SavedRecipesScreen |
 | updated_at | วันที่แก้ล่าสุด | TIMESTAMPTZ | NOT NULL, default `now()` + trigger | — | ระบบ (DB) | ไม่แสดง |
 
@@ -168,6 +168,8 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 | storage_changed_at\* | เวลาที่ย้ายช่องเก็บล่าสุด | TIMESTAMPTZ | NULL ได้ | — | แอปคำนวณ (ย้ายช่อง) | ItemDetailScreen (คำนวณวันคงเหลือ) |
 | days_left_at_freeze\* | จำนวนวันที่เหลือตอนย้ายเข้าช่องแช่แข็ง | INTEGER\* | NULL ได้ | — | แอปคำนวณ | ItemDetailScreen |
 | thawed_at\* | เวลาที่ย้ายออกจากช่องแช่แข็ง (ละลาย) | TIMESTAMPTZ | NULL ได้ | — | แอปคำนวณ | ItemDetailScreen ("เคยละลายแล้ว") |
+| use_per_cook | ปริมาณที่ใช้ต่อการทำอาหาร 1 ครั้ง (ใช้หักอัตโนมัติ) | NUMERIC | NULL ได้, > 0 (แอปใช้ 1 ถ้าว่าง) | — | Gemini API / ผู้ใช้แก้ (ResultScreen, ItemDetailScreen) | ItemDetailScreen ("ใช้ครั้งละ ..."), แพลนอาหาร (จองของในตู้) |
+| image_path | path รูปวัตถุดิบใน bucket ส่วนตัว `fridge-images` (`<user_id>/<เวลา>.jpg`) | TEXT | NULL ได้ (อัปโหลดไม่สำเร็จ = ไม่มีรูป) | — | แอปคำนวณ (อัปโหลดตอนบันทึกผลสแกน) | ItemDetailScreen |
 | created_at\* | วันที่เพิ่มเข้าตู้ | TIMESTAMPTZ | NOT NULL, default `now()` | — | ระบบ (DB) | InventoryScreen, AiRecipeScreen ("อยู่ในตู้ X วัน"), ExpirationAlertScreen |
 | ingredient_id | วัตถุดิบกลางที่ตรงกับชื่อนี้ | BIGINT | NULL ได้ | FK → ingredients(id) ON DELETE SET NULL | ระบบ (DB) trigger จากชื่อ (ตรงชื่อ/alias เท่านั้น) | ไม่แสดง |
 
@@ -201,12 +203,15 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 | ingredients\* | วัตถุดิบ + สถานะติ๊ก | JSONB\* | array เช่น `[{"name":"อกไก่","quantity":"1 ชิ้น","checked":true}]` | — | Gemini API + แอปคำนวณ (`checked` เทียบตู้เย็น) / ผู้ใช้ติ๊ก | CookMealScreen |
 | steps\* | ขั้นตอน (ข้อความหลายบรรทัด) | TEXT\* | เช่น `1. ...\n2. ...` | — | Gemini API / ผู้ใช้แก้ | CookMealScreen |
 | is_cooked\* | ทำมื้อนี้แล้ว | BOOLEAN | default `false` | — | ผู้ใช้กด (CookMealScreen) | WeeklyPlanScreen, CookMealScreen |
+| created_at\* | วันที่สร้างมื้อ | TIMESTAMPTZ | default `now()`\* | — | ระบบ (DB) | ไม่แสดง |
 | recipe_id | สูตรกลางของมื้อนี้ | UUID | NULL ได้ | FK → recipes(id) ON DELETE SET NULL | ระบบ (DB) migration | ยังไม่แสดง |
 | user_id | เจ้าของ (ไม่ต้อง join ผ่าน meal_plans) | UUID | NULL ได้, default `auth.uid()` | FK → auth.users(id) ON DELETE CASCADE | ระบบ (DB) | ไม่แสดง |
 
 ---
 
 ## 8. scanned_recipes_legacy\* — คลังสูตรเดิม (เดิมชื่อ scanned_recipes)
+
+> **ไม่พบตารางนี้ผ่าน REST API แล้ว (7 พ.ย. 2026)** — ทั้งชื่อ `scanned_recipes_legacy` และ `scanned_recipes` · อาจถูกลบไปแล้ว หรือแค่ไม่ได้เปิดให้ API เห็น ควรเช็กใน Supabase Table Editor ก่อนลบส่วนนี้ออกจากเอกสาร · คอลัมน์ด้านล่างเป็นข้อมูลเดิม ยังไม่ได้ยืนยัน
 
 **เลิกใช้แล้ว / อ่านอย่างเดียว** — ข้อมูลทั้งหมดย้ายไป `recipes` + `user_saved_recipes` แล้ว แอปไม่ได้อ่านหรือเขียนตารางนี้ · หน้าที่ "ประวัติการเรียก AI" อยู่ที่ `ai_request_logs`
 
@@ -229,7 +234,18 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 
 ## 9. profiles\* — ข้อมูลผู้ใช้งาน
 
-**ตาราง `profiles` มีอยู่บน Supabase แต่โค้ดแอปไม่ได้อ่านหรือเขียนตารางนี้** — คอลัมน์ต้องตรวจจาก Supabase โดยตรง
+**ตาราง `profiles` มีอยู่บน Supabase แต่โค้ดแอปไม่ได้อ่านหรือเขียนตารางนี้** — คอลัมน์ที่มีจริง:
+
+| Element Name | Description | Data Type | Permissible Value | Key Type | Data Source / Input | Display Screen |
+|---|---|---|---|---|---|---|
+| id\* | รหัสผู้ใช้ | UUID | NOT NULL | PK, FK → auth.users(id)\* | ระบบ (DB)\* | ไม่แสดง |
+| first_name\* | ชื่อ | TEXT | — | — | — (แอปไม่ได้เขียน) | ไม่แสดง |
+| last_name\* | นามสกุล | TEXT | — | — | — (แอปไม่ได้เขียน) | ไม่แสดง |
+| phone\* | เบอร์โทร | TEXT | — | — | — (แอปไม่ได้เขียน) | ไม่แสดง |
+| created_at\* | วันที่สร้าง | TIMESTAMPTZ | default `now()`\* | — | ระบบ (DB) | ไม่แสดง |
+
+> ชื่อ นามสกุล และเบอร์โทร **ซ้ำกับ `user_metadata`** ด้านล่าง — ค่าที่แอปแสดงจริงมาจาก `user_metadata`
+
 ข้อมูลผู้ใช้ที่แอปใช้จริงเก็บใน **`auth.users.raw_user_meta_data`** (Supabase Auth `user_metadata`) ดังนี้:
 
 | Element Name | Description | Data Type | Permissible Value | Key Type | Data Source / Input | Display Screen |
@@ -241,6 +257,7 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 | user_metadata.phone | เบอร์โทร | TEXT (ใน JSONB) | — | — | ผู้ใช้กรอก | EditProfileScreen |
 | user_metadata.notify_days | แจ้งเตือนล่วงหน้ากี่วันก่อนครบระยะเก็บ | INTEGER (ใน JSONB) | NULL = ใช้ค่าเริ่มต้นของแอป | — | ผู้ใช้เลือก (NotificationSettingsScreen) | NotificationSettingsScreen, ExpirationAlertScreen, AiRecipeScreen |
 | user_metadata.last_expiry_notify_date | วันที่แจ้งเตือนครั้งล่าสุด (กันเตือนซ้ำ) | TEXT (ใน JSONB) | รูปแบบวันที่ | — | แอปคำนวณ (NotificationService) | ไม่แสดง |
+| user_metadata.favorite_plan_ids | id ของแพลนอาหารที่กดหัวใจ (แพลนโปรด) | TEXT[] (ใน JSONB) | array ของ `meal_plans.id` เป็นข้อความ | — | ผู้ใช้กด (ปุ่มหัวใจ) | MyPlanScreen (แพลนโปรดขึ้นก่อน) |
 
 > ถ้าต้องการให้ `profiles` เป็นแหล่งข้อมูลหลัก (เช่น เพิ่ม allergies / diet_preference ในอนาคต) ต้องแก้แอปให้อ่าน/เขียนตารางนี้แทน `user_metadata`
 
@@ -252,7 +269,17 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 |---|---|---|
 | `match_recipes_by_ingredients(...)` | หาสูตรจากของในตู้เย็น (ก่อนเรียก Gemini) | AiRecipeScreen, MealPlanScreen |
 | `find_recipe_by_image_hash(p_image_hash)` | หาสูตรจากรูปที่เคยสแกน | ScanRecipeScreen |
-| `search_recipes_by_name(p_query)` | ค้นสูตรจากชื่อ | (ยังไม่ได้ใช้ในแอป) |
+| `search_recipes_by_name(p_query)` | ค้นสูตรจากชื่อ (ทนคำสะกดผิด) — ใช้ไม่ได้จะกลับไปค้นแบบเดิม | ค้นหาสูตร (ผ่าน RecipeRepository) |
 | `save_recipe(p_recipe, p_source, p_image_hash, p_is_public, p_bookmark)` | บันทึกสูตรเข้าคลังกลาง (+ Bookmark) | ScanRecipeResultScreen, ManualRecipeScreen, AiRecipeScreen, MealPlanScreen |
-| `my_saved_recipes()` | สูตรที่ผู้ใช้บันทึก (รวม overrides) | SavedRecipesScreen, ScanRecipeScreen |
+| `increment_recipe_use_count(...)` | เพิ่ม `recipes.use_count` เมื่อสูตรถูกใช้ซ้ำ (ไม่สำเร็จไม่กระทบการทำงาน) | ผ่าน RecipeRepository |
+| `delete_meal_plan(plan_uuid)` | ลบแพลนพร้อมมื้อทั้งหมดใน `weekly_meals` | MyPlanScreen |
+| `my_saved_recipes()` | สูตรที่ผู้ใช้บันทึก (รวม overrides) | (ยังไม่ได้ใช้ในแอป — แอปอ่าน `user_saved_recipes` + `recipes` ตรงๆ) |
 | `my_ai_usage(p_days)` | สรุป cache hit / token | (ยังไม่ได้ใช้ในแอป) |
+
+## Storage (ที่เก็บไฟล์)
+
+| Bucket | สาธารณะ | เก็บอะไร | อ้างอิงจาก |
+|---|---|---|---|
+| `fridge-images` | ไม่ (เจ้าของเท่านั้น, โฟลเดอร์ `<user_id>/`) | รูปวัตถุดิบตอนเอาเข้าตู้เย็น | `fridge_items.image_path` |
+| `recipe-scan-images` | ไม่ (เจ้าของเท่านั้น, โฟลเดอร์ `<user_id>/`) | รูปสูตรอาหารที่สแกน | `user_saved_recipes.overrides.scan_image_path` |
+| `recipe-images` | — | รูปเมนูที่ผู้ใช้แนบ | `recipes.image_url`, `overrides.image_url` |
