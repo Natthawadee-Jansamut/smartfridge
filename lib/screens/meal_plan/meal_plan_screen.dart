@@ -52,15 +52,19 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   double? get _weightKg => PlanGoal.validWeight(weightController.text);
 
+  /// เพศ ('male' / 'female' / null = ไม่ระบุ) ใช้เลือกพลังงานพื้นฐาน
+  /// (ธงโภชนาการ: ชาย 2,000 / หญิง 1,600 kcal) จำไว้ใน user_metadata.sex
+  String? sex;
+
   ({int calories, int protein}) get _goalDefaults =>
-      PlanGoal.defaultTargets(goal, weightKg: _weightKg);
+      PlanGoal.defaultTargets(goal, weightKg: _weightKg, sex: sex);
 
   @override
   void initState() {
     super.initState();
-    final saved = PlanGoal.validWeight(
-      supabase.auth.currentUser?.userMetadata?['weight_kg'],
-    );
+    final meta = supabase.auth.currentUser?.userMetadata;
+    sex = PlanGoal.validSex(meta?['sex']);
+    final saved = PlanGoal.validWeight(meta?['weight_kg']);
     if (saved != null) {
       weightController.text = saved == saved.roundToDouble()
           ? saved.toInt().toString()
@@ -76,19 +80,43 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
     super.dispose();
   }
 
-  /// จำน้ำหนักตัวที่กรอกไว้ (ไม่สำเร็จก็สร้างแพลนต่อได้ตามปกติ)
-  Future<void> _rememberWeight() async {
-    final w = _weightKg;
-    if (w == null) return;
-    final saved = PlanGoal.validWeight(
-      supabase.auth.currentUser?.userMetadata?['weight_kg'],
-    );
-    if (saved == w) return;
+  /// จำน้ำหนักตัวและเพศที่กรอกไว้ (ไม่สำเร็จก็สร้างแพลนต่อได้ตามปกติ)
+  /// เก็บใน user_metadata ของ Supabase Auth — ไม่ต้องเพิ่มตาราง/คอลัมน์
+  Future<void> _rememberProfile() async {
+    final meta = supabase.auth.currentUser?.userMetadata;
+    final data = <String, dynamic>{
+      if (_weightKg != null &&
+          PlanGoal.validWeight(meta?['weight_kg']) != _weightKg)
+        'weight_kg': _weightKg,
+      // เลือก "ไม่ระบุ" -> ล้างค่าที่เคยจำไว้
+      if (PlanGoal.validSex(meta?['sex']) != sex) 'sex': sex,
+    };
+    if (data.isEmpty) return;
     try {
-      await supabase.auth.updateUser(UserAttributes(data: {'weight_kg': w}));
+      await supabase.auth.updateUser(UserAttributes(data: data));
     } catch (e) {
-      debugPrint('บันทึกน้ำหนักตัวไม่สำเร็จ: $e');
+      debugPrint('บันทึกน้ำหนักตัว/เพศไม่สำเร็จ: $e');
     }
+  }
+
+  /// ปุ่มเลือกเพศ: ชาย / หญิง / ไม่ระบุ
+  Widget _buildSexSelector() {
+    const options = [
+      (value: PlanGoal.male, label: "ชาย"),
+      (value: PlanGoal.female, label: "หญิง"),
+      (value: null, label: "ไม่ระบุ"),
+    ];
+    return Wrap(
+      spacing: 8,
+      children: [
+        for (final o in options)
+          ChoiceChip(
+            label: Text(o.label),
+            selected: sex == o.value,
+            onSelected: (_) => setState(() => sex = o.value),
+          ),
+      ],
+    );
   }
 
   Future<void> createMealPlan() async {
@@ -252,7 +280,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       // (ดู PlanTargets) ไม่กรอก -> ใช้ค่าเริ่มต้นตามเป้าหมาย (ดู PlanGoal)
       // ค่าเดียวกับที่บันทึกลง meal_plans
       final goalDefaults = _goalDefaults;
-      await _rememberWeight();
+      await _rememberProfile();
       final targetCal =
           int.tryParse(calorieController.text) ?? goalDefaults.calories;
       final targetProtein =
@@ -923,6 +951,17 @@ $extraRule
               const SizedBox(height: 20),
 
               buildTitle(Icons.local_fire_department, "เป้าหมายโภชนาการ"),
+
+              const Text(
+                "เพศ (ใช้คำนวณแคลอรีตามธงโภชนาการ)",
+                style: TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+
+              const SizedBox(height: 6),
+
+              _buildSexSelector(),
+
+              const SizedBox(height: 15),
 
               buildInput(
                 "น้ำหนักตัว (ไม่บังคับ)",

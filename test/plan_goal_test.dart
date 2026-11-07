@@ -20,6 +20,25 @@ void main() {
     }
   });
 
+  test('ผู้หญิง: ฐาน 1600 (ธงโภชนาการ) ลดไม่ต่ำกว่า 1200 (AHA/ACC/TOS)', () {
+    const f = PlanGoal.female;
+    expect(PlanGoal.defaultTargets(PlanGoal.maintain, sex: f).calories, 1600);
+    // 1600 - 500 = 1100 ต่ำกว่าพื้น 1200 -> 1200
+    expect(PlanGoal.defaultTargets(PlanGoal.loseWeight, sex: f).calories, 1200);
+    // 1600 × 1.15 = 1840 ปัดทีละ 50 -> 1850
+    expect(PlanGoal.defaultTargets(PlanGoal.gainMuscle, sex: f).calories, 1850);
+  });
+
+  test('ผู้ชาย / ไม่ระบุเพศ: ฐาน 2000', () {
+    for (final sex in [PlanGoal.male, null, 'อื่นๆ']) {
+      expect(
+        PlanGoal.defaultTargets(PlanGoal.loseWeight, sex: sex).calories,
+        1500,
+      );
+    }
+    expect(PlanGoal.validSex('อื่นๆ'), isNull);
+  });
+
   test('โปรตีน: น้ำหนัก × 0.8 / 1.4 / 1.8 g ต่อ กก. ปัดทีละ 5', () {
     expect(PlanGoal.defaultTargets(PlanGoal.maintain, weightKg: 60).protein, 50);
     expect(

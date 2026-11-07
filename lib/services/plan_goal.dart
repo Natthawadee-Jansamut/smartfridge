@@ -34,11 +34,23 @@ class PlanGoal {
     _ => 0.8,
   };
 
-  /// พลังงานพื้นฐานต่อวัน: 2,000 kcal ตามธงโภชนาการของกรมอนามัย (ระดับ
-  /// วัยรุ่นและชายวัยทำงาน; ระดับ 1,600 สำหรับหญิงวัยทำงานและผู้สูงอายุ)
-  /// ไม่คิดจากน้ำหนักตัว เพราะพลังงานที่ใช้จริงขึ้นกับเพศ อายุ ส่วนสูง และ
-  /// กิจกรรมด้วย การคูณน้ำหนักอย่างเดียวไม่มีแหล่งอ้างอิงสำหรับคนทั่วไป
-  static const baseCalories = 2000;
+  /// เพศ (เก็บใน user_metadata.sex) — null = ไม่ระบุ
+  static const male = 'male';
+  static const female = 'female';
+
+  /// ค่าที่ใช้ได้ของเพศ หรือ null ถ้าไม่ระบุ/ค่าไม่ถูกต้อง
+  static String? validSex(Object? v) =>
+      v == male || v == female ? v as String : null;
+
+  /// พลังงานพื้นฐานต่อวัน ตามธงโภชนาการของกรมอนามัย: ชายวัยทำงาน 2,000 kcal,
+  /// หญิงวัยทำงาน 1,600 kcal — ไม่ระบุเพศใช้ 2,000 (ค่าเดิม)
+  /// ไม่คิดจากน้ำหนักตัว เพราะพลังงานที่ใช้จริงขึ้นกับอายุ ส่วนสูง และกิจกรรมด้วย
+  /// การคูณน้ำหนักอย่างเดียวไม่มีแหล่งอ้างอิงสำหรับคนทั่วไป
+  static int baseCalories(String? sex) => sex == female ? 1600 : 2000;
+
+  /// แคลอรีต่ำสุดเมื่อลดน้ำหนัก: 2013 AHA/ACC/TOS ให้ผู้หญิง 1,200–1,500 และ
+  /// ผู้ชาย 1,500–1,800 kcal/วัน — ใช้ค่าต่ำสุดของแต่ละช่วงเป็นพื้น
+  static int minCalories(String? sex) => sex == female ? 1200 : 1500;
 
   /// ลดน้ำหนัก: ลด 500 kcal/วัน (ค่าต่ำสุดของช่วง 500–750 ใน 2013
   /// AHA/ACC/TOS Guideline for the Management of Overweight and Obesity)
@@ -56,18 +68,24 @@ class PlanGoal {
   }
 
   /// ค่าเริ่มต้น (kcal, g โปรตีน) ต่อวัน เมื่อผู้ใช้ไม่ได้กรอกเป้า
-  /// - แคลอรี: ตามเป้าหมาย (ไม่ขึ้นกับน้ำหนัก)
+  /// - แคลอรี: ตามเพศและเป้าหมาย (ไม่ขึ้นกับน้ำหนัก)
   /// - โปรตีน: น้ำหนักตัว × g ต่อ กก. ตามเป้าหมาย ปัดทีละ 5 g
   ///   ([weightKg] = null -> ใช้ [referenceWeightKg])
   static ({int calories, int protein}) defaultTargets(
     String? goal, {
     double? weightKg,
+    String? sex,
   }) {
     final w = validWeight(weightKg) ?? referenceWeightKg;
+    final base = baseCalories(validSex(sex));
     final calories = switch (goal) {
-      loseWeight => baseCalories - loseDeficit,
-      gainMuscle => (baseCalories * (1 + gainSurplusRatio)).round(),
-      _ => baseCalories,
+      loseWeight =>
+        base - loseDeficit < minCalories(validSex(sex))
+            ? minCalories(validSex(sex))
+            : base - loseDeficit,
+      // ปัดทีละ 50 kcal (เช่น 1,600 × 1.15 = 1,840 -> 1,850)
+      gainMuscle => ((base * (1 + gainSurplusRatio)) / 50).round() * 50,
+      _ => base,
     };
     return (
       calories: calories,
