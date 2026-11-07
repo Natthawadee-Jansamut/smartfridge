@@ -876,6 +876,49 @@ class RecipeRepository {
     if (updated.isEmpty) throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข';
   }
 
+  /// recipe_id (จาก [recipeIds]) ที่ผู้ใช้กดหัวใจไว้ในคลังของตัวเอง
+  static Future<Set<String>> favoriteRecipeIds(
+    Iterable<String> recipeIds,
+  ) async {
+    final user = _db.auth.currentUser;
+    final ids = recipeIds.where((e) => e.isNotEmpty).toSet().toList();
+    if (user == null || ids.isEmpty) return {};
+    final rows = await _db
+        .from('user_saved_recipes')
+        .select('recipe_id')
+        .eq('user_id', user.id)
+        .eq('is_favorite', true)
+        .inFilter('recipe_id', ids);
+    return {for (final r in rows) r['recipe_id'].toString()};
+  }
+
+  /// กดหัวใจสูตรจากที่อื่น (เช่น การ์ดมื้อในแพลน) ด้วย id ของสูตรกลาง
+  /// ยังไม่อยู่ในคลังของผู้ใช้ -> เพิ่มเข้าคลังเป็นสูตรโปรด (+1 use_count)
+  /// เลิกกดหัวใจ -> สูตรยังอยู่ในคลัง แค่ไม่เป็นสูตรโปรด
+  static Future<void> setFavoriteByRecipe(
+    String recipeId,
+    bool isFavorite,
+  ) async {
+    final user = _db.auth.currentUser;
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    final inLibrary = await _isInLibrary(user.id, recipeId);
+    if (inLibrary) {
+      await _db
+          .from('user_saved_recipes')
+          .update({'is_favorite': isFavorite})
+          .eq('user_id', user.id)
+          .eq('recipe_id', recipeId);
+      return;
+    }
+    if (!isFavorite) return;
+    await _db.from('user_saved_recipes').insert({
+      'user_id': user.id,
+      'recipe_id': recipeId,
+      'is_favorite': true,
+    });
+    await _bumpUseCount(recipeId);
+  }
+
   /// เรียงคลังสูตร: สูตรโปรดอยู่บนสุด แล้วเรียงตามจำนวนวัตถุดิบที่มีในตู้เย็น
   /// มากไปน้อย (ทั้งกลุ่มโปรดและกลุ่มปกติ) เท่ากัน -> สูตรที่บันทึกล่าสุดก่อน
   static List<Map<String, dynamic>> sortForLibrary(

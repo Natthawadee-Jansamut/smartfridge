@@ -71,7 +71,9 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   String formatDate(Object? date) {
     final d = DateTime.tryParse(date?.toString() ?? '')?.toLocal();
     if (d == null) return '-';
-    return "${d.day}/${d.month}/${d.year + 543}";
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return "${d.day}/${d.month}/${d.year + 543} เวลา $hh:$mm น.";
   }
 
   @override
