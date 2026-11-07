@@ -48,14 +48,30 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
   final proteinController = TextEditingController();
 
-  // แจ้งเตือนช่องที่ยังไม่ได้กรอก แบบ Google Forms (ขอบแดง + ข้อความแดงใต้ช่อง)
-  // ขึ้นหลังกดสร้างแผน และหายเองเมื่อกรอกตัวเลขที่ใช้ได้
-  bool calorieError = false;
-  bool proteinError = false;
+  // แจ้งเตือนช่องกรอกแบบ Google Forms (ขอบแดง + ข้อความแดงใต้ช่อง)
+  // - กรอกผิดรูปแบบ (ตัวอักษร ทศนิยม 0) เตือนทันทีที่พิมพ์ พร้อมตัวอย่าง
+  // - ยังไม่ได้กรอก เตือนหลังกดสร้างแผน
+  // หายเองเมื่อกรอกตัวเลขที่ใช้ได้
+  bool submitted = false;
   final _calorieKey = GlobalKey();
   final _proteinKey = GlobalKey();
 
-  static bool _validTarget(String text) => (int.tryParse(text.trim()) ?? 0) > 0;
+  /// แปลงข้อความเป็นเป้าต่อวัน (รับ "1,800" ได้) — null = ใช้ไม่ได้
+  static int? _parseTarget(String text) {
+    final v = int.tryParse(text.trim().replaceAll(',', ''));
+    return v != null && v > 0 ? v : null;
+  }
+
+  /// ข้อความแจ้งเตือนของช่อง หรือ null ถ้าไม่มีปัญหา
+  /// [example] = ตัวอย่างค่าที่ถูกต้อง เช่น "1800"
+  String? _targetError(String text, String example) {
+    if (text.trim().isEmpty) return submitted ? "กรุณากรอกช่องนี้" : null;
+    if (_parseTarget(text) != null) return null;
+    return "กรุณากรอกเป็นตัวเลขจำนวนเต็มที่มากกว่า 0 เช่น $example";
+  }
+
+  static const _calorieExample = "1800";
+  static const _proteinExample = "90";
 
   Future<void> createMealPlan() async {
     final user = supabase.auth.currentUser;
@@ -64,18 +80,12 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
     // ต้องกรอกแคลอรีและโปรตีนต่อวันเอง (ไม่มีค่าเริ่มต้น) — ผู้ใช้กำหนดตาม
     // เป้าหมายของตัวเอง แพลนจะได้ใช้ตัวเลขที่ตรงกับเป้าหมายจริง
-    final targetCal = int.tryParse(calorieController.text.trim());
-    final targetProtein = int.tryParse(proteinController.text.trim());
-    if (targetCal == null ||
-        targetCal <= 0 ||
-        targetProtein == null ||
-        targetProtein <= 0) {
-      setState(() {
-        calorieError = targetCal == null || targetCal <= 0;
-        proteinError = targetProtein == null || targetProtein <= 0;
-      });
-      // เลื่อนหน้าจอไปที่ช่องแรกที่ยังไม่ได้กรอก
-      final firstError = calorieError ? _calorieKey : _proteinKey;
+    final targetCal = _parseTarget(calorieController.text);
+    final targetProtein = _parseTarget(proteinController.text);
+    if (targetCal == null || targetProtein == null) {
+      setState(() => submitted = true);
+      // เลื่อนหน้าจอไปที่ช่องแรกที่ยังไม่ถูกต้อง
+      final firstError = targetCal == null ? _calorieKey : _proteinKey;
       final ctx = firstError.currentContext;
       if (ctx != null) {
         Scrollable.ensureVisible(
@@ -1011,12 +1021,9 @@ $extraRule
                 calorieController,
                 "kcal",
                 key: _calorieKey,
-                showError: calorieError,
-                onChanged: (v) {
-                  if (calorieError && _validTarget(v)) {
-                    setState(() => calorieError = false);
-                  }
-                },
+                error: _targetError(calorieController.text, _calorieExample),
+                // อัปเดตข้อความเตือนทันทีที่พิมพ์
+                onChanged: (_) => setState(() {}),
               ),
 
               const SizedBox(height: 15),
@@ -1026,12 +1033,8 @@ $extraRule
                 proteinController,
                 "g",
                 key: _proteinKey,
-                showError: proteinError,
-                onChanged: (v) {
-                  if (proteinError && _validTarget(v)) {
-                    setState(() => proteinError = false);
-                  }
-                },
+                error: _targetError(proteinController.text, _proteinExample),
+                onChanged: (_) => setState(() {}),
               ),
 
               const SizedBox(height: 20),
@@ -1302,8 +1305,8 @@ $extraRule
     );
   }
 
-  /// ช่องกรอกตัวเลข — [showError] = ยังไม่ได้กรอก: ขอบแดง + ข้อความแดงใต้ช่อง
-  /// (แบบ Google Forms)
+  /// ช่องกรอกตัวเลข — [error] = ข้อความเตือน (null = ไม่มีปัญหา): ขอบแดง +
+  /// ข้อความแดงใต้ช่อง (แบบ Google Forms)
   Widget buildInput(
     String label,
 
@@ -1311,9 +1314,10 @@ $extraRule
 
     String suffix, {
     Key? key,
-    bool showError = false,
+    String? error,
     ValueChanged<String>? onChanged,
   }) {
+    final showError = error != null;
     const errorColor = Color(0xffD93025);
     return Column(
       key: key,
@@ -1350,15 +1354,21 @@ $extraRule
           ),
         ),
         if (showError)
-          const Padding(
-            padding: EdgeInsets.only(left: 12, top: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.error_outline, size: 16, color: errorColor),
-                SizedBox(width: 6),
-                Text(
-                  "กรุณากรอกช่องนี้",
-                  style: TextStyle(fontSize: 13, color: errorColor),
+                const Padding(
+                  padding: EdgeInsets.only(top: 1),
+                  child: Icon(Icons.error_outline, size: 16, color: errorColor),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    error,
+                    style: const TextStyle(fontSize: 13, color: errorColor),
+                  ),
                 ),
               ],
             ),
