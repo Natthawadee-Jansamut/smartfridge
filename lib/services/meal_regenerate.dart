@@ -13,7 +13,6 @@ import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
-import 'package:test_app/services/non_food_check.dart';
 
 /// เปลี่ยนเมนูของมื้อเดียวในแพลน (weekly_meals) — ให้ AI สร้างเมนูใหม่แทนช่องเดิม
 /// (วันเดิม มื้อเดิม) แคลอรี/โปรตีนใกล้ของเดิม ไม่ซ้ำเมนูอื่นในสัปดาห์
@@ -95,16 +94,13 @@ class MealRegenerate {
         final oldCal = RecipeRepository.toNum(meal['calories']);
         final candidates = await RecipeRepository.findRecipesForFridge(
           fridgeItems: usable,
-          maxMissing: fridgeOnly ? 0 : 1,
+          // ของในตู้ครบ (ของที่ต้องซื้อให้มาจาก Gemini ที่มีเกณฑ์ซื้อเฉพาะวัตถุดิบทั่วไป)
+          maxMissing: 0,
           limit: 30,
           requireNutrition: true,
           excludeNames: {...otherNames, oldName},
         );
         final fitting = candidates.where((r) {
-          // ไม่แนะนำให้ซื้อแมลงเพิ่ม (คนส่วนใหญ่ไม่ได้ซื้อกิน) — มีในตู้อยู่แล้วไม่นับ
-          if ((r['missing'] as List).any(NonFoodCheck.isUncommonToBuy)) {
-            return false;
-          }
           if (dietType != null &&
               dietType != 'ไม่มี' &&
               !(r['diet_tags'] as List).contains(dietType)) {
@@ -192,7 +188,8 @@ ${fridgeList.isEmpty ? 'ไม่มี' : fridgeList}
 - สร้างเมนูใหม่ 1 เมนู ห้ามซ้ำกับเมนูเหล่านี้: $avoid
 ${budget == null ? '- calories และ protein ให้ใกล้มื้อเดิม' : '- calories ต้องอยู่ในช่วง ${r(budget.calMin)}-${r(budget.calMax)} kcal และ protein ${r(budget.proteinMin)}-${r(budget.proteinMax)} g (งบที่เหลือของวันนี้ตามเป้าที่ผู้ใช้ตั้ง ห้ามเกิน)'}
 - calories และ protein ต้องคำนวณจากวัตถุดิบและปริมาณจริงเท่านั้น ห้ามปั้นตัวเลข
-${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู้เย็นเท่านั้น ห้ามใช้ของที่ไม่มีในรายการ' : '''- ใช้วัตถุดิบในตู้เย็นก่อน ซื้อเพิ่มได้เท่าที่จำเป็น (ของหาง่าย ราคาไม่แพง)
+${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู้เย็นเท่านั้น ห้ามใช้ของที่ไม่มีในรายการ' : '''- ใช้วัตถุดิบในตู้เย็นก่อน ซื้อเพิ่มได้เท่าที่จำเป็น (ราคาไม่แพง)
+- ซื้อเพิ่มได้เฉพาะวัตถุดิบทั่วไปที่หาซื้อได้ในซูเปอร์มาร์เก็ตหรือตลาดสดทั่วไปและคนส่วนใหญ่รับประทาน ห้ามแนะนำให้ซื้อวัตถุดิบที่รับประทานเฉพาะกลุ่มหรือเฉพาะถิ่น (เช่น แมลง งู กบ หอยทาก สัตว์ป่า)
 - วัตถุดิบที่ไม่มีในตู้เย็น ให้ใส่ "to_buy": true'''}
 - ถ้ารายการวัตถุดิบมีของที่ไม่ใช่อาหารหรือไม่ปลอดภัยต่อการบริโภค (เช่น ยา สารเคมี น้ำยาทำความสะอาด ของใช้) ห้ามนำมาใช้ในเมนูเด็ดขาด
 - ถือว่าบ้านมีของพื้นฐานอยู่แล้ว ไม่ต้องซื้อ: ${ShoppingSuggestion.stapleNamesForPrompt()}

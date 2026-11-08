@@ -141,32 +141,4 @@ class NonFoodCheck {
     }
     return false;
   }
-
-  /// แมลงที่กินได้ — เป็นอาหารพื้นบ้าน แต่คนส่วนใหญ่ไม่ได้ซื้อกินทั่วไป
-  /// ใช้กันไม่ให้แพลนแบบซื้อเพิ่มได้หยิบสูตรจากคลังกลางที่ต้อง "ซื้อ" แมลงเพิ่ม
-  /// (คนที่มีแมลงในตู้อยู่แล้วยังได้เมนูนั้นตามปกติ)
-  static const _insects = [
-    'แมลง',
-    'จิ้งหรีด',
-    'ดักแด้',
-    'หนอน',
-    'ตั๊กแตน',
-    'ไข่มด',
-    'มดแดง',
-    'แมงดา',
-    'แมงป่อง',
-    'จักจั่น',
-    'ด้วง',
-    'insect',
-    'cricket',
-    'silkworm',
-    'grasshopper',
-  ];
-
-  /// วัตถุดิบที่ไม่ควรแนะนำให้ "ซื้อเพิ่ม" (แมลง) — น้ำพริกแมงดาเป็นของหาซื้อทั่วไป ไม่นับ
-  static bool isUncommonToBuy(Object? name) {
-    final n = (name ?? '').toString().toLowerCase().replaceAll(RegExp(r'\s+'), '');
-    if (n.isEmpty || n.contains('น้ำพริก')) return false;
-    return _insects.any(n.contains);
-  }
 }

@@ -368,7 +368,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
 
       // ===============================
       // เติมช่องที่เหลือจากคลังสูตรกลาง (recipes) ก่อนเรียก AI — เมนูที่ทำได้จาก
-      // ของในตู้ (ซื้อเพิ่มได้ไม่เกิน 1 อย่างถ้าไม่ได้เปิด "ใช้เฉพาะของในตู้")
+      // ของในตู้ครบ (ไม่ต้องซื้อเพิ่ม — ของที่ต้องซื้อให้มาจากเมนูที่ Gemini สร้าง
+      // ซึ่งมีเกณฑ์ "ซื้อเฉพาะวัตถุดิบทั่วไป" คุมอยู่ แทนการไล่กรองชื่อวัตถุดิบ)
       // มีแคลอรี/โปรตีน ตรงข้อจำกัดอาหาร และแคลอรีใกล้เป้าต่อมื้อ
       // ===============================
       final libraryMeals = <Map<String, dynamic>>[];
@@ -376,7 +377,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         try {
           final candidates = await RecipeRepository.findRecipesForFridge(
             fridgeItems: usableFridge,
-            maxMissing: fridgeOnly ? 0 : 1,
+            maxMissing: 0,
             limit: 60,
             requireNutrition: true,
             excludeNames: {
@@ -387,10 +388,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             },
           );
           final suitable = candidates.where((r) {
-            // ไม่แนะนำให้ซื้อแมลงเพิ่ม (คนส่วนใหญ่ไม่ได้ซื้อกิน) — มีในตู้อยู่แล้วไม่นับ
-            if ((r['missing'] as List).any(NonFoodCheck.isUncommonToBuy)) {
-              return false;
-            }
             if (diet != 'ไม่มี' && !(r['diet_tags'] as List).contains(diet)) {
               return false;
             }
@@ -440,7 +437,7 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
               'steps': RecipeRepository.stepTextsOf(r),
               'recipe_id': r['recipe_id'],
             };
-            final maxShort = fridgeOnly ? 0 : 1;
+            const maxShort = 0;
             if (!fitsStock(meal, maxShort)) continue;
             picked.add((meal: meal, maxShort: maxShort));
             libraryMeals.add(meal);
@@ -603,7 +600,8 @@ ${usedNames.isEmpty ? "" : "ห้ามสร้างเมนูซ้ำก�
 กฎ:
 
 ${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่ไม่มีในรายการ''' : '''- ใช้วัตถุดิบในตู้เย็นก่อนเสมอ (โดยเฉพาะของที่อยู่มานาน) แล้วค่อยซื้อเพิ่ม
-- ซื้อเพิ่มได้เฉพาะเท่าที่จำเป็น เพื่อให้เมนูทำได้จริงและใกล้เป้า เลือกของหาง่ายในไทย ราคาไม่แพง
+- ซื้อเพิ่มได้เฉพาะเท่าที่จำเป็น เพื่อให้เมนูทำได้จริงและใกล้เป้า ราคาไม่แพง
+- ซื้อเพิ่มได้เฉพาะวัตถุดิบทั่วไปที่หาซื้อได้ในซูเปอร์มาร์เก็ตหรือตลาดสดทั่วไปและคนส่วนใหญ่รับประทาน ห้ามแนะนำให้ซื้อวัตถุดิบที่รับประทานเฉพาะกลุ่มหรือเฉพาะถิ่น (เช่น แมลง งู กบ หอยทาก สัตว์ป่า)
   เข้ากับข้อจำกัดอาหาร และใช้ของที่ซื้อซ้ำในหลายมื้อได้ (จะได้ไม่ต้องซื้อหลายอย่าง)
 - วัตถุดิบที่ไม่มีในตู้เย็น ให้ใส่ "to_buy": true ใน ingredients ของมื้อนั้น'''}
 - ถ้ารายการวัตถุดิบมีของที่ไม่ใช่อาหารหรือไม่ปลอดภัยต่อการบริโภค (เช่น ยา สารเคมี น้ำยาทำความสะอาด ของใช้) ห้ามนำมาใช้ในเมนูเด็ดขาด
