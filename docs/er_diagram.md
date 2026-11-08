@@ -32,7 +32,7 @@ erDiagram
     auth_users {
         uuid id PK
         text email UK
-        jsonb raw_user_meta_data "first_name, last_name, phone, notify_days, last_expiry_notify_date, favorite_plan_ids"
+        jsonb raw_user_meta_data "first_name, last_name, phone, notify_days, last_expiry_notify_date"
     }
 
     profiles {
@@ -151,6 +151,7 @@ erDiagram
         int target_protein
         text diet_type
         boolean saved
+        boolean is_favorite "แพลนโปรด"
         timestamptz created_at
     }
 
@@ -185,5 +186,5 @@ erDiagram
 - **user_saved_recipes** เป็นตารางกลางระหว่างผู้ใช้กับสูตรกลาง — ผู้ใช้แก้สูตรได้ผ่าน `overrides` โดยไม่กระทบสูตรของคนอื่น
 - **fridge_items.ingredient_id** และ **weekly_meals.recipe_id** เป็น FK ที่ NULL ได้ (ข้อมูลเดิมอาจจับคู่ไม่ได้)
 - **profiles** มี first_name / last_name / phone แต่แอปอ่าน-เขียนค่าเหล่านี้ที่ `user_metadata` แทน (ข้อมูลซ้ำสองที่)
-- **แพลนโปรด** ไม่มีคอลัมน์ใน `meal_plans` — เก็บเป็น `favorite_plan_ids` ใน `user_metadata`
+- **แพลนโปรด** เก็บที่ `meal_plans.is_favorite` (เดิมอยู่ใน `user_metadata.favorite_plan_ids` ซึ่งเลิกใช้แล้ว)
 - ON DELETE: ลบผู้ใช้ → ลบ fridge/saved/logs/meals ของผู้ใช้ (CASCADE) แต่ `recipes.created_by` กลายเป็น NULL (สูตรสาธารณะยังอยู่)

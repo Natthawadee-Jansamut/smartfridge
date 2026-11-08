@@ -19,18 +19,19 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   List plans = [];
   bool loading = true;
 
-  /// id ของแพลนโปรด — เก็บใน user_metadata ของ Supabase Auth (เหมือนการตั้งค่า
-  /// แจ้งเตือน) ไม่ต้องเพิ่มคอลัมน์ในตาราง meal_plans
-  static const _favKey = 'favorite_plan_ids';
+  /// id ของแพลนโปรด — มาจากคอลัมน์ meal_plans.is_favorite
+  /// (supabase/migrations/20261108000100_meal_plans_is_favorite.sql)
   Set<String> _favorites = {};
 
-  Set<String> _readFavorites() {
-    final raw = supabase.auth.currentUser?.userMetadata?[_favKey];
-    return raw is List ? {for (final e in raw) e.toString()} : <String>{};
-  }
+  Set<String> _readFavorites(List data) => {
+    for (final p in data)
+      if (p['is_favorite'] == true) '${p['id']}',
+  };
 
-  Future<void> _saveFavorites(Set<String> ids) =>
-      supabase.auth.updateUser(UserAttributes(data: {_favKey: ids.toList()}));
+  Future<void> _saveFavorite(String id, bool value) => supabase
+      .from('meal_plans')
+      .update({'is_favorite': value})
+      .eq('id', id);
 
   /// แพลนโปรดขึ้นก่อน แล้วเรียงใหม่ไปเก่า (ข้อมูลเรียงตาม created_at มาแล้ว)
   List _sorted(List data) {
@@ -56,7 +57,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
       plans = _sorted(plans);
     });
     try {
-      await _saveFavorites(after);
+      await _saveFavorite(id, adding);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -95,7 +96,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
           .eq('saved', true)
           .order('created_at', ascending: false);
 
-      _favorites = _readFavorites();
+      _favorites = _readFavorites(data);
       setState(() {
         plans = _sorted(data);
         loading = false;
@@ -111,13 +112,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
   Future<void> deletePlan(String id) async {
     try {
       await supabase.rpc('delete_meal_plan', params: {'plan_uuid': id});
-      // ลบแพลนโปรด -> เอา id ออกจากรายการโปรดด้วย (ไม่สำเร็จก็ไม่เป็นไร)
-      if (_favorites.remove(id)) {
-        try {
-          await _saveFavorites(_favorites);
-        } catch (_) {}
-      }
-
+      // is_favorite อยู่ในแถวที่ถูกลบไปแล้ว ไม่ต้องล้างค่าที่อื่น
       await loadPlans();
 
       if (!mounted) return;

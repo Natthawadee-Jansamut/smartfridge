@@ -91,7 +91,7 @@ order by created_at desc limit 20;
 | มื้อในแผน | MealPlanScreen | `weekly_meals` | `plan_id, day, meal_type, food_name, calories, protein, ingredients, steps, is_cooked=false, recipe_id` — วัตถุดิบที่ไม่มีในตู้ตอนสร้างแผนติดธง `"to_buy": true` ใน `ingredients` |
 | รายการซื้อของ ("🛒 ต้องซื้อ") | WeeklyPlanScreen | — (**คำนวณใหม่ทุกครั้ง ไม่บันทึก**) | อ่าน `weekly_meals.ingredients` + `fridge_items` แล้วจองของในตู้ให้มื้อที่ใกล้ถึงก่อน ส่วนที่ขาด = ต้องซื้อ |
 | บันทึกแผน | WeeklyPlanScreen | `meal_plans` | `saved=true` |
-| กดหัวใจแผน | MyPlanScreen | `auth.users` | `raw_user_meta_data.favorite_plan_ids` |
+| กดหัวใจแผน | MyPlanScreen | `meal_plans` | `is_favorite` |
 | ติ๊กวัตถุดิบ / แก้ขั้นตอน | CookMealScreen | `weekly_meals` | `ingredients` / `steps` |
 | ทำมื้อนี้แล้ว / ยกเลิก | CookMealScreen | `weekly_meals` | `is_cooked` |
 | เปลี่ยนเมนู / คำนวณแคลอรีใหม่ | WeeklyPlanScreen | `weekly_meals` | `food_name, calories, protein, ingredients, steps, recipe_id` |
@@ -198,7 +198,9 @@ order by created_at desc limit 20;
 | TC-P6-04 | ข้อจำกัดอาหาร | เลือก `มังสวิรัติ` | ไม่มีเมนูเนื้อสัตว์ | — | |
 | TC-P6-05 | บันทึกแผน | กดบันทึกแผน | แผนอยู่ใน "แผนของฉัน" | `meal_plans.saved=true` | |
 | TC-P6-06 | แผนที่ไม่บันทึก | สร้างแผนแล้วออกโดยไม่บันทึก | ไม่อยู่ในแผนของฉัน | แถวยังอยู่แต่ `saved=false` | |
-| TC-P6-07 | กดหัวใจแผน | กดหัวใจแผน | แผนโปรดขึ้นก่อน | `auth.users.raw_user_meta_data.favorite_plan_ids` มี id ของแผน | |
+| TC-P6-07 | กดหัวใจแผน | กดหัวใจแผน → ออกแล้วเปิดหน้าใหม่ | ขึ้น `เก็บเป็นแพลนโปรดแล้ว ❤️` แผนโปรดอยู่บนสุดและยังเป็นหัวใจหลังเปิดใหม่ | `meal_plans.is_favorite=true` (กดซ้ำ = `false`) | |
+| TC-P6-07a | แพลนโปรดเดิมไม่หาย | แผนที่เคยกดหัวใจก่อนรัน migration `20261108000100` → รัน migration → เปิดแผนของฉัน | แผนนั้นยังเป็นแพลนโปรด | `is_favorite=true` จากค่าเดิมใน `user_metadata.favorite_plan_ids` | |
+| TC-P6-07b | แพลนโปรดไม่ข้ามบัญชี | บัญชี B เปิดแผนของฉัน | ไม่เห็นแผนของบัญชี A | (RLS ของ `meal_plans`) | |
 | TC-P6-08 | ทำมื้อนี้แล้ว | เปิดมื้อ → ทำแล้ว → ยืนยันหัก | มื้อแสดงว่าทำแล้ว | `weekly_meals.is_cooked=true` · `fridge_items.quantity` ลด | |
 | TC-P6-09 | กดทำแล้วซ้ำ | กดทำแล้วซ้ำในมื้อเดิม | ไม่หักวัตถุดิบซ้ำ | `fridge_items.quantity` ไม่ลดเพิ่ม | |
 | TC-P6-10 | ยกเลิกทำแล้ว | ยกเลิกสถานะทำแล้ว | กลับเป็นยังไม่ทำ | `weekly_meals.is_cooked=false` | |

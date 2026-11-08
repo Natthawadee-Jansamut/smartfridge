@@ -5,7 +5,7 @@
 -- ขั้น 0  ตรวจข้อมูลก่อน (อ่านอย่างเดียว)
 -- ขั้น 1  ปลอดภัย ไม่ต้องแก้แอป: index, CHECK constraint, weekly_meals.user_id
 -- ขั้น 2  ปลอดภัย ไม่ต้องแก้แอป: ให้ profiles ตรงกับ user_metadata อัตโนมัติ
--- ขั้น 3  เตรียมไว้ให้แอป: meal_plans.is_favorite (แอปยังใช้ user_metadata อยู่)
+-- ขั้น 3  ย้ายไปเป็น migration 20261108000100_meal_plans_is_favorite.sql แล้ว
 -- ขั้น 4  ไม่บังคับ: ลบ log AI เก่าอัตโนมัติ (ต้องเปิด pg_cron)
 -- ขั้น 5  ไม่บังคับ: ตารางประวัติการใช้วัตถุดิบ (ต้องแก้แอปให้เขียนลงตาราง)
 --
@@ -182,18 +182,10 @@ on conflict (id) do update
 
 
 -- =====================================================================
--- ขั้น 3: แพลนโปรดเป็นคอลัมน์ของ meal_plans (เตรียมไว้ — แอปยังอ่านจาก user_metadata)
--- รันได้เลย ไม่กระทบแอป แต่ต้องแก้ my_plan_screen.dart ให้ใช้คอลัมน์นี้ ถึงจะได้ประโยชน์
+-- ขั้น 3: แพลนโปรดเป็นคอลัมน์ของ meal_plans — ย้ายไปเป็น migration แล้ว
+-- ใช้ supabase/migrations/20261108000100_meal_plans_is_favorite.sql แทน
+-- (แอปใช้คอลัมน์ meal_plans.is_favorite แล้ว ต้องรันไฟล์นั้นก่อนใช้แอปเวอร์ชันใหม่)
 -- =====================================================================
-alter table public.meal_plans
-  add column if not exists is_favorite boolean not null default false;
-
-update public.meal_plans p
-set is_favorite = true
-from auth.users u
-where p.user_id = u.id
-  and jsonb_typeof(u.raw_user_meta_data -> 'favorite_plan_ids') = 'array'
-  and (u.raw_user_meta_data -> 'favorite_plan_ids') ? p.id::text;
 
 
 -- =====================================================================
