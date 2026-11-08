@@ -187,6 +187,7 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 | target_protein\* | เป้าโปรตีนต่อวัน (กรัม) | INTEGER | default ในแอป `100` | — | ผู้ใช้กรอก | MealPlanScreen, MyPlanScreen |
 | diet_type\* | ข้อจำกัดอาหาร | TEXT | `ไม่มี` / `มังสวิรัติ` / `เจ` / `ไม่ทานนม` | — | ผู้ใช้เลือก | MealPlanScreen, MyPlanScreen |
 | saved\* | ผู้ใช้กดบันทึกแผนแล้วหรือยัง | BOOLEAN | default `false` | — | ผู้ใช้กด (WeeklyPlanScreen) | MyPlanScreen (แสดงเฉพาะ `true`), WeeklyPlanScreen |
+| is_favorite | แพลนโปรด | BOOLEAN | NOT NULL, default `false` | — | ผู้ใช้กด (ปุ่มหัวใจ) · migration `20261108000100_meal_plans_is_favorite.sql` | MyPlanScreen (แพลนโปรดขึ้นก่อน) |
 | created_at\* | วันที่สร้างแผน | TIMESTAMPTZ | NOT NULL, default `now()` | — | ระบบ (DB) | MyPlanScreen, WeeklyPlanScreen |
 
 ### 7.1 weekly_meals\* — มื้ออาหารในแผน
@@ -257,7 +258,7 @@ RLS: เจ้าของอ่าน/เพิ่มได้เท่าน�
 | user_metadata.phone | เบอร์โทร | TEXT (ใน JSONB) | — | — | ผู้ใช้กรอก | EditProfileScreen |
 | user_metadata.notify_days | แจ้งเตือนล่วงหน้ากี่วันก่อนครบระยะเก็บ | INTEGER (ใน JSONB) | NULL = ใช้ค่าเริ่มต้นของแอป | — | ผู้ใช้เลือก (NotificationSettingsScreen) | NotificationSettingsScreen, ExpirationAlertScreen, AiRecipeScreen |
 | user_metadata.last_expiry_notify_date | วันที่แจ้งเตือนครั้งล่าสุด (กันเตือนซ้ำ) | TEXT (ใน JSONB) | รูปแบบวันที่ | — | แอปคำนวณ (NotificationService) | ไม่แสดง |
-| user_metadata.favorite_plan_ids | id ของแพลนอาหารที่กดหัวใจ (แพลนโปรด) | TEXT[] (ใน JSONB) | array ของ `meal_plans.id` เป็นข้อความ | — | ผู้ใช้กด (ปุ่มหัวใจ) | MyPlanScreen (แพลนโปรดขึ้นก่อน) |
+| user_metadata.favorite_plan_ids | **เลิกใช้** — แพลนโปรดย้ายไป `meal_plans.is_favorite` แล้ว (ค่าเดิมยังอยู่ แอปเวอร์ชันใหม่ไม่อ่าน) | TEXT[] (ใน JSONB) | array ของ `meal_plans.id` เป็นข้อความ | — | แอปเวอร์ชันเก่า | ไม่แสดง |
 
 > ถ้าต้องการให้ `profiles` เป็นแหล่งข้อมูลหลัก (เช่น เพิ่ม allergies / diet_preference ในอนาคต) ต้องแก้แอปให้อ่าน/เขียนตารางนี้แทน `user_metadata`
 
