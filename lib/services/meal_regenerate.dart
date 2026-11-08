@@ -13,6 +13,7 @@ import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/recipe_repository.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/services/non_food_check.dart';
 
 /// เปลี่ยนเมนูของมื้อเดียวในแพลน (weekly_meals) — ให้ AI สร้างเมนูใหม่แทนช่องเดิม
 /// (วันเดิม มื้อเดิม) แคลอรี/โปรตีนใกล้ของเดิม ไม่ซ้ำเมนูอื่นในสัปดาห์
@@ -100,6 +101,10 @@ class MealRegenerate {
           excludeNames: {...otherNames, oldName},
         );
         final fitting = candidates.where((r) {
+          // ไม่แนะนำให้ซื้อแมลงเพิ่ม (คนส่วนใหญ่ไม่ได้ซื้อกิน) — มีในตู้อยู่แล้วไม่นับ
+          if ((r['missing'] as List).any(NonFoodCheck.isUncommonToBuy)) {
+            return false;
+          }
           if (dietType != null &&
               dietType != 'ไม่มี' &&
               !(r['diet_tags'] as List).contains(dietType)) {

@@ -47,4 +47,13 @@ void main() {
       expect(NonFoodCheck.isNotForCooking(n), isFalse, reason: n);
     }
   });
+
+  test('แมลง: ไม่แนะนำให้ซื้อเพิ่ม แต่น้ำพริกแมงดาซื้อได้', () {
+    for (final n in ['จิ้งหรีดทอด', 'ไข่มดแดง', 'หนอนไม้', 'ดักแด้']) {
+      expect(NonFoodCheck.isUncommonToBuy(n), isTrue, reason: n);
+    }
+    for (final n in ['น้ำพริกแมงดา', 'หมูสับ', 'ปลาร้า']) {
+      expect(NonFoodCheck.isUncommonToBuy(n), isFalse, reason: n);
+    }
+  });
 }

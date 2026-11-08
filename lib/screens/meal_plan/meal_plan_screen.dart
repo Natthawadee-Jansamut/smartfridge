@@ -387,6 +387,10 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
             },
           );
           final suitable = candidates.where((r) {
+            // ไม่แนะนำให้ซื้อแมลงเพิ่ม (คนส่วนใหญ่ไม่ได้ซื้อกิน) — มีในตู้อยู่แล้วไม่นับ
+            if ((r['missing'] as List).any(NonFoodCheck.isUncommonToBuy)) {
+              return false;
+            }
             if (diet != 'ไม่มี' && !(r['diet_tags'] as List).contains(diet)) {
               return false;
             }
