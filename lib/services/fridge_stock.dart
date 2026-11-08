@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/utils/shelf_life.dart';
+import 'package:test_app/services/non_food_check.dart';
 
 /// ผลการหักวัตถุดิบ 1 รายการ
 class DeductResult {
@@ -105,6 +106,8 @@ String inventoryPromptList(
   final perCook = <String, num>{};
   for (final lot in inventory) {
     if (isUsedUp(lot)) continue;
+    // บุหรี่ / สุราสำหรับดื่ม ไม่ส่งให้ AI เอาไปทำเมนู (ตรวจจากชื่อปัจจุบัน)
+    if (NonFoodCheck.isNotForCooking(lot['name'])) continue;
     final key = "${lot['name']}|${lot['unit'] ?? ''}";
     totals[key] = (totals[key] ?? 0) + _toNum(lot['quantity']);
     final per = _toNum(lot['use_per_cook']);

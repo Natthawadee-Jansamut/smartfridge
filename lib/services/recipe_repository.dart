@@ -10,6 +10,7 @@ import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/global_recipe_service.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/services/non_food_check.dart';
 
 /// งานฝั่ง Supabase ทั้งหมดของฟีเจอร์สูตรอาหาร รวมไว้ที่เดียว
 /// (หน้าจอจะได้ไม่ต้องเขียน query / logic เทียบวัตถุดิบซ้ำกันหลายที่)
@@ -580,7 +581,10 @@ class RecipeRepository {
   }) async {
     final fridgeNames = [
       for (final f in fridgeItems)
-        if (!isUsedUp(f) && (f['name'] ?? '').toString().trim().isNotEmpty)
+        if (!isUsedUp(f) &&
+            (f['name'] ?? '').toString().trim().isNotEmpty &&
+            // บุหรี่ / สุราสำหรับดื่ม ไม่ใช้จับคู่เมนู
+            !NonFoodCheck.isNotForCooking(f['name']))
           f['name'].toString().trim(),
     ];
     if (fridgeNames.isEmpty) return [];

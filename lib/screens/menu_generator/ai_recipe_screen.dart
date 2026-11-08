@@ -11,6 +11,7 @@ import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/services/recipe_repository.dart';
+import 'package:test_app/services/non_food_check.dart';
 
 class AiRecipeScreen extends StatefulWidget {
   const AiRecipeScreen({super.key});
@@ -88,7 +89,8 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         byAge.add(item);
         // ควรเอาไปทำอาหารก่อน: เก็บได้อีกไม่เกินจำนวนวันที่ตั้งไว้ในหน้าตั้งค่า
         // แจ้งเตือน (นับเป็นวัน ไม่ใช้เปอร์เซ็นต์) และยังไม่เกินกำหนด
-        if (shouldUseFirst(item, aheadDays)) {
+        if (shouldUseFirst(item, aheadDays) &&
+            !NonFoodCheck.isNotForCooking(item['name'])) {
           oldItems.add(item);
         }
       }

@@ -19,6 +19,7 @@ import 'package:test_app/services/gemini_retry.dart';
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/services/shopping_suggestion.dart';
 import 'package:test_app/services/recipe_repository.dart';
+import 'package:test_app/services/non_food_check.dart';
 
 class MealPlanScreen extends StatefulWidget {
   const MealPlanScreen({super.key});
@@ -141,6 +142,8 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         // เฉพาะของที่เก็บได้อีกไม่เกินจำนวนวันที่ตั้งแจ้งเตือนไว้ (นับเป็นวัน) และ
         // ยังไม่ได้ใช้หมด
         if (!shouldUseFirst(item, readOldItemDays(user))) continue;
+        // บุหรี่ / สุราสำหรับดื่ม ไม่ส่งให้ AI
+        if (NonFoodCheck.isNotForCooking(item['name'])) continue;
 
         expiringSoon.add({
           'name': item['name'],
