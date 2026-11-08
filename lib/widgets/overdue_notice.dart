@@ -45,7 +45,9 @@ class OverdueNotice extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  canExtend ? "เกินระยะเก็บที่แนะนำแล้ว" : overdueAdvice(item),
+                  canExtend
+                      ? "เกินระยะเก็บที่แนะนำ ตรวจก่อนใช้"
+                      : "เกินระยะเก็บที่แนะนำ ${overdueAdvice(item)}",
                   style: const TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
@@ -57,16 +59,11 @@ class OverdueNotice extends StatelessWidget {
           ),
           if (canExtend) ...[
             const SizedBox(height: 4),
-            const Text("ถ้ามีฉลาก ตรวจวันที่ก่อน", style: _textStyle),
             const Text(
-              "• \"ควรบริโภคก่อน\" (BBF) — ยังใช้ได้ถ้าสภาพปกติ",
+              "ฉลาก \"ควรบริโภคก่อน\" ใช้ได้ถ้าสภาพปกติ, \"หมดอายุ\" ควรทิ้ง",
               style: _textStyle,
             ),
-            const Text(
-              "• \"หมดอายุ\" (EXP) — ไม่ควรกิน ควรทิ้ง",
-              style: _textStyle,
-            ),
-            Text("ถ้าไม่มีฉลาก — ${overdueAdvice(item)}", style: _textStyle),
+            Text("ไม่มีฉลาก: ${overdueAdvice(item)}", style: _textStyle),
             const SizedBox(height: 8),
             // ใช้ Wrap ให้ปุ่มขึ้นบรรทัดใหม่เองเมื่อการ์ดแคบ (เช่นในหน้าคลัง)
             Wrap(
@@ -75,7 +72,7 @@ class OverdueNotice extends StatelessWidget {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
-                  "ตรวจแล้วยังใช้ได้:",
+                  "ยังใช้ได้:",
                   style: TextStyle(fontSize: 12, color: Colors.black54),
                 ),
                 for (final days in const [1, 2, 3]) _buildButton(days),

@@ -431,16 +431,16 @@ OverdueKind overdueKind(Map<String, dynamic> item) {
 String overdueAdvice(Map<String, dynamic> item) {
   switch (overdueKind(item)) {
     case OverdueKind.unsafe:
-      return 'ไม่ควรกินแล้ว แม้กลิ่นและหน้าตายังปกติ เพื่อความปลอดภัยควรทิ้ง';
+      return 'ควรทิ้ง แม้ดูและดมปกติก็อาจมีเชื้อโรค';
     case OverdueKind.produce:
-      return 'ถ้าไม่เน่า ไม่เละ ไม่ขึ้นรา ยังใช้ได้';
+      return 'ไม่เน่า ไม่เละ ไม่มีรา ใช้ได้';
     case OverdueKind.other:
       // ราในขนมปังลามลึกกว่าที่ตาเห็น เห็นจุดเดียวก็ควรทิ้งทั้งหมด
       final key = originalShelfSource(item['shelf_type']?.toString(), null).key;
       if (key == 'bread') {
-        return 'ถ้าเห็นราแม้จุดเดียว ควรทิ้งทั้งหมด ไม่ตัดออกเฉพาะส่วน';
+        return 'มีราแม้จุดเดียว ทิ้งทั้งหมด';
       }
-      return 'ตรวจกลิ่นและสภาพก่อนใช้ ถ้าผิดปกติควรทิ้ง';
+      return 'กลิ่นหรือสภาพผิดปกติ ควรทิ้ง';
   }
 }
 
