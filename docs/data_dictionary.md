@@ -78,7 +78,7 @@ auth.users ─1:1─ profiles
 | name | ชื่อวัตถุดิบมาตรฐาน | TEXT | NOT NULL, 1–100 ตัวอักษร เช่น `ไข่ไก่`, `หมูสับ` | — | Gemini API / ผู้ใช้กรอก (ผ่านสูตร) / ข้อมูลตั้งต้น | ไม่แสดงโดยตรง (ชื่อที่แสดงมาจาก recipe_ingredients.display_name) |
 | name_key | ชื่อแบบ normalize | TEXT | Generated, UNIQUE | — | ระบบ (DB) | ไม่แสดง |
 | category | หมวดหมู่ | TEXT | NULL ได้ (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
-| is_staple | ของพื้นฐาน ไม่นับเป็นของที่ขาด | BOOLEAN | NOT NULL, default `false` เช่น เกลือ น้ำปลา = `true` | — | ข้อมูลตั้งต้น / ผู้ดูแลระบบ | ไม่แสดง (มีผลกับ "ขาด: ..." ใน AiRecipeScreen) |
+| is_staple | ของพื้นฐาน ไม่นับเป็นของที่ขาด | BOOLEAN | NOT NULL, default `false` เช่น เกลือ น้ำปลา = `true` | — | ระบบ (DB) trigger `ingredients_set_staple` ตั้งให้ตอนเพิ่มแถว ถ้าชื่อตรงรายการใน `private.staple_names` / ผู้ดูแลระบบแก้เอง | ไม่แสดง (มีผลกับ "ขาด: ..." ใน AiRecipeScreen) |
 | default_unit | หน่วยปกติ | TEXT | NULL ได้ (ยังไม่ได้ใช้) | — | — | ไม่แสดง |
 | created_at | วันที่สร้าง | TIMESTAMPTZ | NOT NULL, default `now()` | — | ระบบ (DB) | ไม่แสดง |
 
@@ -89,7 +89,7 @@ auth.users ─1:1─ profiles
 | Element Name | Description | Data Type | Permissible Value | Key Type | Data Source / Input | Display Screen |
 |---|---|---|---|---|---|---|
 | id | รหัส | BIGINT | NOT NULL, identity | PK | ระบบ (DB) | ไม่แสดง |
-| alias | ชื่อเรียกอื่น | TEXT | NOT NULL, 1–100 ตัวอักษร เช่น `ไข่`, `หมูบด` | — | ข้อมูลตั้งต้น / ผู้ดูแลระบบ | ไม่แสดง |
+| alias | ชื่อเรียกอื่น | TEXT | NOT NULL, 1–100 ตัวอักษร เช่น `ไข่`, `หมูบด` | — | `supabase/sql/seed_ingredient_aliases.sql` / `private.merge_ingredients()` (ชื่อที่ถูกรวม) / ผู้ดูแลระบบ — แอปไม่ได้เพิ่มให้ | ไม่แสดง |
 | alias_key | alias แบบ normalize | TEXT | Generated, UNIQUE | — | ระบบ (DB) | ไม่แสดง |
 | ingredient_id | วัตถุดิบมาตรฐานที่ชื่อนี้หมายถึง | BIGINT | NOT NULL | FK → ingredients(id) ON DELETE CASCADE | ผู้ดูแลระบบ | ไม่แสดง |
 
