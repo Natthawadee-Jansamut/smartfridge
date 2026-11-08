@@ -184,7 +184,10 @@ class _ImageScanningState extends State<ImageScanning> {
       final imageBytes = await image.readAsBytes();
 
       final prompt = TextPart("""
-วิเคราะห์วัตถุดิบทุกชิ้นในรูป
+วิเคราะห์อาหารและวัตถุดิบสำหรับประกอบอาหารทุกชิ้นในรูป
+- ตอบเฉพาะสิ่งที่เป็นอาหารหรือวัตถุดิบที่ใช้ประกอบอาหารและปลอดภัยต่อการบริโภคเท่านั้น
+  ข้ามสิ่งที่ไม่ใช่อาหาร เช่น ยา อาหารเสริมชนิดเม็ด สารเคมี น้ำยาทำความสะอาด เครื่องสำอาง ของใช้ ภาชนะเปล่า
+  และสิ่งที่ผิดกฎหมาย ถ้าในรูปไม่มีอาหารเลย ให้ตอบเป็น array ว่าง []
 - quantity/unit: ปริมาณที่เห็นจริง เช่น 1 แพ็ค, 6 ฟอง, 500 กรัม
 - count_mode: piece ถ้าเห็นเป็นลูก/ชิ้นแยกกันนับได้ชัดเจน (ไข่ มะเขือเทศ หัวหอม ผลไม้ ผักหัว ขวด กล่อง ขนมปังแผ่น ชีสแผ่น) ไม่งั้น portion (เนื้อสัตว์ ผักใบ ของลูกเล็กจำนวนมาก เช่น มะเขือเทศราชินีทั้งแพ็ค พริก อาหารเหลือ)
 - count/count_unit: จำนวนสำหรับหักใช้ ห้ามเป็นกรัม/มล. (portion ใช้ count_unit "ส่วน", 1 ส่วน = ทำอาหาร 1 ครั้ง)
@@ -235,6 +238,25 @@ class _ImageScanningState extends State<ImageScanning> {
               (item['category'] ?? '').toString(),
             );
           }
+        }
+
+        // ไม่พบอาหาร/วัตถุดิบในรูป (AI ข้ามของที่ไม่ใช่อาหาร) -> แจ้งผู้ใช้
+        // ไม่พาไปหน้าผลสแกนที่ว่างเปล่า
+        if (itemsList.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                  'ไม่พบอาหารหรือวัตถุดิบในรูป ลองถ่ายใหม่ให้เห็นวัตถุดิบชัดขึ้น',
+                ),
+                action: SnackBarAction(
+                  label: 'นำเข้าเอง',
+                  onPressed: _openManualEntry,
+                ),
+              ),
+            );
+          }
+          return;
         }
 
         if (mounted) {
