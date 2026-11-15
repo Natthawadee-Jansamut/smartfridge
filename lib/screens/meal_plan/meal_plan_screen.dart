@@ -10,6 +10,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'dart:convert';
 import 'package:test_app/config/api_keys.dart';
 import 'package:test_app/services/plan_targets.dart';
+import 'package:test_app/services/meal_nutrition.dart';
 import 'package:test_app/services/plan_allocation.dart';
 import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/plan_goal.dart';
@@ -913,6 +914,9 @@ $extraRule
         );
       }
 
+      // มื้อที่แปลงหน่วยวัตถุดิบ -> คำนวณแคลอรีใหม่หลังบันทึก (พร้อมกันทุกมื้อ)
+      final recalcJobs = <Future<void>>[];
+
       for (var meal in mealsData) {
         // วัตถุดิบของมื้อนี้ (มาจาก Gemini โดยอิงของจริงในตู้เย็นเท่านั้น)
         // checked สะท้อนของจริงในตู้เย็น ณ ตอนสร้างแผน ไม่ใช่ค่าคงที่
@@ -934,6 +938,18 @@ $extraRule
             if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
           };
         }).toList();
+        // ปริมาณก่อนแปลงหน่วย (แคลอรีของมื้อคิดจากค่านี้)
+        final before = [
+          for (final ing in (meal['ingredients'] as List? ?? []))
+            '${ing['name'] ?? ''} ${ing['quantity'] ?? ''}'.trim(),
+        ];
+        final unitChanged = [
+          for (var k = 0; k < ingredientsList.length; k++)
+            if ('${ingredientsList[k]['name']} ${ingredientsList[k]['quantity']}'
+                    .trim() !=
+                before[k])
+              k,
+        ].isNotEmpty;
 
         // ขั้นตอนการทำอาหารจาก Gemini (อาจส่งมาเป็น array หรือ string ก็ได้)
         final stepsRaw = meal['steps'];
@@ -948,29 +964,43 @@ $extraRule
           stepsText = stepsRaw?.toString() ?? '';
         }
 
-        await supabase.from('weekly_meals').insert({
-          'plan_id': planId,
+        final inserted = await supabase
+            .from('weekly_meals')
+            .insert({
+              'plan_id': planId,
 
-          'day': meal['day'],
+              'day': meal['day'],
 
-          'meal_type': meal['meal_type'],
+              'meal_type': meal['meal_type'],
 
-          'food_name': meal['food_name'],
+              'food_name': meal['food_name'],
 
-          'calories': meal['calories'],
+              'calories': meal['calories'],
 
-          'protein': meal['protein'],
+              'protein': meal['protein'],
 
-          'ingredients': ingredientsList,
+              'ingredients': ingredientsList,
 
-          'steps': stepsText,
+              'steps': stepsText,
 
-          'is_cooked': false,
+              'is_cooked': false,
 
-          // สูตรในคลังกลางที่มื้อนี้มาจาก (ถ้ามี)
-          if (meal['recipe_id'] != null) 'recipe_id': meal['recipe_id'],
-        });
+              // สูตรในคลังกลางที่มื้อนี้มาจาก (ถ้ามี)
+              if (meal['recipe_id'] != null) 'recipe_id': meal['recipe_id'],
+            })
+            .select()
+            .single();
+        if (unitChanged) {
+          recalcJobs.add(
+            MealNutrition.recalculateAfterUnitChange(
+              Map<String, dynamic>.from(inserted),
+              before,
+            ).then((_) {}),
+          );
+        }
       }
+      // ไม่สำเร็จบางมื้อ: มื้อนั้นมีธงเตือนให้กด "คำนวณใหม่" เอง
+      await Future.wait(recalcJobs);
 
       Navigator.push(
         context,

@@ -8,6 +8,7 @@ import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/services/meal_nutrition.dart';
 import 'package:test_app/services/plan_allocation.dart';
 import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/plan_targets.dart';
@@ -191,6 +192,13 @@ class MealRegenerate {
           if (pick == null || goalScore(r) > goalScore(pick)) pick = r;
         }
         if (pick != null) {
+          String origQty(Map ing) =>
+              '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
+                  .trim();
+          final libBefore = [
+            for (final ing in RecipeRepository.ingredientsOf(pick))
+              '${(ing['name'] ?? '').toString().trim()} ${origQty(ing)}',
+          ];
           final libIngredients = [
             for (final ing in RecipeRepository.ingredientsOf(pick))
               () {
@@ -203,8 +211,7 @@ class MealRegenerate {
                   // หน่วยให้ตรงกับของในตู้ (เช่น ผู้ใช้แบ่งเป็นส่วนไว้)
                   'quantity': PlanAllocation.quantityInFridgeUnit(
                     name,
-                    '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
-                        .trim(),
+                    origQty(ing),
                     fridge,
                   ),
                   'checked': have,
@@ -233,7 +240,20 @@ class MealRegenerate {
             result: AiResult.cacheHit,
             recipeId: pick['recipe_id'],
           );
-          return {...meal, ...update, if (warning != null) 'warning': warning};
+          // แปลงหน่วยแล้ว -> แคลอรีของคลังสูตรคิดจากปริมาณเดิม ให้ AI คำนวณใหม่
+          final libChanged = [
+            for (var k = 0; k < libIngredients.length; k++)
+              if ('${libIngredients[k]['name']} ${libIngredients[k]['quantity']}' !=
+                  libBefore[k])
+                k,
+          ].isNotEmpty;
+          final saved = libChanged
+              ? await MealNutrition.recalculateAfterUnitChange({
+                  ...meal,
+                  ...update,
+                }, libBefore)
+              : {...meal, ...update};
+          return {...saved, if (warning != null) 'warning': warning};
         }
       } catch (e) {
         // ค้นคลังไม่สำเร็จ -> ใช้ AI ต่อตามปกติ
@@ -358,6 +378,16 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
         ? v
         : num.tryParse(v?.toString().replaceAll(',', '') ?? '') ?? 0;
 
+    // ปริมาณตามที่ AI ตอบ (ก่อนแปลงเป็นหน่วยของตู้) — ใช้เก็บลงคลังสูตรกลาง
+    // ให้ตรงกับแคลอรีที่ AI คิด และใช้เป็นค่าเดิมตอนคำนวณใหม่
+    final aiIngredients = [
+      for (final i in (json['ingredients'] as List? ?? []).whereType<Map>())
+        if ((i['name'] ?? '').toString().trim().isNotEmpty)
+          {
+            'name': i['name'].toString().trim(),
+            'quantity': (i['quantity'] ?? '').toString().trim(),
+          },
+    ];
     final ingredients = [
       for (final i in (json['ingredients'] as List? ?? []).whereType<Map>())
         if ((i['name'] ?? '').toString().trim().isNotEmpty)
@@ -388,7 +418,7 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
       {
         'recipe_name': json['food_name'],
         'detailed_ingredients': [
-          for (final i in ingredients)
+          for (final i in aiIngredients)
             {
               'name': i['name'],
               'use_quantity': RecipeRepository.leadingNumber(i['quantity']),
@@ -415,7 +445,21 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
       'recipe_id': recipeId,
     };
     await supabase.from('weekly_meals').update(update).eq('id', meal['id']);
-    return {...meal, ...update, if (warning != null) 'warning': warning};
+    // แปลงหน่วยแล้ว -> แคลอรีที่ AI คิดมาจากปริมาณเดิม ให้คำนวณใหม่
+    final aiBefore = [
+      for (final i in aiIngredients) '${i['name']} ${i['quantity']}',
+    ];
+    final aiChanged = [
+      for (var k = 0; k < ingredients.length; k++)
+        if (ingredients[k]['quantity'] != aiIngredients[k]['quantity']) k,
+    ].isNotEmpty;
+    final saved = aiChanged
+        ? await MealNutrition.recalculateAfterUnitChange({
+            ...meal,
+            ...update,
+          }, aiBefore)
+        : {...meal, ...update};
+    return {...saved, if (warning != null) 'warning': warning};
   }
 
   static bool inFridgeOf(List<Map<String, dynamic>> fridge, String name) {

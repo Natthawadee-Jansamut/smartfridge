@@ -66,6 +66,37 @@ class MealNutrition {
     };
   }
 
+  /// แอปแปลงปริมาณวัตถุดิบเป็นหน่วยของตู้เย็นเอง (เช่น "เมลอน 1 ลูก" -> "1 ส่วน")
+  /// แต่แคลอรี/โปรตีนของ [meal] (บันทึกแล้ว) ยังคิดจากปริมาณก่อนแปลง [before]
+  /// — ติดค่าเดิม+ธงไว้ แล้วให้ AI คำนวณใหม่ทันที ถ้าไม่สำเร็จ ธงยังอยู่
+  /// หน้าแพลนจะเตือนให้กด "คำนวณใหม่" เอง
+  static Future<Map<String, dynamic>> recalculateAfterUnitChange(
+    Map<String, dynamic> meal,
+    List<String> before,
+  ) async {
+    final base = {
+      'calories': meal['calories'],
+      'protein': meal['protein'],
+      'ingredients': before,
+    };
+    final flagged = {
+      ...meal,
+      'ingredients': [
+        for (final e in _ingredientsOf(meal))
+          {...e, staleKey: true, baseKey: base},
+      ],
+    };
+    await Supabase.instance.client
+        .from('weekly_meals')
+        .update({'ingredients': flagged['ingredients']})
+        .eq('id', meal['id']);
+    try {
+      return await recalculate(flagged);
+    } catch (_) {
+      return flagged;
+    }
+  }
+
   /// ให้ AI ประมาณแคลอรี/โปรตีนใหม่จากวัตถุดิบปัจจุบัน แล้วบันทึกลง weekly_meals
   /// (ล้างธง nutrition_stale ออก) คืนค่า meal ที่อัปเดตแล้ว
   static Future<Map<String, dynamic>> recalculate(
