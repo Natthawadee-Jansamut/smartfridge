@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'package:permission_handler/permission_handler.dart';
 import 'package:test_app/services/notification_service.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/utils/fridge_age.dart';
@@ -240,26 +239,6 @@ class _NotificationSettingsScreenState
                   ),
                   const SizedBox(height: 10),
                   buildTimePicker(),
-                  const SizedBox(height: 16),
-                  // ปุ่มทดสอบแจ้งเตือน — ใช้เช็กว่าได้รับสิทธิ์แจ้งเตือนแล้ว
-                  // จริงไหม และแจ้งเตือนจริงๆ ขึ้นบนเครื่องไหม โดยไม่ต้องรอ
-                  // ให้มีวัตถุดิบที่อยู่นานจริงหรือรอถึงเวลาที่ตั้งไว้เลย
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: _testNotification,
-                      icon: const Icon(
-                        Icons.notifications_active_outlined,
-                        color: Color(0xff5189C9),
-                      ),
-                      label: const Text(
-                        "ทดสอบการแจ้งเตือนตอนนี้",
-                        style: TextStyle(
-                          color: Color(0xff5189C9),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -293,46 +272,6 @@ class _NotificationSettingsScreenState
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // เช็กสิทธิ์แจ้งเตือนของเครื่องก่อน ถ้ายังไม่ได้อนุญาต จะพาไปหน้าตั้งค่า
-  // ของระบบให้เปิดเอง (เพราะแอปขอซ้ำไม่ได้ถ้าผู้ใช้เคยกดปฏิเสธไปแล้ว) ถ้า
-  // อนุญาตแล้วจะยิงแจ้งเตือนทดสอบขึ้นทันที ใช้เช็กได้เลยว่าระบบแจ้งเตือน
-  // ทำงานจริงหรือเปล่า โดยไม่ต้องรอให้มีของที่อยู่นานจริงหรือรอถึงเวลาที่ตั้งไว้
-  Future<void> _testNotification() async {
-    final status = await Permission.notification.status;
-
-    if (!status.isGranted) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            "ยังไม่ได้รับสิทธิ์แจ้งเตือน — กด \"เปิดการตั้งค่า\" แล้วเปิด "
-            "อนุญาตการแจ้งเตือนให้แอปนี้",
-          ),
-          action: SnackBarAction(
-            label: "เปิดการตั้งค่า",
-            onPressed: openAppSettings,
-          ),
-          duration: const Duration(seconds: 6),
-        ),
-      );
-      return;
-    }
-
-    await NotificationService.init();
-    await NotificationService.showExpiryAlert(
-      message:
-          "นี่คือการแจ้งเตือนทดสอบจาก SmartFridge.AI 🔔 ถ้าเห็นข้อความนี้"
-          " แปลว่าระบบแจ้งเตือนทำงานถูกต้องแล้ว",
-    );
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("ส่งแจ้งเตือนทดสอบไปแล้ว ลองปาดแถบด้านบนดู"),
       ),
     );
   }
