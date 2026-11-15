@@ -201,7 +201,36 @@ class _NotificationSettingsScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xffD8EEFF),
+      // แถบปุ่ม "ยกเลิก"/"บันทึก" ชิดขอบล่างจอ (เหมือนแถบเมนูด้านล่างของหน้าอื่น)
+      // เว้นที่ด้านในให้ขีด Home ของ iPhone แทนการลอยอยู่เหนือขอบจอ
+      bottomNavigationBar: Container(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          16 + MediaQuery.of(context).padding.bottom,
+        ),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black12,
+              blurRadius: 8,
+              offset: Offset(0, -2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(child: buildCancelButton()),
+            const SizedBox(width: 12),
+            Expanded(child: buildSaveButton()),
+          ],
+        ),
+      ),
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             const SizedBox(height: 15),
@@ -240,34 +269,6 @@ class _NotificationSettingsScreenState
                   const SizedBox(height: 10),
                   buildTimePicker(),
                 ],
-              ),
-            ),
-            const Spacer(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              // มีการ์ดสีขาวล้อมรอบปุ่ม "ยกเลิก"/"บันทึก" ทั้งคู่ ตามดีไซน์
-              // Figma แทนที่จะปล่อยปุ่มลอยอยู่บนพื้นหลังตรงๆ
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 5,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(child: buildCancelButton()),
-                    const SizedBox(width: 12),
-                    Expanded(child: buildSaveButton()),
-                  ],
-                ),
               ),
             ),
           ],
