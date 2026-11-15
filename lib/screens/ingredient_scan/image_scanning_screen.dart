@@ -493,7 +493,7 @@ class _IngredientOptionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        splashColor: Colors.blue.withOpacity(0.15),
+        splashColor: Colors.blue.withValues(alpha: 0.15),
         onTap: onTap,
         child: Container(
           width: double.infinity,

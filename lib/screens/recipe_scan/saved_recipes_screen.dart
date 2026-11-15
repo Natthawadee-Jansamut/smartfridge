@@ -250,7 +250,7 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                 borderRadius: BorderRadius.circular(20),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  splashColor: kRecipeBlue.withOpacity(0.12),
+                  splashColor: kRecipeBlue.withValues(alpha: 0.12),
                   onTap: () async {
                     await Navigator.push(
                       context,

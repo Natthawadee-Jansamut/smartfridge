@@ -252,7 +252,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   if (!isPortion) ...[
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: pieceUnit,
+                      initialValue: pieceUnit,
                       decoration: deco('หน่วย', ''),
                       items: units
                           .map(

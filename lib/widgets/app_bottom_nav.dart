@@ -98,7 +98,7 @@ class AppBottomNav extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        splashColor: Colors.blue.withOpacity(0.2),
+        splashColor: Colors.blue.withValues(alpha: 0.2),
         onTap: () => _navigate(context, tab),
         child: Container(
           width: 58,

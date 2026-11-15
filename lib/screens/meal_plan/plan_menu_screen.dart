@@ -114,7 +114,7 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        splashColor: Colors.blue.withOpacity(0.2),
+        splashColor: Colors.blue.withValues(alpha: 0.2),
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(20),

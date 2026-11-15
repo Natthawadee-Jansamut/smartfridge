@@ -114,7 +114,7 @@ class _SheetOption extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        splashColor: kRecipeBlue.withOpacity(0.12),
+        splashColor: kRecipeBlue.withValues(alpha: 0.12),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1000,7 +1000,7 @@ InputDecoration recipeBoxDecoration(
     enabledBorder: OutlineInputBorder(
       borderRadius: radius,
       borderSide: BorderSide(
-        color: isAi ? kAiRed.withOpacity(0.5) : Colors.grey.shade400,
+        color: isAi ? kAiRed.withValues(alpha: 0.5) : Colors.grey.shade400,
       ),
     ),
     focusedBorder: OutlineInputBorder(

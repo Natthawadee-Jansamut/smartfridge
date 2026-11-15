@@ -192,7 +192,7 @@ class _MyPlanScreenState extends State<MyPlanScreen> {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        splashColor: Colors.blue.withOpacity(0.2),
+        splashColor: Colors.blue.withValues(alpha: 0.2),
         onTap: () {
           Navigator.push(
             context,

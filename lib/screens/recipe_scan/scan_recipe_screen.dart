@@ -495,7 +495,7 @@ class _ScanOptionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24),
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        splashColor: kRecipeBlue.withOpacity(0.12),
+        splashColor: kRecipeBlue.withValues(alpha: 0.12),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),

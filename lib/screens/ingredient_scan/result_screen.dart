@@ -783,7 +783,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
             if (countMode == 'piece')
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: countUnit,
+                  initialValue: countUnit,
                   decoration: _boxDecoration(),
                   items: pieceUnits
                       .map((e) => DropdownMenuItem(value: e, child: Text(e)))
@@ -929,7 +929,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
         _sectionLabel("ประเภทวัตถุดิบ"),
         const SizedBox(height: 6),
         DropdownButtonFormField<String?>(
-          value: shelfType?.key,
+          initialValue: shelfType?.key,
           isExpanded: true,
           decoration: _boxDecoration(),
           items: [
