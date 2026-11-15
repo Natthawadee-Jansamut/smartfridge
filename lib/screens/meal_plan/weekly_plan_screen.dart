@@ -854,7 +854,9 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
       ),
     );
     final hint = hintController.text;
-    hintController.dispose();
+    // showDialog คืนค่าตั้งแต่เริ่มปิด แต่ TextField ยังอยู่ระหว่างแอนิเมชันปิด
+    // dispose ทันทีจะพัง ("used after being disposed") — รอให้ปิดเสร็จก่อน
+    Future.delayed(const Duration(milliseconds: 500), hintController.dispose);
     if (confirmed != true || !mounted) return;
 
     final id = meal['id']?.toString() ?? '';

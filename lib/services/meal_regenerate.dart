@@ -8,6 +8,7 @@ import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/diet_check.dart';
 import 'package:test_app/services/gemini_retry.dart';
+import 'package:test_app/services/plan_allocation.dart';
 import 'package:test_app/services/plan_goal.dart';
 import 'package:test_app/services/plan_targets.dart';
 import 'package:test_app/services/recipe_repository.dart';
@@ -41,10 +42,59 @@ class MealRegenerate {
     final fridge = List<Map<String, dynamic>>.from(
       await supabase.from('fridge_items').select().eq('user_id', user.id),
     );
-    final usable = fridge.where((e) => !isOverdue(e)).toList();
+    var usable = fridge.where((e) => !isOverdue(e)).toList();
+
+    // โหมดใช้เฉพาะของในตู้: เมนูใหม่ใช้ได้เฉพาะของที่เหลือหลังจองให้มื้ออื่นในแพลน
+    // แล้ว (ห้ามแย่งของจากมื้ออื่น) และต้องมีของครบจริงถึงจะบันทึก
+    DateTime? planStart;
+    if (fridgeOnly && meal['plan_id'] != null) {
+      final planMeals = await supabase
+          .from('weekly_meals')
+          .select()
+          .eq('plan_id', meal['plan_id']);
+      final plan = await supabase
+          .from('meal_plans')
+          .select('created_at')
+          .eq('id', meal['plan_id'])
+          .maybeSingle();
+      planStart = DateTime.tryParse(
+        plan?['created_at']?.toString() ?? '',
+      )?.toLocal();
+      usable = PlanAllocation.leftoverStock(
+        meals: [
+          for (final m in planMeals)
+            if (m['id']?.toString() != meal['id']?.toString()) m,
+        ],
+        fridgeItems: usable,
+        planStart: planStart,
+      );
+    }
+
+    /// วัตถุดิบที่ของในตู้ (ที่เหลือ) ไม่พอสำหรับเมนูนี้ — ว่าง = ทำได้จริง
+    List<String> missingFor(List ingredients) {
+      final alloc = PlanAllocation.allocate(
+        meals: [
+          {
+            'id': 'new',
+            'day': meal['day'],
+            'meal_type': meal['meal_type'],
+            'ingredients': ingredients,
+          },
+        ],
+        fridgeItems: usable,
+        planStart: planStart,
+      );
+      return [
+        for (final s in alloc['new'] ?? const <IngredientStatus>[])
+          if (!s.have) s.name,
+      ];
+    }
+
     final fridgeList = inventoryPromptList(usable, withPerCook: true);
     if (fridgeOnly && fridgeList.isEmpty) {
-      throw 'ไม่มีวัตถุดิบในตู้เย็นให้สร้างเมนูใหม่';
+      throw meal['plan_id'] != null
+          ? 'ของในตู้เย็นถูกใช้กับมื้ออื่นในแพลนหมดแล้ว เมนูเดิมยังอยู่'
+          : 'ไม่มีวัตถุดิบในตู้เย็นให้สร้างเมนูใหม่';
     }
 
     final oldName = (meal['food_name'] ?? '').toString();
@@ -111,6 +161,19 @@ class MealRegenerate {
             for (final ing in RecipeRepository.ingredientsOf(r)) ing['name'],
           ];
           if (!DietCheck.fits(dietType, names)) return false;
+          // ใช้เฉพาะของในตู้: ของที่เหลือต้องพอทุกอย่าง (รวมปริมาณ)
+          if (fridgeOnly &&
+              missingFor([
+                for (final ing in RecipeRepository.ingredientsOf(r))
+                  {
+                    'name': ing['name'],
+                    'quantity':
+                        '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
+                            .trim(),
+                  },
+              ]).isNotEmpty) {
+            return false;
+          }
           final cal = RecipeRepository.toNum(r['calories']);
           if (budget != null) {
             return inBudget(cal, RecipeRepository.toNum(r['protein']));
@@ -241,8 +304,16 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
       final cal = RecipeRepository.toNum(decoded['calories']);
       final pro = RecipeRepository.toNum(decoded['protein']);
       final offBudget = budget != null && !inBudget(cal, pro);
-      if (wrong.isEmpty && !offBudget) break;
+      // ใช้เฉพาะของในตู้: ห้ามมีของที่ไม่มีในตู้หรือใช้เกินที่เหลือ
+      final missing = fridgeOnly
+          ? missingFor(decoded['ingredients'] as List? ?? const [])
+          : const <String>[];
+      if (wrong.isEmpty && !offBudget && missing.isEmpty) break;
       if (attempt == 1) {
+        if (missing.isNotEmpty) {
+          throw 'หาเมนูที่ทำได้จากของในตู้เย็นไม่ได้ (ของไม่พอ: ${missing.join(', ')}) '
+              'เมนูเดิมยังอยู่ ลองใหม่อีกครั้ง หรือเพิ่มวัตถุดิบในตู้เย็น';
+        }
         if (wrong.isNotEmpty) {
           throw 'เมนูที่ได้ยังมี ${wrong.join(', ')} ซึ่งขัดกับข้อจำกัดอาหาร '
               '"$dietType" กรุณาลองใหม่ หรือพิมพ์บอกสิ่งที่ไม่ต้องการ';
@@ -262,6 +333,9 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
         if (offBudget)
           '\n- เมนูก่อนหน้าได้ ${r(cal)} kcal โปรตีน ${r(pro)} g ซึ่งไม่อยู่ในช่วงที่กำหนด '
               'ปรับวัตถุดิบหรือปริมาณให้อยู่ในช่วงให้ได้',
+        if (missing.isNotEmpty)
+          '\n- เมนูก่อนหน้า "${decoded['food_name']}" ใช้ ${missing.join(', ')} '
+              'ซึ่งไม่มีในตู้เย็นหรือเกินจำนวนที่เหลือ ใช้เฉพาะวัตถุดิบในรายการและไม่เกินจำนวนที่มี',
       ].join();
     }
 
