@@ -113,7 +113,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         _isLoadingData = false;
       });
     } catch (e) {
-      print("Error fetching inventory: $e");
+      debugPrint("Error fetching inventory: $e"); // พิมพ์ข้อความไว้ดูตอนพัฒนา
       setState(() => _isLoadingData = false);
     }
   }
@@ -317,6 +317,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         _rememberShown([...fromLibrary, ...aiRecipes]);
       }
     } catch (e) {
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(context).showSnackBar( // แสดง error
         SnackBar(
           content: Text(geminiErrorMessage(e, fallback: 'สร้างเมนูไม่สำเร็จ')),
@@ -324,7 +325,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         ),
       );
     } finally {
-      setState(() => _isGenerating = false); // หยุดโหลด (ไม่ว่าสำเร็จหรือไม่)
+      if (mounted) setState(() => _isGenerating = false); // หยุดโหลด (ไม่ว่าสำเร็จหรือไม่)
     }
   }
 
@@ -484,7 +485,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         ),
                       ),

@@ -69,8 +69,9 @@ int? _yesterdayHours(dynamic createdAt, int days) {
 String fridgeAgeText(dynamic createdAt) {
   final days = daysInFridge(createdAt);
   final yesterday = _yesterdayHours(createdAt, days);
-  if (yesterday != null)
+  if (yesterday != null) { // ถ้า yesterday มีค่า
     return 'ใส่ตู้เย็นเมื่อวาน ($yesterday ชั่วโมงที่แล้ว)';
+  }
   if (days > 0) return 'อยู่ในตู้เย็นมาแล้ว $days วัน';
   final hours = hoursInFridge(createdAt);
   if (hours < 1) return 'ใส่ตู้เย็นวันนี้ (เพิ่งใส่)';

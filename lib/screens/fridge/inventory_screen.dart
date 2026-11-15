@@ -92,6 +92,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           .eq('item_id', id); // อ้างอิงตาม item_id
       _fetchInventoryData(); // โหลดรายการใหม่
     } catch (e) {
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("ลบข้อมูลไม่สำเร็จ: $e")));

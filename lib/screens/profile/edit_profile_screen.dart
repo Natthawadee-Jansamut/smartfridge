@@ -65,6 +65,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await supabase.auth.refreshSession();
       if (mounted) { // หน้ายังเปิดอยู่
         final user = await supabase.auth.getUser(); // ดึงข้อมูลผู้ใช้ใหม่อีกครั้ง
+        if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
 
         Navigator.pop(context, user.user); // ปิดหน้านี้ แล้วส่งข้อมูลผู้ใช้ใหม่กลับไปหน้าโปรไฟล์
       }

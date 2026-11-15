@@ -1,9 +1,5 @@
-import 'package:crypto/crypto.dart'; // ใช้คำนวณ sha256 (ลายนิ้วมือของไฟล์รูป)
 import 'package:flutter/foundation.dart'; // ใช้ debugPrint / Uint8List
-import 'package:google_generative_ai/google_generative_ai.dart'; // ใช้ชนิด UsageMetadata
 import 'package:supabase_flutter/supabase_flutter.dart'; // ใช้ฐานข้อมูล
-
-import 'package:test_app/services/gemini_retry.dart'; // ชื่อโมเดล Gemini
 import 'package:test_app/services/recipe_repository.dart'; // ตัวช่วยแปลงเวลาทำอาหารเป็นนาที
 
 /// คลังสูตรอาหารกลางบน Supabase (ตาราง recipes) — ค้นที่นี่ก่อนเรียก Gemini
@@ -32,16 +28,6 @@ class GlobalRecipeService {
     if (_isMissingOnServer(e)) _unavailable = true;
     debugPrint('คลังสูตรกลาง: $what ไม่สำเร็จ — $e');
   }
-
-  /// sha256 ของไฟล์รูป (รูปเดียวกันเป๊ะ = hash เดียวกัน)
-  static String imageHash(Uint8List bytes) => sha256.convert(bytes).toString();
-
-  /// ชื่อวัตถุดิบในตู้เย็นที่ยังใช้ทำอาหารได้ (ส่งให้ match_recipes_by_ingredients)
-  static List<String> fridgeNames(Iterable<Map<String, dynamic>> items) => items
-      .map((e) => (e['name'] ?? '').toString().trim()) // ดึงชื่อออกมา
-      .where((n) => n.isNotEmpty) // ทิ้งชื่อว่าง
-      .toSet() // ตัดชื่อซ้ำ
-      .toList();
 
   // ------------------------------------------------------------------ Search
 
@@ -84,22 +70,6 @@ class GlobalRecipeService {
     }
   }
 
-  /// สูตรที่เคยสแกนจากรูปเดียวกันนี้ (null = ไม่เคย)
-  static Future<Map<String, dynamic>?> findByImageHash(String hash) async {
-    if (_unavailable) return null;
-    try {
-      final rows = await _db.rpc(
-        'find_recipe_by_image_hash', // ฟังก์ชันค้นสูตรจากลายนิ้วมือรูป
-        params: {'p_image_hash': hash},
-      );
-      if (rows is! List || rows.isEmpty) return null; // ไม่เจอ
-      return Map<String, dynamic>.from(rows.first['recipe'] as Map); // เจอ ส่งสูตรแรกกลับ
-    } catch (e) {
-      _handleError('ค้นสูตรจากรูป', e);
-      return null;
-    }
-  }
-
   // -------------------------------------------------------------------- Save
 
   /// เก็บสูตรเข้าคลังกลาง (ไม่ Bookmark ให้ผู้ใช้) คืน recipe_id หรือ null
@@ -132,45 +102,6 @@ class GlobalRecipeService {
     } catch (e) {
       _handleError('บันทึกสูตรเข้าคลัง', e);
       return null;
-    }
-  }
-
-  /// เก็บหลายสูตรพร้อมกัน (เช่น เมนูที่ Gemini เพิ่งสร้าง) — ไม่ต้องรอผล
-  static void cacheRecipesInBackground(
-    Iterable<Map<String, dynamic>> recipes, {
-    required String source,
-    List<String> dietTags = const [],
-  }) {
-    for (final r in recipes) {
-      cacheRecipe(r, source: source, dietTags: dietTags); // ไม่ await = ทำเบื้องหลัง
-    }
-  }
-
-  // --------------------------------------------------------------------- Log
-
-  /// บันทึกว่าครั้งนี้ใช้ cache หรือเรียก Gemini (ไว้ดูว่าประหยัด token ได้เท่าไหร่)
-  /// [eventType]: 'scan_recipe' | 'generate_menu' | 'meal_plan' | 'scan_ingredient'
-  /// [result]: 'cache_hit' | 'gemini' | 'not_recipe' | 'failed'
-  static Future<void> log({
-    required String eventType,
-    required String result,
-    String? recipeId,
-    String? imageHash,
-    UsageMetadata? usage,
-  }) async {
-    if (_unavailable || _db.auth.currentUser == null) return; // ใช้ไม่ได้ หรือยังไม่ล็อกอิน
-    try {
-      await _db.from('ai_request_logs').insert({ // เพิ่มแถวประวัติ
-        'event_type': eventType,
-        'result': result,
-        'recipe_id': recipeId,
-        'image_hash': imageHash,
-        if (result == 'gemini') 'model': geminiModel, // ใส่ชื่อโมเดลเฉพาะตอนเรียก Gemini จริง
-        'prompt_tokens': usage?.promptTokenCount,
-        'output_tokens': usage?.candidatesTokenCount,
-      });
-    } catch (e) {
-      _handleError('บันทึก log', e);
     }
   }
 }

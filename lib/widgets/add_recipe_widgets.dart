@@ -1,5 +1,4 @@
 import 'dart:async'; // Timer (ใช้กดค้างเพื่อเพิ่ม/ลดต่อเนื่อง)
-import 'dart:typed_data'; // Uint8List (ไฟล์รูป)
 
 import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
 import 'package:flutter/services.dart'; // ตัวกรองตัวอักษรในช่องกรอก
@@ -116,7 +115,7 @@ class _SheetOption extends StatelessWidget {
       borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        splashColor: kRecipeBlue.withOpacity(0.12), // [UI] สีคลื่นตอนกด
+        splashColor: kRecipeBlue.withValues(alpha: 0.12), // [UI] สีคลื่นตอนกด
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16), // [UI] ระยะในการ์ด
@@ -1012,7 +1011,7 @@ InputDecoration recipeBoxDecoration(
     enabledBorder: OutlineInputBorder(
       borderRadius: radius,
       borderSide: BorderSide(
-        color: isAi ? kAiRed.withOpacity(0.5) : Colors.grey.shade400, // [UI] ขอบปกติ: AI = แดงจาง, ปกติ = เทา
+        color: isAi ? kAiRed.withValues(alpha: 0.5) : Colors.grey.shade400, // [UI] ขอบปกติ: AI = แดงจาง, ปกติ = เทา
       ),
     ),
     focusedBorder: OutlineInputBorder(

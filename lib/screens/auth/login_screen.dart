@@ -77,10 +77,12 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } on AuthException catch (e) { // อีเมล/รหัสผิด ฯลฯ
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) { // error อื่น
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Login failed")));

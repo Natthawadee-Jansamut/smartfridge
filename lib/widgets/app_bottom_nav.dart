@@ -103,7 +103,7 @@ class AppBottomNav extends StatelessWidget {
       color: Colors.transparent, // [UI] โปร่งใส
       child: InkWell( // ทำให้กดได้
         borderRadius: BorderRadius.circular(16), // [UI] ขอบเขตเอฟเฟกต์กดโค้ง 16
-        splashColor: Colors.blue.withOpacity(0.2), // [UI] สีคลื่นตอนกด (ฟ้าจาง 20%)
+        splashColor: Colors.blue.withValues(alpha: 0.2), // [UI] สีคลื่นตอนกด (ฟ้าจาง 20%)
         onTap: () => _navigate(context, tab), // กดแล้วไปหน้านั้น
         child: Container(
           width: 58, // [UI] ความกว้างของแต่ละปุ่มแท็บ

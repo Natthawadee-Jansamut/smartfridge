@@ -29,9 +29,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ดึงข้อมูลผู้ใช้จากเซิร์ฟเวอร์ แล้วเลือกชื่อที่จะแสดง
   Future<void> loadUser() async {
-    final response = await supabase.auth.getUser(); // ขอข้อมูลผู้ใช้ล่าสุด
-
-    final user = response.user;
+    User? fetched; // ข้อมูลผู้ใช้ที่ได้มา
+    try {
+      final response = await supabase.auth.getUser(); // ขอข้อมูลผู้ใช้ล่าสุด
+      fetched = response.user; // หยิบค่า response.user มาเก็บไว้
+    } catch (e) {
+      // token หมดอายุ / เน็ตหลุด -> ไม่ให้แอปขึ้น error ใช้ข้อมูลที่จำไว้ในเครื่องแทน
+      debugPrint('loadUser: $e');
+      fetched = supabase.auth.currentUser;
+    }
+    final user = fetched; // ใช้ตัวนี้แสดงชื่อ
 
     if (user != null) {
       final firstName = user.userMetadata?['first_name'] ?? ""; // ชื่อ

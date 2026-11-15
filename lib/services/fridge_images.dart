@@ -1,4 +1,3 @@
-import 'dart:typed_data'; // ชนิดข้อมูล Uint8List = ไฟล์รูปในรูปแบบไบต์
 
 import 'package:flutter/foundation.dart'; // ใช้ debugPrint พิมพ์ข้อความตอนทดสอบ
 import 'package:supabase_flutter/supabase_flutter.dart'; // ใช้ที่เก็บไฟล์ (Storage) ของ Supabase
@@ -51,7 +50,3 @@ Future<String?> privateImageUrl(String bucket, String path) async {
 // ทางลัด: อัปโหลดรูปวัตถุดิบเข้าถังของตู้เย็น
 Future<String?> uploadFridgeImage(String userId, Uint8List bytes) =>
     uploadPrivateImage(fridgeImageBucket, userId, bytes);
-
-// ทางลัด: ขอลิงก์รูปวัตถุดิบจากถังของตู้เย็น
-Future<String?> fridgeImageUrl(String path) =>
-    privateImageUrl(fridgeImageBucket, path);

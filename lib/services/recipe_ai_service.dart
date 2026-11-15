@@ -1,6 +1,5 @@
 import 'dart:async'; // TimeoutException
 import 'dart:convert'; // jsonDecode
-import 'dart:typed_data'; // Uint8List (ไฟล์รูป)
 
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';

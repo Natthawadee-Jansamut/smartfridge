@@ -117,7 +117,7 @@ class _PlanMenuScreenState extends State<PlanMenuScreen> {
       color: Colors.transparent,
       child: InkWell( // ทำให้การ์ดกดได้
         borderRadius: BorderRadius.circular(20), // [UI] ขอบเขตเอฟเฟกต์กดโค้งตามการ์ด
-        splashColor: Colors.blue.withOpacity(0.2), // [UI] สีคลื่นตอนกด
+        splashColor: Colors.blue.withValues(alpha: 0.2), // [UI] สีคลื่นตอนกด
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(20), // [UI] ระยะในการ์ดทุกด้าน 20

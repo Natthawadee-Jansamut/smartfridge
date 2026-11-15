@@ -22,7 +22,7 @@ Future<void> main() async { // รอให้ Flutter framework พร้อม
   await Supabase.initialize( //เปิดระบบหลังบ้าน Supabase และ 'รอ' (await) จนกว่ามันจะเตรียมตัวเสร็จ
     url: SupabaseConfig.url, // URL ของ Supabase ที่เก็บไว้ในไฟล์ config/supabase_config.dart
 
-    anonKey: SupabaseConfig.anonKey, // คีย์อนุญาตสำหรับการเข้าถึง Supabase ที่เก็บไว้ในไฟล์ config/supabase_config.dart
+    publishableKey: SupabaseConfig.anonKey, // คีย์อนุญาตสำหรับการเข้าถึง Supabase ที่เก็บไว้ในไฟล์ config/supabase_config.dart
   );
 
   // ฟังตั้งแต่ตรงนี้ เพื่อไม่ให้พลาดกรณีเปิดแอปจากลิงก์รีเซ็ตรหัสผ่าน

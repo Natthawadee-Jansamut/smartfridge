@@ -1,39 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // ไลบรารีแสดงรูปเวกเตอร์ SVG
 
-/// ไอคอน SVG ที่ดึงเส้นพาธจริงจากไฟล์ Figma ต้นฉบับ (ไม่ใช่ไอคอนประมาณจาก Material Icons)
-/// เก็บรวมไว้ที่นี่เพื่อใช้ซ้ำได้หลายหน้า/หลายจุดในแอป
-
-/// ไอคอนกรอบมุมแบบ viewfinder เฉยๆ (ไม่มีรูปข้างใน)
-/// ใช้กับ: แท็บ "สแกน" ในแถบเมนูด้านล่าง, ไอคอนหัวข้อหน้าสแกนต่างๆ
-class ViewfinderIcon extends StatelessWidget {
-  final double size; // [UI] ขนาดไอคอน (กว้าง=สูง)
-  final Color color; // [UI] สีไอคอน (ระบายทับเส้นทั้งหมด)
-
-  const ViewfinderIcon({
-    super.key,
-    this.size = 24,
-    this.color = Colors.black87,
-  });
-
-  // ข้อมูลรูปเวกเตอร์ที่ก๊อปมาจาก Figma (ห้ามแก้ข้างใน ถ้าจะเปลี่ยนรูปให้ export SVG ใหม่มาวางแทน)
-  static const String _svg = '''
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M6.66669 21.8321C6.94402 16.2321 7.77335 12.7387 10.2587 10.2587C12.7387 7.77341 16.232 6.94408 21.832 6.66675M57.3334 21.8321C57.056 16.2321 56.2267 12.7387 53.7414 10.2587C51.2614 7.77341 47.768 6.94408 42.168 6.66675M42.168 57.3334C47.768 57.0561 51.2614 56.2267 53.7414 53.7414C56.2267 51.2614 57.056 47.7681 57.3334 42.1681M21.832 57.3334C16.232 57.0561 12.7387 56.2267 10.2587 53.7414C7.77335 51.2614 6.94402 47.7681 6.66669 42.1681" stroke="black" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
-''';
-
-  @override
-  Widget build(BuildContext context) {
-    return SvgPicture.string( // วาดรูป SVG จากข้อความ _svg
-      _svg,
-      width: size,
-      height: size,
-      colorFilter: ColorFilter.mode(color, BlendMode.srcIn), // ระบายสีทับทั้งไอคอนด้วย color
-    );
-  }
-}
-
 /// ไอคอน "ถ่ายภาพวัตถุดิบ" (กรอบมุม viewfinder + รูปแอปเปิ้ล) ตรงตัวจาก Figma
 /// (ต้นฉบับชื่อ hugeicons:meal-scan) — วางไว้ในหน้าเลือกสแกน
 class MealScanIcon extends StatelessWidget {
@@ -170,18 +137,6 @@ class CalendarIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     // แสดงรูป PNG จากโฟลเดอร์ assets/icons (เปลี่ยนรูปได้โดยวางไฟล์ใหม่ชื่อเดิม)
     return Image.asset('assets/icons/calendar.png', width: size, height: size);
-  }
-}
-
-/// ไอคอนตัวกรอง (เส้น 3 ขีดลดหลั่น) — ใช้กับปุ่มวงกลมมุมขวาบนของหน้าสแกน
-class FilterIcon extends StatelessWidget {
-  final double size; // [UI] ขนาดไอคอน ส่งค่ามาตอนใช้ เช่น FridgeIcon(size: 30)
-  const FilterIcon({super.key, this.size = 24});
-
-  @override
-  Widget build(BuildContext context) {
-    // แสดงรูป PNG จากโฟลเดอร์ assets/icons (เปลี่ยนรูปได้โดยวางไฟล์ใหม่ชื่อเดิม)
-    return Image.asset('assets/icons/filter.png', width: size, height: size);
   }
 }
 

@@ -1005,6 +1005,7 @@ $extraRule
       }
       // ไม่สำเร็จบางมื้อ: มื้อนั้นมีธงเตือนให้กด "คำนวณใหม่" เอง
       await Future.wait(recalcJobs); // รอคำนวณใหม่ให้ครบทุกมื้อ
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
 
       Navigator.push( // ไปหน้าแผนรายสัปดาห์
         context,
@@ -1012,15 +1013,18 @@ $extraRule
         MaterialPageRoute(builder: (_) => WeeklyPlanScreen(planId: planId)),
       );
     } catch (e) {
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(context).showSnackBar( // แสดง error
         SnackBar(
           content: Text(geminiErrorMessage(e, fallback: "สร้างแผนไม่สำเร็จ")),
         ),
       );
     } finally {
-      setState(() { // หยุดโหลด
-        loading = false;
-      });
+      if (mounted) { // หยุดโหลด (ถ้าหน้ายังเปิดอยู่)
+        setState(() { // หยุดโหลด
+          loading = false;
+        });
+      }
     }
   }
 

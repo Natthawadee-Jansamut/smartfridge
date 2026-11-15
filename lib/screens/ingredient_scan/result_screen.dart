@@ -790,7 +790,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
             if (countMode == 'piece') // นับชิ้น -> ดรอปดาวน์เลือกหน่วย
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: countUnit,
+                  initialValue: countUnit, // ค่าที่เลือก/แสดงอยู่
                   decoration: _boxDecoration(),
                   items: pieceUnits
                       .map((e) => DropdownMenuItem(value: e, child: Text(e)))
@@ -937,7 +937,7 @@ class _IngredientCardItemState extends State<IngredientCardItem> {
         _sectionLabel("ประเภทวัตถุดิบ"),
         const SizedBox(height: 6),
         DropdownButtonFormField<String?>(
-          value: shelfType?.key, // ประเภทที่เลือกอยู่
+          initialValue: shelfType?.key, // ประเภทที่เลือกอยู่
           isExpanded: true, // [UI] กว้างเต็มช่อง
           decoration: _boxDecoration(),
           items: [

@@ -127,7 +127,7 @@ class _ScanOptionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24), // [UI] มุมการ์ดโค้ง 24
       child: InkWell( // ทำให้กดได้
         borderRadius: BorderRadius.circular(24), // [UI] เอฟเฟกต์กดโค้งตามการ์ด
-        splashColor: Colors.blue.withOpacity(0.15), // [UI] สีคลื่นตอนกด (ฟ้าจาง 15%)
+        splashColor: Colors.blue.withValues(alpha: 0.15), // [UI] สีคลื่นตอนกด (ฟ้าจาง 15%)
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(22), // [UI] ระยะในการ์ดทุกด้าน 22

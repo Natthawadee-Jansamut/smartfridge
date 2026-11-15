@@ -499,7 +499,7 @@ class _ScanOptionCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(24), // [UI] มุมโค้ง 24
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        splashColor: kRecipeBlue.withOpacity(0.12), // [UI] สีคลื่นตอนกด
+        splashColor: kRecipeBlue.withValues(alpha: 0.12), // [UI] สีคลื่นตอนกด
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20), // [UI] ระยะใน บนล่าง 26 ซ้ายขวา 20

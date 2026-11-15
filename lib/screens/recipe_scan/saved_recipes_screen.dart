@@ -258,7 +258,7 @@ class _SavedRecipesScreenState extends State<SavedRecipesScreen> {
                 borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                 child: InkWell(
                   borderRadius: BorderRadius.circular(20),
-                  splashColor: kRecipeBlue.withOpacity(0.12), // [UI] สีคลื่นตอนกด
+                  splashColor: kRecipeBlue.withValues(alpha: 0.12), // [UI] สีคลื่นตอนกด
                   onTap: () async { // กดการ์ด -> หน้ารายละเอียด
                     await Navigator.push(
                       context,

@@ -1,5 +1,4 @@
 import 'dart:convert'; // jsonEncode
-import 'dart:typed_data'; // Uint8List (ไฟล์รูป)
 
 import 'package:crypto/crypto.dart'; // sha256
 import 'package:flutter/foundation.dart'; // debugPrint

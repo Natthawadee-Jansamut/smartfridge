@@ -258,7 +258,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   if (!isPortion) ...[ // นับเป็นชิ้นถึงเลือกหน่วยได้
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: pieceUnit, // หน่วยที่เลือกอยู่
+                      initialValue: pieceUnit, // หน่วยที่เลือกอยู่
                       decoration: deco('หน่วย', ''),
                       items: units
                           .map(
@@ -358,22 +358,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         ),
         content: SizedBox(
           width: double.maxFinite, // [UI] กว้างเต็มป๊อปอัป
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: fixedCategories.map((cat) { // สร้างตัวเลือกจากหมวดที่กำหนดไว้
-              return RadioListTile<String>( // ปุ่มกลมเลือกได้ทีละอัน
-                value: cat, // ค่าของตัวเลือกนี้
-                groupValue: normalized, // ค่าที่เลือกอยู่
-                activeColor: Colors.orange, // [UI] สีปุ่มกลมตอนเลือก (ส้ม)
-                title: Text(cat),
-                onChanged: (val) { // เลือกแล้ว
-                  Navigator.pop(context);
-                  if (val != null && val != normalized) { // เปลี่ยนจริงถึงบันทึก
-                    _updateField('category', val);
-                  }
-                },
-              );
-            }).toList(),
+          child: RadioGroup<String>( // กลุ่มปุ่มกลม: เก็บค่าที่เลือกอยู่ + ทำงานเมื่อเลือกใหม่
+            groupValue: normalized, // ค่าที่เลือกอยู่
+            onChanged: (val) { // เลือกแล้ว
+              Navigator.pop(context);
+              if (val != null && val != normalized) { // เปลี่ยนจริงถึงบันทึก
+                _updateField('category', val);
+              }
+            },
+            child: Column( // เรียงของข้างในจากบนลงล่าง
+              mainAxisSize: MainAxisSize.min, // [UI] ขนาดเท่าเนื้อหา ไม่ยืดเต็ม
+              children: fixedCategories.map((cat) { // สร้างตัวเลือกจากหมวดที่กำหนดไว้
+                return RadioListTile<String>( // ปุ่มกลมเลือกได้ทีละอัน
+                  value: cat, // ค่าของตัวเลือกนี้
+                  activeColor: Colors.orange, // [UI] สีปุ่มกลมตอนเลือก (ส้ม)
+                  title: Text(cat), // หัวข้อ
+                );
+              }).toList(),
+            ),
           ),
         ),
         actions: [
@@ -468,39 +470,41 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         ),
         content: SizedBox(
           width: double.maxFinite, // [UI] กว้างเต็มป๊อปอัป
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง นับวันที่เหลือ
-              // เท่าเดิม (ดู storageMoveFields) — เตือนเฉพาะของที่ไม่ควรแช่แข็ง (ไข่)
-              for (final st in [storageFridge, storageFreezer]) // ตัวเลือก 2 ช่อง: ช่องปกติ / ช่องแช่แข็ง
-                RadioListTile<String>(
-                  value: st,
-                  groupValue: current,
-                  activeColor: Colors.orange, // [UI] สีปุ่มกลม (ส้ม)
-                  title: Text("${storageEmoji(st)} ${storageLabel(st)}"),
-                  subtitle: !hasShelfData // บอกว่าย้ายแล้วจะเก็บได้อีกกี่วัน
-                      ? null
-                      : Text(
-                          [
-                            daysLeftText(
-                              (st == current
-                                      ? daysLeft(_item!)
-                                      : daysLeftAfterMove(_item!, st)) ??
-                                  0,
-                            ),
-                            if (st == storageFreezer && warnFreeze)
-                              freezerNotRecommendedText,
-                          ].join(' · '),
-                        ),
-                  onChanged: (val) {
-                    Navigator.pop(context); // เลือกแล้ว
-                    if (val != null && val != current) {
-                      _changeStorage(val); // ย้ายช่อง
-                    }
-                  },
-                ),
-            ],
+          child: RadioGroup<String>( // กลุ่มปุ่มกลม: เก็บค่าที่เลือกอยู่ + ทำงานเมื่อเลือกใหม่
+            groupValue: current, // ช่องที่เก็บอยู่ตอนนี้
+            onChanged: (val) { // เลือกช่องใหม่แล้ว
+              Navigator.pop(context); // เลือกแล้ว
+              if (val != null && val != current) { // ถ้า val มีค่า และ val ไม่เท่ากับ current
+                _changeStorage(val); // ย้ายช่อง
+              }
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // เลือกช่องแช่แข็งได้เสมอ ของที่ไม่มีข้อมูลช่องแช่แข็ง นับวันที่เหลือ
+                // เท่าเดิม (ดู storageMoveFields) — เตือนเฉพาะของที่ไม่ควรแช่แข็ง (ไข่)
+                for (final st in [storageFridge, storageFreezer]) // ตัวเลือก 2 ช่อง: ช่องปกติ / ช่องแช่แข็ง
+                  RadioListTile<String>(
+                    value: st,
+                    activeColor: Colors.orange, // [UI] สีปุ่มกลม (ส้ม)
+                    title: Text("${storageEmoji(st)} ${storageLabel(st)}"),
+                    subtitle: !hasShelfData // บอกว่าย้ายแล้วจะเก็บได้อีกกี่วัน
+                        ? null
+                        : Text(
+                            [
+                              daysLeftText(
+                                (st == current
+                                        ? daysLeft(_item!)
+                                        : daysLeftAfterMove(_item!, st)) ??
+                                    0,
+                              ),
+                              if (st == storageFreezer && warnFreeze)
+                                freezerNotRecommendedText,
+                            ].join(' · '),
+                          ),
+                  ),
+              ],
+            ),
           ),
         ),
         actions: [

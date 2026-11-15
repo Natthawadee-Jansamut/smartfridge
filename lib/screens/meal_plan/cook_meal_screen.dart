@@ -432,7 +432,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                       .eq('id', widget.mealId);
                 } catch (e) {
                   if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  ScaffoldMessenger.of(this.context).showSnackBar( // เตรียมแสดงแถบข้อความด้านล่างจอ
                     SnackBar(content: Text("บันทึกขั้นตอนไม่สำเร็จ: $e")),
                   );
                 }

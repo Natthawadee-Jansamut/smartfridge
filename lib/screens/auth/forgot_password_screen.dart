@@ -41,6 +41,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         );
       }
     } catch (e) { // ส่งไม่สำเร็จ
+      if (!mounted) return; // หน้านี้ถูกปิดไปแล้ว ไม่ต้องแสดงข้อความ
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.toString()))); // แสดง error
