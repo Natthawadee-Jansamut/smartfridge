@@ -1,9 +1,9 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:app_links/app_links.dart';
+import 'package:flutter/material.dart'; // Flutter framework for building UI
+import 'package:supabase_flutter/supabase_flutter.dart'; // Supabase client for Flutter
+import 'package:app_links/app_links.dart'; // For handling deep links in the app
 
-import 'package:test_app/config/supabase_config.dart';
-import 'package:test_app/screens/auth/login_screen.dart';
+import 'package:test_app/config/supabase_config.dart'; // Configuration for Supabase (URL and anon key)
+import 'package:test_app/screens/auth/login_screen.dart'; 
 import 'package:test_app/screens/home/main_menu_screen.dart';
 import 'package:test_app/screens/auth/reset_password_screen.dart';
 import 'package:test_app/screens/notification/expiration_alert_screen.dart';
@@ -64,9 +64,9 @@ Future<void> main() async {
   // (fire-and-forget ไม่ให้บล็อกการเปิดแอป)
   NotificationService.scheduleExpiryReminders().catchError((_) {});
 
-  await Future.delayed(const Duration(seconds: 3));
+  await Future.delayed(const Duration(seconds: 3)); // หน่วง 3 วิ ให่หน้าโลโก้แสดงค้่าง ให้เบื้องหลังทำงาน
 
-  runApp(const MyApp());
+  runApp(const MyApp()); // เริ่มต้นแอป
 }
 
 class MyApp extends StatefulWidget {
@@ -151,6 +151,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'SmartFridge.AI',
       debugShowCheckedModeBanner: false,
 
       navigatorKey: navigatorKey,

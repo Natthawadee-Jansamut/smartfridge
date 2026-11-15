@@ -141,8 +141,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onPressed: loading ? null : saveProfile,
 
                   style: ElevatedButton.styleFrom(
-                    // ปุ่มสีฟ้าทุกปุ่มในแอปต้องใช้รหัสสี #D7EDFF ตามที่กำหนด
-                    backgroundColor: const Color(0xffD7EDFF),
+                    // หน้านี้พื้นหลังเป็นฟ้า ถ้าใช้ปุ่มฟ้า #D7EDFF จะกลืนกับพื้น จึงใช้เหลืองอ่อนแทน
+                    backgroundColor: const Color(0xFFFFF7D0),
 
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),

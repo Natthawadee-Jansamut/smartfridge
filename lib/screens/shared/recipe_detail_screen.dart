@@ -93,6 +93,9 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
   int? _minutesDraft;
 
   bool get _canEdit => widget.canEdit && widget.recipe['id'] != null;
+
+  /// ลบได้เฉพาะสูตรที่บันทึกในคลังแล้ว (มี id) — "เมนูแนะนำ" จาก AI ยังไม่มี id
+  bool get _canDelete => widget.recipe['id'] != null;
   bool get _isEditing => _editingIngredients || _editingSteps;
 
   @override
@@ -544,7 +547,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            RecipeFlowHeader(title: widget.headerTitle),
+            // เมนูแนะนำจาก AI (ยังไม่บันทึก = ไม่มี id) ไม่ต้องมีช่องค้นหาสูตรในคลัง
+            // และใช้ไอคอนหมวกเชฟให้ตรงกับแท็บ "เมนูอาหาร"
+            RecipeFlowHeader(
+              title: widget.headerTitle,
+              showSearch: _canDelete,
+              icon: _canDelete ? null : const ChefIcon(size: 22),
+            ),
             const SizedBox(height: 15),
             // ตอนแก้ไขวัตถุดิบ/ขั้นตอน ตรึงรูปที่ใช้สแกนไว้ด้านบน ไม่เลื่อนตาม
             // จะได้เทียบกับรูปได้ตลอด (ตอนดูสูตรปกติ รูปเลื่อนไปกับเนื้อหา)
@@ -804,34 +813,36 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
               ),
               child: Row(
                 children: [
-                  SizedBox(
-                    height: 55,
-                    width: 55,
-                    child: OutlinedButton(
-                      onPressed: _isDeleting ? null : _deleteRecipe,
-                      style: OutlinedButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        side: const BorderSide(color: Colors.redAccent),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                  if (_canDelete) ...[
+                    SizedBox(
+                      height: 55,
+                      width: 55,
+                      child: OutlinedButton(
+                        onPressed: _isDeleting ? null : _deleteRecipe,
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          side: const BorderSide(color: Colors.redAccent),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
                         ),
-                      ),
-                      child: _isDeleting
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+                        child: _isDeleting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.redAccent,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.delete_outline,
                                 color: Colors.redAccent,
                               ),
-                            )
-                          : const Icon(
-                              Icons.delete_outline,
-                              color: Colors.redAccent,
-                            ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
+                    const SizedBox(width: 12),
+                  ],
                   Expanded(
                     child: SizedBox(
                       height: 55,

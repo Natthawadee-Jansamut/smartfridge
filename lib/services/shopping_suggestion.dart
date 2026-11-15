@@ -12,9 +12,6 @@ class ShoppingSuggestion {
   /// key ในวัตถุดิบของมื้อ = ต้องซื้อเพิ่ม (ไม่มีในตู้เย็นตอนสร้างแพลน)
   static const toBuyKey = 'to_buy';
 
-  /// ถือว่า "ไม่ถึงเป้า" เมื่อต่ำกว่าเป้าเกิน 10% (ใช้กับหลอดเทียบเป้ารายวัน)
-  static const shortfallRatio = 0.9;
-
   /// ของพื้นฐานจากตาราง ingredients (is_staple = true) — โหลดด้วย loadStaples()
   /// เก็บเป็นชื่อที่ตัดช่องว่างแล้ว
   static Set<String> _dbStaples = {};

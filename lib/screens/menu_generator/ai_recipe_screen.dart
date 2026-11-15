@@ -33,6 +33,10 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
   int _aheadDays = defaultOldItemDays;
   List<dynamic> _generatedRecipes = []; // เก็บเมนูที่ AI สร้างให้
 
+  // ชื่อเมนูที่เคยแสดงไปแล้วในหน้านี้ — กด "สร้างเมนูอาหาร" ซ้ำจะได้เมนูใหม่
+  // (ไม่งั้นคลังสูตรจะคืนเมนูชุดเดิมทุกครั้ง เพราะเรียงลำดับแบบเดิม)
+  final Set<String> _shownNames = {};
+
   // ตัวแปรสำหรับ Filter
   String _selectedCategory = 'ทั้งหมด';
   final List<String> _categories = ['ทั้งหมด', 'อาหารไทย', 'คลีน', 'คีโต'];
@@ -122,6 +126,13 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
     return const Color(0xff3F9142);
   }
 
+  void _rememberShown(List<Map<String, dynamic>> recipes) {
+    for (final r in recipes) {
+      final name = r['recipe_name']?.toString().trim() ?? '';
+      if (name.isNotEmpty) _shownNames.add(name);
+    }
+  }
+
   // 2. ส่งข้อมูลให้ Gemini คิดเมนู
   Future<void> _generateRecipes() async {
     if (_inventory.isEmpty) {
@@ -157,6 +168,10 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         );
         fromLibrary = candidates
             .where((r) {
+              // เมนูที่เพิ่งแสดงไปแล้ว ข้ามไปเอาเมนูอื่น
+              if (_shownNames.contains(r['recipe_name']?.toString().trim())) {
+                return false;
+              }
               // ประเภทอาหาร: ต้องมีแท็กตรงกับที่เลือก (ทั้งหมด = ไม่กรอง)
               if (_selectedCategory != 'ทั้งหมด' &&
                   !(r['diet_tags'] as List).contains(_selectedCategory)) {
@@ -186,10 +201,15 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
           );
         }
         setState(() => _generatedRecipes = fromLibrary);
+        _rememberShown(fromLibrary);
         return;
       }
       final aiCount = wanted - fromLibrary.length;
-      final libraryNames = fromLibrary.map((r) => r['recipe_name']).join(', ');
+      // ห้าม AI ซ้ำทั้งเมนูจากคลังรอบนี้ และเมนูที่เคยแสดงไปแล้ว
+      final libraryNames = {
+        ...fromLibrary.map((r) => r['recipe_name'].toString().trim()),
+        ..._shownNames,
+      }.join(', ');
 
       // ===== 2) ให้ AI คิดเฉพาะส่วนที่ยังขาด =====
       // ⚠️ ใส่ API Key ของคุณที่นี่
@@ -291,6 +311,7 @@ class _AiRecipeScreenState extends State<AiRecipeScreen> {
         setState(() {
           _generatedRecipes = [...fromLibrary, ...aiRecipes];
         });
+        _rememberShown([...fromLibrary, ...aiRecipes]);
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

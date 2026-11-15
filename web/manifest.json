@@ -1,6 +1,6 @@
 {
-    "name": "smartfridge",
-    "short_name": "smartfridge",
+    "name": "SmartFridge.AI",
+    "short_name": "SmartFridge.AI",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

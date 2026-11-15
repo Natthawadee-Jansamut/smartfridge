@@ -16,7 +16,20 @@ class RecipeFlowHeader extends StatelessWidget {
   /// กดช่องค้นหา — ไม่ส่งมา = เปิดหน้าค้นหาสูตรอาหาร
   final VoidCallback? onSearchTap;
 
-  const RecipeFlowHeader({super.key, required this.title, this.onSearchTap});
+  /// false = ไม่มีไอคอนค้นหา และกดแถบไม่ได้
+  /// (ใช้กับหน้า "เมนูแนะนำ" จาก AI ที่ไม่เกี่ยวกับการค้นหาสูตรในคลัง)
+  final bool showSearch;
+
+  /// ไอคอนหน้าชื่อหน้า — ไม่ส่งมา = ไอคอนสแกน
+  final Widget? icon;
+
+  const RecipeFlowHeader({
+    super.key,
+    required this.title,
+    this.onSearchTap,
+    this.showSearch = true,
+    this.icon,
+  });
 
   void _openSearch(BuildContext context) {
     if (onSearchTap != null) {
@@ -52,7 +65,7 @@ class RecipeFlowHeader extends StatelessWidget {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => _openSearch(context),
+              onTap: showSearch ? () => _openSearch(context) : null,
               // สีเดียวกับแถบหัวข้อของหน้าอื่นๆ ในแอป (เหลืองอ่อน)
               child: Container(
                 height: 50,
@@ -63,7 +76,7 @@ class RecipeFlowHeader extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    const ScannerIcon(size: 22),
+                    icon ?? const ScannerIcon(size: 22),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -77,8 +90,10 @@ class RecipeFlowHeader extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Icon(Icons.search, color: Colors.black54, size: 22),
-                    const SizedBox(width: 4),
+                    if (showSearch) ...[
+                      const Icon(Icons.search, color: Colors.black54, size: 22),
+                      const SizedBox(width: 4),
+                    ],
                   ],
                 ),
               ),
