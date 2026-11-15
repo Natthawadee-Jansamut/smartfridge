@@ -9,8 +9,9 @@
 /// (เนื้อสัตว์ น้ำปลา ไข่ นม กระเทียม ฯลฯ) ได้ แต่ของแปรรูปที่ชื่อไม่บอก
 /// ส่วนผสม (เช่น ซอสสำเร็จรูปบางยี่ห้อ) ตรวจไม่ได้
 class DietCheck {
-  DietCheck._();
+  DietCheck._(); // ห้ามสร้างตัวแปรจากคลาสนี้
 
+  // ชื่อข้อจำกัดอาหารแต่ละแบบ (ต้องตรงกับที่บันทึกในฐานข้อมูล/ตัวเลือกในหน้าจอ)
   static const none = 'ไม่มี';
   static const vegetarian = 'มังสวิรัติ';
   static const jay = 'เจ';
@@ -117,14 +118,16 @@ class DietCheck {
     'ไข่',
   ];
 
+  // ลบคำในลิสต์ออกจากข้อความ (เช่นตัด "ไข่ไก่" ออกก่อน จะได้ไม่จับคำว่า "ไก่" ผิด)
   static String _strip(String text, List<String> words) {
     var n = text;
     for (final w in words) {
-      n = n.replaceAll(w, '');
+      n = n.replaceAll(w, ''); // ลบคำนี้ออก
     }
     return n;
   }
 
+  // ชื่อมีคำใดคำหนึ่งในลิสต์หรือเปล่า
   static bool _hasAny(String name, List<String> words) =>
       words.any((w) => name.contains(w));
 
@@ -132,32 +135,33 @@ class DietCheck {
   static bool _isAnimal(String n) {
     // ของเจ/ของทำจากพืช ("หมูเจ", "ไก่เทียม") ไม่นับเป็นเนื้อสัตว์
     if (_hasAny(n, _plantBased)) return false;
-    final t = _strip(n, [..._eggWords, ..._notMeat, 'นมวัว']);
-    return _hasAny(t, _animal) || t.startsWith('เนื้อ');
+    final t = _strip(n, [..._eggWords, ..._notMeat, 'นมวัว']); // ตัดคำที่ทำให้จับผิดออกก่อน
+    return _hasAny(t, _animal) || t.startsWith('เนื้อ'); // มีคำเนื้อสัตว์ หรือขึ้นต้นด้วย "เนื้อ"
   }
 
+  // เป็นนม/ผลิตภัณฑ์นมไหม (ตัดนมพืชออกก่อน)
   static bool _isDairy(String n) =>
       _hasAny(_strip(n, _plantMilks), _dairy);
 
   /// ชื่อวัตถุดิบที่ขัดกับข้อจำกัดอาหาร [diet] (ว่าง = ผ่าน)
   static List<String> violations(String? diet, Iterable<Object?> names) {
-    if (diet == null || diet == none || diet.trim().isEmpty) return const [];
-    final out = <String>[];
-    for (final raw in names) {
+    if (diet == null || diet == none || diet.trim().isEmpty) return const []; // ไม่มีข้อจำกัด ผ่านหมด
+    final out = <String>[]; // เก็บชื่อที่ผิดข้อจำกัด
+    for (final raw in names) { // ไล่ตรวจทีละวัตถุดิบ
       final name = (raw ?? '').toString().trim();
-      final n = name.replaceAll(RegExp(r'\s+'), '');
+      final n = name.replaceAll(RegExp(r'\s+'), ''); // ตัดช่องว่างออก
       if (n.isEmpty) continue;
-      final bad = switch (diet) {
-        vegetarian => _isAnimal(n),
-        jay =>
+      final bad = switch (diet) { // ตรวจตามแบบข้อจำกัด
+        vegetarian => _isAnimal(n), // มังสวิรัติ: ห้ามเนื้อสัตว์
+        jay => // เจ: ห้ามเนื้อสัตว์ ไข่ นม และผักฉุน
           _isAnimal(n) ||
               (!_hasAny(n, _plantBased) && _hasAny(n, _egg)) ||
               _isDairy(n) ||
               _hasAny(n, _pungent),
-        noDairy => _isDairy(n),
+        noDairy => _isDairy(n), // ไม่ทานนม: ห้ามผลิตภัณฑ์นม
         _ => false,
       };
-      if (bad) out.add(name);
+      if (bad) out.add(name); // ผิดข้อจำกัด เก็บชื่อไว้
     }
     return out;
   }

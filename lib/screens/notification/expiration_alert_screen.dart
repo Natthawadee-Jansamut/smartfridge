@@ -1,15 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล
 
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
-import 'package:test_app/widgets/overdue_notice.dart';
-import 'package:test_app/widgets/shelf_days_dialog.dart';
-import 'package:test_app/services/fridge_stock.dart';
+import 'package:test_app/widgets/overdue_notice.dart'; // กล่องเตือนของเกินกำหนด
+import 'package:test_app/widgets/shelf_days_dialog.dart'; // หน้าต่างแก้ระยะเก็บ
+import 'package:test_app/services/fridge_stock.dart'; // ต่อเวลา
 import 'package:test_app/utils/category_icons.dart';
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/utils/shelf_life.dart';
-import 'package:test_app/screens/notification/notification_settings_screen.dart';
+import 'package:test_app/screens/notification/notification_settings_screen.dart'; // หน้าตั้งค่าแจ้งเตือน
 
 /// หน้า "แจ้งเตือน" วัตถุดิบ (ตามดีไซน์ใน Figma กลุ่ม "ALERT") — กรองตามจำนวน
 /// วันที่อยู่ในตู้เย็น (0 / 1 / 3 / 7 / 14 วัน) และทุกการ์ดแสดงตัวเลขที่ใช้ตัดสิน (อยู่มาแล้วกี่วัน เทียบกับ
@@ -25,25 +25,26 @@ class ExpirationAlertScreen extends StatefulWidget {
 class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   final supabase = Supabase.instance.client;
 
-  String selectedCategory = "ทั้งหมด";
-  int aheadDays = defaultOldItemDays;
+  String selectedCategory = "ทั้งหมด"; // หมวดหมู่ที่เลือกอยู่
+  int aheadDays = defaultOldItemDays; // เตือนล่วงหน้ากี่วัน (อ่านจากตั้งค่าผู้ใช้)
 
   // ตัวกรอง "อยู่ในตู้เย็นมาแล้ว" แบบช่วงที่ไม่ซ้อนกัน (ของแต่ละชิ้นอยู่ช่อง
   // เดียว): value = วันเริ่ม, max = วันสุดท้าย (null = ไม่มีเพดาน)
   // ยังไม่เลือกช่องไหน (null) = แสดงทั้งหมด กดช่องเดิมซ้ำเพื่อยกเลิกตัวกรอง
-  static const List<Map<String, int?>> dayOptions = [
+  static const List<Map<String, int?>> dayOptions = [ // [UI] ช่วงวันของชิปตัวกรอง (แก้ช่วงได้ที่นี่)
     {'value': 0, 'max': 0},
     {'value': 1, 'max': 2},
     {'value': 3, 'max': 6},
     {'value': 7, 'max': 13},
     {'value': 14, 'max': null},
   ];
-  int? selectedDays;
+  int? selectedDays; // ช่วงวันที่เลือกอยู่ (null = ทั้งหมด)
 
-  Map<String, int?>? get _selectedOption => selectedDays == null
+  Map<String, int?>? get _selectedOption => selectedDays == null // ข้อมูลช่วงที่เลือก
       ? null
       : dayOptions.firstWhere((o) => o['value'] == selectedDays);
 
+  // ข้อความช่วงวัน เช่น "1–2 วัน"
   String _rangeLabel(Map<String, int?> o) {
     final min = o['value']!;
     final max = o['max'];
@@ -52,15 +53,16 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     return "$min–$max วัน";
   }
 
-  List<Map<String, dynamic>> items = [];
-  bool loading = true;
+  List<Map<String, dynamic>> items = []; // ของในตู้ทั้งหมด
+  bool loading = true; // กำลังโหลดไหม
 
   @override
   void initState() {
     super.initState();
-    loadItems();
+    loadItems(); // เปิดหน้ามาโหลดข้อมูล
   }
 
+  // ดึงของในตู้จากฐานข้อมูล
   Future<void> loadItems() async {
     final user = supabase.auth.currentUser;
 
@@ -69,11 +71,11 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
       return;
     }
 
-    final data = await supabase
+    final data = await supabase // ดึงของในตู้ของผู้ใช้
         .from('fridge_items')
         .select()
         .eq('user_id', user.id);
-    aheadDays = readOldItemDays(user);
+    aheadDays = readOldItemDays(user); // อ่านค่าเตือนล่วงหน้า
 
     // ของที่ใช้หมดแล้ว (เหลือ 0) ไม่ต้องเตือนอีก เพราะไม่มีของเหลือให้รีบใช้
     final result =
@@ -93,26 +95,28 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     }
   }
 
+  // รายชื่อหมวดหมู่ที่มีของอยู่ (ใส่ "ทั้งหมด" ไว้หน้าสุด)
   List<String> categories() {
     final list = statusItems()
         .map((item) => item['category']?.toString() ?? "อื่นๆ")
         .toSet()
         .toList();
-    list.sort();
+    list.sort(); // เรียงตามตัวอักษร
     return ["ทั้งหมด", ...list];
   }
 
   // รายการตามตัวกรองจำนวนวัน (ใช้คำนวณหมวดหมู่ที่มีให้เลือกด้วย)
   List<Map<String, dynamic>> statusItems() {
     final option = _selectedOption;
-    if (option == null) return items;
+    if (option == null) return items; // ไม่ได้เลือกช่วง = ทุกชิ้น
     return items.where((i) {
-      final days = daysInFridge(i['created_at']);
+      final days = daysInFridge(i['created_at']); // อยู่ในตู้มากี่วัน
       final max = option['max'];
-      return days >= option['value']! && (max == null || days <= max);
+      return days >= option['value']! && (max == null || days <= max); // อยู่ในช่วงที่เลือก
     }).toList();
   }
 
+  // กรองตามหมวดหมู่ซ้ำอีกชั้น
   List<Map<String, dynamic>> filteredItems() {
     final list = statusItems();
     if (selectedCategory == "ทั้งหมด") return list;
@@ -124,6 +128,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
         .toList();
   }
 
+  // แปลงวันเป็นข้อความ (60 วันขึ้นไปที่หาร 30 ลงตัว = เดือน)
   String _fmtDays(num days) {
     if (days >= 60 && days % 30 == 0) return "${days ~/ 30} เดือน";
     return "${days == days.roundToDouble() ? days.toInt() : days.toStringAsFixed(1)} วัน";
@@ -132,30 +137,30 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   // สีหลอดนับ (นับเป็นวัน): ครบกำหนด/เกินแล้ว = แดง, เหลือไม่เกินจำนวนวันที่
   // ตั้งแจ้งเตือนไว้ = ส้ม, นอกนั้น = เขียว
   Color _daysLeftColor(int? left) {
-    if (left == null) return Colors.grey;
-    if (left <= 0) return const Color(0xffD64545);
-    if (left <= aheadDays) return const Color(0xffE67E22);
-    return const Color(0xff3F9142);
+    if (left == null) return Colors.grey; // ไม่มีข้อมูล = เทา
+    if (left <= 0) return const Color(0xffD64545); // [UI] ครบ/เกินกำหนด = แดง
+    if (left <= aheadDays) return const Color(0xffE67E22); // [UI] ถึงช่วงเตือน = ส้ม
+    return const Color(0xff3F9142); // [UI] ยังอีกนาน = เขียว
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffD8EEFF),
+      backgroundColor: const Color(0xffD8EEFF), // [UI] สีพื้นหลัง
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 15),
-            buildHeader(context),
+            const SizedBox(height: 15), // [UI] ระยะจากขอบบน
+            buildHeader(context), // หัวหน้า
             const SizedBox(height: 12),
-            buildSettingsButton(context),
+            buildSettingsButton(context), // ปุ่มตั้งค่า
             const SizedBox(height: 15),
-            buildStatusSelector(),
+            buildStatusSelector(), // ชิปเลือกช่วงวัน
             const SizedBox(height: 15),
             Expanded(
               child: loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : RefreshIndicator(
+                  ? const Center(child: CircularProgressIndicator()) // กำลังโหลด
+                  : RefreshIndicator( // ดึงลงเพื่อรีเฟรช
                       onRefresh: loadItems,
                       child: buildContent(),
                     ),
@@ -163,10 +168,11 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: const AppBottomNav(current: AppTab.alert),
+      bottomNavigationBar: const AppBottomNav(current: AppTab.alert), // แถบเมนูล่าง ไฮไลต์ "แจ้งเตือน"
     );
   }
 
+  // หัวหน้า: แคปซูลชื่อหน้า
   Widget buildHeader(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -174,21 +180,21 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
         children: [
           Expanded(
             child: Container(
-              height: 50,
+              height: 50, // [UI] ความสูง
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF7D0),
-                borderRadius: BorderRadius.circular(25),
+                color: const Color(0xFFFFF7D0), // [UI] สีครีม
+                borderRadius: BorderRadius.circular(25), // [UI] ทรงแคปซูล
               ),
               child: const Row(
                 children: [
-                  NotificationIcon(size: 22),
+                  NotificationIcon(size: 22), // [UI] ไอคอนกระดิ่ง
                   SizedBox(width: 10),
                   Text(
                     "แจ้งเตือนวัตถุดิบ",
                     style: TextStyle(
                       fontWeight: FontWeight.w500,
-                      fontSize: 16,
+                      fontSize: 16, // [UI] ขนาดชื่อหน้า
                       color: Colors.black87,
                     ),
                   ),
@@ -201,15 +207,16 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     );
   }
 
+  // ปุ่ม "ตั้งค่า" ชิดขวา
   Widget buildSettingsButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Align(
-        alignment: Alignment.centerRight,
+        alignment: Alignment.centerRight, // [UI] ชิดขวา
         child: InkWell(
           borderRadius: BorderRadius.circular(25),
           onTap: () {
-            Navigator.push(
+            Navigator.push( // เปิดหน้าตั้งค่าแจ้งเตือน
               context,
               MaterialPageRoute(
                 builder: (_) => const NotificationSettingsScreen(),
@@ -217,23 +224,23 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             );
           },
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), // [UI] ระยะในปุ่ม
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Colors.white, // [UI] พื้นขาว
               borderRadius: BorderRadius.circular(25),
-              border: Border.all(color: Colors.black87, width: 1.2),
+              border: Border.all(color: Colors.black87, width: 1.2), // [UI] ขอบดำหนา 1.2
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.notifications, color: Colors.black87, size: 18),
+                Icon(Icons.notifications, color: Colors.black87, size: 18), // [UI] ไอคอนกระดิ่ง ขนาด 18
                 SizedBox(width: 8),
                 Text(
                   "ตั้งค่า",
                   style: TextStyle(
                     color: Colors.black87,
                     fontWeight: FontWeight.bold,
-                    fontSize: 14,
+                    fontSize: 14, // [UI] ขนาดตัวอักษร
                   ),
                 ),
               ],
@@ -244,13 +251,14 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
     );
   }
 
+  // กล่องชิปเลือกช่วงวัน
   Widget buildStatusSelector() {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(18),
+      margin: const EdgeInsets.symmetric(horizontal: 20), // [UI] ระยะห่างซ้ายขวาจากขอบจอ
+      padding: const EdgeInsets.all(18), // [UI] ระยะในกล่อง
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -258,7 +266,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           const Text(
             "อยู่ในตู้เย็นมาแล้ว",
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 16, // [UI] ขนาดหัวข้อ
               fontWeight: FontWeight.bold,
               color: Colors.black87,
             ),
@@ -267,10 +275,10 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           // ชิป "ทั้งหมด" + ชิปช่วงวันทั้ง 5 อัน ขยายเท่าๆ กันจนเต็มความกว้างการ์ด
           Row(
             children: [
-              Expanded(flex: 2, child: _buildDayChip(null)),
+              Expanded(flex: 2, child: _buildDayChip(null)), // [UI] ชิป "ทั้งหมด" กว้าง 2 ส่วน
               for (final opt in dayOptions) ...[
-                const SizedBox(width: 6),
-                Expanded(flex: 1, child: _buildDayChip(opt)),
+                const SizedBox(width: 6), // [UI] ระยะห่างระหว่างชิป
+                Expanded(flex: 1, child: _buildDayChip(opt)), // [UI] ชิปช่วงวันกว้าง 1 ส่วน
               ],
             ],
           ),
@@ -282,26 +290,26 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   // opt == null คือชิป "ทั้งหมด" (ล้างตัวกรองจำนวนวัน)
   Widget _buildDayChip(Map<String, int?>? opt) {
     final value = opt?['value'];
-    final selected = selectedDays == value;
+    final selected = selectedDays == value; // ชิปนี้ถูกเลือกอยู่ไหม
     return GestureDetector(
       onTap: () => setState(() {
-        selectedDays = (selected || value == null) ? null : value;
-        selectedCategory = "ทั้งหมด";
+        selectedDays = (selected || value == null) ? null : value; // กดซ้ำ/กด "ทั้งหมด" = ยกเลิกตัวกรอง
+        selectedCategory = "ทั้งหมด"; // เปลี่ยนช่วงแล้วรีเซ็ตหมวดหมู่
       }),
       child: Container(
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: 9), // [UI] ความสูงชิป (ระยะบนล่าง 9)
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFFFF7D0) : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: selected ? null : Border.all(color: Colors.black12),
+          color: selected ? const Color(0xFFFFF7D0) : Colors.white, // [UI] เลือกอยู่ = ครีม ไม่เลือก = ขาว
+          borderRadius: BorderRadius.circular(20), // [UI] ทรงแคปซูล
+          border: selected ? null : Border.all(color: Colors.black12), // [UI] ไม่เลือก = มีขอบเทาจาง
         ),
         child: Text(
           value == null ? "ทั้งหมด" : "$value วัน",
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 11.5,
+            fontSize: 11.5, // [UI] ขนาดตัวอักษรชิป
             color: Colors.black87,
           ),
         ),
@@ -310,16 +318,16 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   }
 
   Widget buildContent() {
-    final showItems = filteredItems();
+    final showItems = filteredItems(); // รายการที่จะแสดง
     final option = _selectedOption;
     final label = option == null ? "ทั้งหมด" : "อยู่มา ${_rangeLabel(option)}";
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20), // [UI] ระยะซ้ายขวา
       children: [
         // สรุปจำนวนรายการ
         Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(18), // [UI] ระยะในกล่องสรุป
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
@@ -327,16 +335,16 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           child: Row(
             children: [
               Container(
-                height: 55,
+                height: 55, // [UI] ขนาดวงกลมไอคอน
                 width: 55,
                 decoration: const BoxDecoration(
-                  color: Color(0xffE3F2FD),
+                  color: Color(0xffE3F2FD), // [UI] สีวงกลม (ฟ้าอ่อน)
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.access_time,
                   color: Color(0xff5189C9),
-                  size: 30,
+                  size: 30, // [UI] ไอคอนนาฬิกา ขนาด 30
                 ),
               ),
               const SizedBox(width: 15),
@@ -348,7 +356,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                       label,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontSize: 16, // [UI] ขนาดหัวข้อสรุป
                         color: Colors.black87,
                       ),
                     ),
@@ -362,9 +370,9 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
               Text(
                 "${showItems.length}",
                 style: const TextStyle(
-                  fontSize: 32,
+                  fontSize: 32, // [UI] ตัวเลขใหญ่ ขนาด 32
                   fontWeight: FontWeight.bold,
-                  color: Colors.orange,
+                  color: Colors.orange, // [UI] สีส้ม
                 ),
               ),
             ],
@@ -375,25 +383,25 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
 
         const Text(
           "หมวดหมู่",
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold), // [UI] ขนาดหัวข้อหมวดหมู่
         ),
 
         const SizedBox(height: 10),
 
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
+        Wrap( // ชิปหมวดหมู่ (ตกบรรทัดได้)
+          spacing: 10, // [UI] ระยะห่างแนวนอน
+          runSpacing: 10, // [UI] ระยะห่างแนวตั้ง
           children: categories().map((cat) {
             final selected = selectedCategory == cat;
             return GestureDetector(
-              onTap: () => setState(() => selectedCategory = cat),
+              onTap: () => setState(() => selectedCategory = cat), // กดเลือกหมวด
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
+                  horizontal: 16, // [UI] ระยะในชิปซ้ายขวา
+                  vertical: 10, // [UI] ระยะในชิปบนล่าง
                 ),
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFFFFF7D0) : Colors.white,
+                  color: selected ? const Color(0xFFFFF7D0) : Colors.white, // [UI] เลือกอยู่ = ครีม
                   borderRadius: BorderRadius.circular(20),
                   border: selected ? null : Border.all(color: Colors.black12),
                 ),
@@ -413,9 +421,9 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
 
         const SizedBox(height: 15),
 
-        if (showItems.isEmpty)
+        if (showItems.isEmpty) // ไม่มีรายการ
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 40),
+            padding: const EdgeInsets.symmetric(vertical: 40), // [UI] ระยะบนล่างของข้อความว่าง
             child: Center(
               child: Text(
                 "ไม่มีรายการวัตถุดิบในช่วงนี้",
@@ -424,7 +432,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             ),
           ),
 
-        ...showItems.map(_buildItemCard),
+        ...showItems.map(_buildItemCard), // การ์ดวัตถุดิบทีละชิ้น
         const SizedBox(height: 20),
       ],
     );
@@ -434,26 +442,26 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   // ข้อความนับเป็นวัน (เก็บได้อีก X วัน / ครบกำหนดวันนี้ / เกินมาแล้ว X วัน)
   // พร้อมที่มาของตัวเลข และปุ่มแก้ระยะที่เก็บได้
   Widget _buildItemCard(Map<String, dynamic> item) {
-    final left = daysLeft(item);
-    final color = _daysLeftColor(left);
-    final shelf = displayShelfDays(item);
+    final left = daysLeft(item); // เหลืออีกกี่วัน
+    final color = _daysLeftColor(left); // สีตามจำนวนวัน
+    final shelf = displayShelfDays(item); // เก็บได้ทั้งหมดกี่วัน
     // หลอดคิดจากตัวเลขเดียวกับข้อความ "เก็บได้อีก X วัน" (วันหมดอายุตามวันใน
     // ปฏิทิน) ผ่านไปแล้ว = เก็บได้ − เก็บได้อีก ทั้งสองอย่างจะขยับไปพร้อมกัน
-    final ratio = (shelf == null || left == null)
+    final ratio = (shelf == null || left == null) // สัดส่วนที่ผ่านไปแล้ว (0-1) สำหรับหลอด
         ? null
         : ((shelf - left) / shelf).clamp(0.0, 1.0).toDouble();
-    final storage = item['storage']?.toString();
-    final state = item['food_state']?.toString() ?? '';
+    final storage = item['storage']?.toString(); // ช่องที่เก็บ
+    final state = item['food_state']?.toString() ?? ''; // สถานะ (ดิบ/สุก ฯลฯ)
     final category = item['category']?.toString() ?? "อื่นๆ";
 
     String remainingText() => left == null ? "" : daysLeftText(left);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      margin: const EdgeInsets.only(bottom: 12), // [UI] ระยะใต้การ์ด
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14), // [UI] ระยะในการ์ด
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -462,7 +470,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             children: [
               Text(
                 categoryEmoji(category),
-                style: const TextStyle(fontSize: 28),
+                style: const TextStyle(fontSize: 28), // [UI] อิโมจิขนาด 28
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -470,25 +478,25 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                   item['name'] ?? "ไม่ระบุ",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
-                    fontSize: 17,
+                    fontSize: 17, // [UI] ขนาดชื่อวัตถุดิบ
                   ),
                 ),
               ),
               IconButton(
-                visualDensity: VisualDensity.compact,
-                icon: const Icon(Icons.delete_outline, color: Colors.black54),
-                onPressed: () => deleteItem(item),
+                visualDensity: VisualDensity.compact, // [UI] ปุ่มกระชับ
+                icon: const Icon(Icons.delete_outline, color: Colors.black54), // [UI] ไอคอนถังขยะสีเทา
+                onPressed: () => deleteItem(item), // กดลบ
               ),
             ],
           ),
           const SizedBox(height: 6),
           Text(
-            shelf == null
+            shelf == null // ไม่มีข้อมูลระยะเก็บ -> บอกแค่อยู่มากี่วัน
                 ? fridgeAgeText(item['created_at'])
                 : "${fridgeAgeShort(item['created_at'])} · "
                       "เก็บได้ ${_fmtDays(shelf)}",
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 14, // [UI] ขนาดข้อความ
               fontWeight: FontWeight.w600,
               color: Colors.black87,
             ),
@@ -501,12 +509,12 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                 children: [
                   Expanded(
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
+                      borderRadius: BorderRadius.circular(4), // [UI] หลอดโค้ง
+                      child: LinearProgressIndicator( // หลอดแสดงเวลาที่ผ่านไป
                         value: ratio,
-                        minHeight: 8,
-                        backgroundColor: Colors.black12,
-                        color: color,
+                        minHeight: 8, // [UI] ความหนาหลอด
+                        backgroundColor: Colors.black12, // [UI] สีพื้นหลอด
+                        color: color, // [UI] สีหลอด (แดง/ส้ม/เขียว)
                       ),
                     ),
                   ),
@@ -514,7 +522,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                   Text(
                     remainingText(),
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 12, // [UI] ขนาดข้อความวันที่เหลือ
                       fontWeight: FontWeight.bold,
                       color: color,
                     ),
@@ -524,13 +532,13 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             ),
           ],
           // เกินระยะที่เก็บได้แล้ว: บอกคำแนะนำตามชนิดของ (ทิ้ง / ตรวจก่อนใช้)
-          if (left != null && left < 0) ...[
+          if (left != null && left < 0) ...[ // เกินกำหนดแล้วเท่านั้นถึงแสดงกล่องเตือน
             const SizedBox(height: 8),
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: OverdueNotice(
                 item: item,
-                onExtend: (days) => _extend(item, days),
+                onExtend: (days) => _extend(item, days), // กด +N วัน -> ต่อเวลา
               ),
             ),
           ],
@@ -541,7 +549,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
             children: [
               const Icon(
                 Icons.schedule_rounded,
-                size: 15,
+                size: 15, // [UI] ไอคอนนาฬิกา ขนาด 15
                 color: Colors.black54,
               ),
               const SizedBox(width: 5),
@@ -552,7 +560,7 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
                       : "เข้าตู้เย็นเมื่อ ${formatDate(item['created_at'].toString())} "
                             "เวลา ${addedTimeText(item['created_at'])}",
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 13, // [UI] ขนาดข้อความ
                     fontWeight: FontWeight.w500,
                     color: Colors.black87,
                   ),
@@ -564,28 +572,28 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
           Text(
             [
               if (state.isNotEmpty) state,
-              "${storageEmoji(storage)} ${storageLabel(storage)}",
+              "${storageEmoji(storage)} ${storageLabel(storage)}", // ช่องที่เก็บ เช่น "🧊 ช่องปกติ"
             ].join(" · "),
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+            style: const TextStyle(fontSize: 12, color: Colors.black54), // [UI] ข้อความเล็กสีเทา
           ),
           // ที่มาของ "เก็บได้กี่วัน" แสดงบนการ์ดเลย พร้อมปุ่มแก้เองได้
           Row(
             children: [
               Expanded(
                 child: Text(
-                  shelfSourceShort(item),
+                  shelfSourceShort(item), // ที่มาของตัวเลข
                   style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ),
               TextButton.icon(
                 style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
+                  visualDensity: VisualDensity.compact, // [UI] ปุ่มกระชับ
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
-                onPressed: () => _editShelfDays(item),
+                onPressed: () => _editShelfDays(item), // กดแก้ระยะเก็บ
                 icon: const Icon(
                   Icons.edit_outlined,
-                  size: 16,
+                  size: 16, // [UI] ไอคอนดินสอ ขนาด 16 สีฟ้า
                   color: Color(0xff5189C9),
                 ),
                 label: const Text(
@@ -607,8 +615,8 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   // ผู้ใช้ตรวจแล้วว่ายังใช้ได้ ต่อเวลาให้ "เก็บได้อีก X วัน" (ดู extendShelfLife)
   Future<void> _extend(Map<String, dynamic> item, int days) async {
     try {
-      await extendShelfLife(supabase: supabase, item: item, moreDays: days);
-      await loadItems();
+      await extendShelfLife(supabase: supabase, item: item, moreDays: days); // ต่อเวลาในฐานข้อมูล
+      await loadItems(); // โหลดใหม่
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -626,15 +634,16 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
   // created_at จาก Supabase เป็นเวลา UTC ที่ไม่มีตัวบอก timezone ต้องแปลงผ่าน
   // parseCreatedAt ก่อน ไม่งั้นวันที่จะเพี้ยนไป 7 ชั่วโมง
   String formatDate(String date) {
-    final d = parseCreatedAt(date) ?? DateTime.parse(date);
-    return "${d.day}/${d.month}/${d.year + 543}";
+    final d = parseCreatedAt(date) ?? DateTime.parse(date); // แปลงเวลา UTC เป็นเวลาไทย
+    return "${d.day}/${d.month}/${d.year + 543}"; // +543 = ปี พ.ศ.
   }
 
   // แก้ระยะที่เก็บได้ (หน้าต่างกลาง ใช้ร่วมกับหน้าคลัง)
   Future<void> _editShelfDays(Map<String, dynamic> item) async {
-    if (await editShelfDaysDialog(context, item)) await loadItems();
+    if (await editShelfDaysDialog(context, item)) await loadItems(); // บันทึกแล้วโหลดใหม่
   }
 
+  // ลบวัตถุดิบ (ถามยืนยันก่อน)
   Future<void> deleteItem(Map<String, dynamic> item) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -655,14 +664,14 @@ class _ExpirationAlertScreenState extends State<ExpirationAlertScreen> {
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) return; // ไม่ยืนยัน หยุด
 
     try {
       await supabase
           .from('fridge_items')
-          .delete()
+          .delete() // ลบออกจากฐานข้อมูล
           .eq('item_id', item['item_id']);
-      await loadItems();
+      await loadItems(); // โหลดใหม่
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

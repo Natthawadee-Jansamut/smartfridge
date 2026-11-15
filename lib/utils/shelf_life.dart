@@ -5,12 +5,14 @@
 /// วันหมดอายุเองได้เสมอ
 
 /// ช่องที่เก็บในตู้เย็น
-const String storageFridge = 'fridge';
-const String storageFreezer = 'freezer';
+const String storageFridge = 'fridge'; // ช่องเย็นปกติ (ค่าที่บันทึกในฐานข้อมูล)
+const String storageFreezer = 'freezer'; // ช่องแช่แข็ง
 
+// [UI] ชื่อช่องที่แสดงบนจอ (แก้คำได้ที่นี่)
 String storageLabel(String? storage) =>
     storage == storageFreezer ? 'ช่องแช่แข็ง' : 'ช่องปกติ';
 
+// [UI] อิโมจิของช่อง: ช่องแช่แข็ง = ❄️, ช่องปกติ = 🧊
 String storageEmoji(String? storage) => storage == storageFreezer ? '❄️' : '🧊';
 
 /// อายุการเก็บรักษาของวัตถุดิบหนึ่งสถานะ (หน่วยเป็นวัน)
@@ -20,11 +22,11 @@ String storageEmoji(String? storage) => storage == storageFreezer ? '❄️' : '
 /// - fridgeSource/freezerSource: แหล่งอ้างอิงของตัวเลขแต่ละช่อง (บางบรรทัดมาจาก
 ///   แหล่งเดียว บางบรรทัดยืนยันจาก 2 แหล่ง) null = ใช้แหล่งของประเภทนั้น
 class ShelfLife {
-  final int? fridgeMin;
-  final int? fridgeMax;
-  final int? freezer;
-  final String? fridgeSource;
-  final String? freezerSource;
+  final int? fridgeMin; // ช่องปกติ เก็บได้อย่างน้อยกี่วัน
+  final int? fridgeMax; // ช่องปกติ เก็บได้มากสุดกี่วัน
+  final int? freezer; // ช่องแช่แข็ง เก็บได้กี่วัน
+  final String? fridgeSource; // แหล่งอ้างอิงของตัวเลขช่องปกติ
+  final String? freezerSource; // แหล่งอ้างอิงของตัวเลขช่องแช่แข็ง
 
   const ShelfLife({
     this.fridgeMin,
@@ -32,13 +34,13 @@ class ShelfLife {
     this.freezer,
     this.fridgeSource,
     this.freezerSource,
-  }) : fridgeMax = fridgeMax ?? fridgeMin;
+  }) : fridgeMax = fridgeMax ?? fridgeMin; // ไม่ระบุค่ามากสุด = เท่าค่าน้อยสุด (ค่าตายตัว)
 }
 
 /// ประเภทวัตถุดิบในตาราง
 class ShelfType {
-  final String key;
-  final String label;
+  final String key; // รหัสประเภท (ภาษาอังกฤษ บันทึกในฐานข้อมูล)
+  final String label; // ชื่อประเภทภาษาไทย (แสดงบนจอ)
 
   /// สถานะที่ให้ผู้ใช้เลือก (เช่น ดิบ/สุก, เปิดซองแล้ว/ยังไม่เปิดซอง) ตัวแรก
   /// คือค่าเริ่มต้น — ถ้าไม่มีสถานะให้เลือกจะใช้คีย์ว่าง ''
@@ -58,18 +60,19 @@ class ShelfType {
     this.source = _srcSpring,
   });
 
+  // ชื่อสถานะทั้งหมดที่เลือกได้ (ตัดสถานะว่างออก)
   List<String> get stateNames =>
       states.keys.where((s) => s.isNotEmpty).toList();
 
   /// แหล่งอ้างอิงของตัวเลขตามสถานะ (ดิบ/สุก ฯลฯ) และช่องที่เก็บ
   /// null = ไม่มีข้อมูลอ้างอิงของช่องนั้น (เช่น ผัก ผลไม้ ไข่ ในช่องแช่แข็ง)
   String? sourceFor(String? state, String? storage) {
-    if (storage == storageFreezer && !hasFreezerData(state)) return null;
-    final rule = states[state] ?? states.values.first;
+    if (storage == storageFreezer && !hasFreezerData(state)) return null; // ไม่มีข้อมูลช่องแช่แข็ง
+    final rule = states[state] ?? states.values.first; // หาข้อมูลของสถานะนี้ (ไม่เจอใช้ตัวแรก)
     final specific = storage == storageFreezer
         ? rule.freezerSource
         : rule.fridgeSource;
-    return specific ?? source;
+    return specific ?? source; // ไม่มีแหล่งเฉพาะ ใช้แหล่งของประเภท
   }
 
   /// มีข้อมูลช่องแช่แข็งจากแหล่งอ้างอิงไหม — ไม่มี: ของที่สแกนใช้จำนวนวันที่ AI
@@ -105,7 +108,7 @@ const List<String> pieceUnits = [
   "กล่อง",
 ];
 
-const String portionUnit = 'ส่วน';
+const String portionUnit = 'ส่วน'; // หน่วยของ "แบ่งเป็นส่วน"
 
 /// shelf_type ที่บันทึกเมื่อผู้ใช้แก้ระยะที่เก็บได้เอง — เก็บเป็น
 /// "custom:<ประเภทเดิม>:<จำนวนวันเดิม>" เช่น "custom:egg:21" เพื่อจำที่มาเดิม
@@ -117,6 +120,7 @@ const String shelfTypeCustom = 'custom';
 String customShelfType(String? originalKey, num? originalDays) =>
     '$shelfTypeCustom:${originalKey ?? ''}:${originalDays?.round() ?? ''}';
 
+// เป็นค่า "ผู้ใช้กำหนดเอง" หรือเปล่า
 bool isCustomShelfType(String? value) =>
     value != null &&
     (value == shelfTypeCustom || value.startsWith('$shelfTypeCustom:'));
@@ -127,20 +131,23 @@ bool isCustomShelfType(String? value) =>
   String? value,
   num? currentDays,
 ) {
-  if (!isCustomShelfType(value)) {
+  if (!isCustomShelfType(value)) { // ไม่ใช่ค่ากำหนดเอง -> ค่าปัจจุบันคือค่าเดิม
     return (key: value, days: currentDays?.round());
   }
-  final parts = value!.split(':');
+  final parts = value!.split(':'); // แยก "custom:egg:21" -> [custom, egg, 21]
   String? at(int i) =>
       parts.length > i && parts[i].isNotEmpty ? parts[i] : null;
   return (key: at(1), days: int.tryParse(at(2) ?? ''));
 }
 
+// ชื่อสถานะของวัตถุดิบ (แสดงเป็นตัวเลือกบนจอ)
 const String stateRaw = 'ดิบ';
 const String stateCooked = 'สุก';
 const String stateOpened = 'เปิดซองแล้ว';
 const String stateUnopened = 'ยังไม่เปิดซอง';
 
+// ตารางอายุการเก็บของแต่ละประเภท — เพิ่ม/แก้จำนวนวันได้ที่นี่
+// fridgeMin = ช่องปกติ (วัน), freezer = ช่องแช่แข็ง (วัน), noFreeze = ไม่ควรแช่แข็ง
 const List<ShelfType> shelfTypes = [
   ShelfType(
     key: 'chicken',
@@ -252,9 +259,10 @@ const List<ShelfType> shelfTypes = [
   ),
 ];
 
+// หาประเภทจากรหัส (ไม่เจอ = null)
 ShelfType? findShelfType(String? key) {
   if (key == null) return null;
-  for (final t in shelfTypes) {
+  for (final t in shelfTypes) { // ไล่หาในตาราง
     if (t.key == key) return t;
   }
   return null;
@@ -268,9 +276,9 @@ String shelfTypePromptList() =>
 /// จำนวนวันที่เก็บได้ในแต่ละช่อง (ผลลัพธ์หลังรวมตารางกับค่าที่ Gemini ประเมิน)
 /// freezerDays = null แปลว่าไม่ควรเก็บในช่องแช่แข็ง
 class ResolvedShelfLife {
-  final int fridgeDays;
-  final int? freezerDays;
-  final bool fromTable;
+  final int fridgeDays; // ช่องปกติเก็บได้กี่วัน
+  final int? freezerDays; // ช่องแช่แข็งเก็บได้กี่วัน (null = ไม่มีข้อมูล)
+  final bool fromTable; // true = ได้จากตาราง, false = AI ประเมิน
 
   const ResolvedShelfLife({
     required this.fridgeDays,
@@ -278,10 +286,12 @@ class ResolvedShelfLife {
     required this.fromTable,
   });
 
+  // จำนวนวันของช่องที่ระบุ
   int? daysFor(String storage) =>
       storage == storageFreezer ? freezerDays : fridgeDays;
 }
 
+// แปลงค่าเป็นจำนวนเต็ม (ปัดเศษ)
 int? _toInt(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.round();
@@ -301,33 +311,33 @@ ResolvedShelfLife resolveShelfLife({
   dynamic geminiFridgeDays,
   dynamic geminiFreezerDays,
 }) {
-  final gFridge = _toInt(geminiFridgeDays);
-  final gFreezer = _toInt(geminiFreezerDays);
-  final type = findShelfType(typeKey);
+  final gFridge = _toInt(geminiFridgeDays); // ค่าที่ AI ประเมิน (ช่องปกติ)
+  final gFreezer = _toInt(geminiFreezerDays); // ค่าที่ AI ประเมิน (ช่องแช่แข็ง)
+  final type = findShelfType(typeKey); // ประเภทในตาราง
 
-  if (type == null) {
+  if (type == null) { // ไม่อยู่ในตาราง -> ใช้ค่าของ AI
     return ResolvedShelfLife(
-      fridgeDays: (gFridge != null && gFridge > 0) ? gFridge : 3,
+      fridgeDays: (gFridge != null && gFridge > 0) ? gFridge : 3, // AI ไม่ให้ค่า -> 3 วัน (ค่าปลอดภัย)
       freezerDays: (gFreezer != null && gFreezer > 0) ? gFreezer : null,
       fromTable: false,
     );
   }
 
-  final rule = type.states[state] ?? type.states.values.first;
+  final rule = type.states[state] ?? type.states.values.first; // ข้อมูลของสถานะนี้
 
   int fridgeDays;
-  if (rule.fridgeMin == null) {
+  if (rule.fridgeMin == null) { // ตารางไม่มีค่าช่องปกติ -> ใช้ AI
     fridgeDays = (gFridge != null && gFridge > 0) ? gFridge : 3;
-  } else if (rule.fridgeMax != rule.fridgeMin) {
+  } else if (rule.fridgeMax != rule.fridgeMin) { // ตารางเป็นช่วง -> ใช้ค่า AI แต่บีบให้อยู่ในช่วง
     fridgeDays = (gFridge ?? rule.fridgeMin!).clamp(
       rule.fridgeMin!,
       rule.fridgeMax!,
     );
-  } else {
+  } else { // ตารางเป็นค่าตายตัว -> ใช้ค่าตาราง
     fridgeDays = rule.fridgeMin!;
   }
 
-  final int? freezerDays = type.noFreeze ? null : rule.freezer;
+  final int? freezerDays = type.noFreeze ? null : rule.freezer; // ห้ามแช่แข็ง = null
 
   return ResolvedShelfLife(
     fridgeDays: fridgeDays,
@@ -345,7 +355,7 @@ String defaultStateFor(String? typeKey) {
 
 /// แปลงจำนวนวันให้อ่านง่าย (เกิน 2 เดือนแสดงเป็นเดือน)
 String formatShelfDays(int days) {
-  if (days >= 60 && days % 30 == 0) return '${days ~/ 30} เดือน';
+  if (days >= 60 && days % 30 == 0) return '${days ~/ 30} เดือน'; // 60 วันขึ้นไปและหาร 30 ลงตัว -> แสดงเป็นเดือน
   return '$days วัน';
 }
 
@@ -353,7 +363,7 @@ String formatShelfDays(int days) {
 /// (ใช้คำที่ผู้ใช้เข้าใจ ไม่พูดถึง "ตาราง" ที่เป็นเรื่องภายในระบบ)
 String shelfSourceShort(Map<String, dynamic> item) {
   final key = item['shelf_type']?.toString();
-  if (isCustomShelfType(key)) {
+  if (isCustomShelfType(key)) { // ผู้ใช้แก้เอง
     final original = originalShelfSource(key, null).days;
     return original == null
         ? 'คุณกำหนดเอง'
@@ -365,7 +375,7 @@ String shelfSourceShort(Map<String, dynamic> item) {
       item['food_state']?.toString(),
       item['storage']?.toString(),
     );
-    if (src != null) return 'ข้อมูลจาก $src';
+    if (src != null) return 'ข้อมูลจาก $src'; // มีแหล่งอ้างอิง
     // ไม่มีข้อมูลช่องแช่แข็งในระบบ: สแกนเข้าช่องแช่แข็งตั้งแต่แรก = AI ประเมิน
     // (ย้ายเข้าช่องแช่แข็งทีหลัง = นับวันที่เหลือเดิมต่อ) — เตือนเฉพาะของที่ไม่ควร
     // แช่แข็ง (ไข่)
@@ -374,8 +384,8 @@ String shelfSourceShort(Map<String, dynamic> item) {
         : 'นับวันที่เหลือต่อจากช่องปกติ';
     return type.noFreeze ? '$base · $freezerNotRecommendedText' : base;
   }
-  if (item['fridge_days'] != null) return 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง';
-  return 'ไม่มีข้อมูลระยะที่เก็บได้';
+  if (item['fridge_days'] != null) return 'AI ประเมินให้ ควรตรวจสอบอีกครั้ง'; // ไม่อยู่ในตาราง แต่มีค่าจาก AI
+  return 'ไม่มีข้อมูลระยะที่เก็บได้'; // ของเก่าไม่มีข้อมูล
 }
 
 /// คำเตือนสำหรับของที่ไม่ควรแช่แข็ง (ไข่) — ผู้ใช้ยังเลือกเก็บช่องแช่แข็งได้
@@ -390,9 +400,11 @@ bool freezerNotRecommended(Map<String, dynamic> item) {
 /// ชนิดของเมื่อเกินระยะที่เก็บได้แล้ว: ไม่ควรเสี่ยง (ทิ้ง) / ตรวจด้วยตาได้
 enum OverdueKind { unsafe, produce, other }
 
+// จัดชนิดของที่เกินกำหนดแล้ว ว่าควรทิ้งเลย หรือตรวจด้วยตาได้
 OverdueKind overdueKind(Map<String, dynamic> item) {
   // ของที่ผู้ใช้แก้เอง ใช้ประเภทเดิมก่อนแก้
   final key = originalShelfSource(item['shelf_type']?.toString(), null).key;
+  // ประเภทที่ไม่ควรเสี่ยง (เกินกำหนดแล้วให้ทิ้ง)
   const unsafe = {
     'chicken',
     'beef_pork',
@@ -402,7 +414,7 @@ OverdueKind overdueKind(Map<String, dynamic> item) {
     'shellfish',
     'leftover',
   };
-  const produce = {'leafy_veg', 'root_veg', 'fruit'};
+  const produce = {'leafy_veg', 'root_veg', 'fruit'}; // ผัก/ผลไม้ (ตรวจด้วยตาได้)
 
   if (findShelfType(key) != null) {
     if (unsafe.contains(key) ||

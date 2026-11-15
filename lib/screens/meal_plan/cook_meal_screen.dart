@@ -1,12 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล
 
-import 'package:test_app/services/fridge_stock.dart';
-import 'package:test_app/services/gemini_retry.dart';
-import 'package:test_app/services/meal_nutrition.dart';
-import 'package:test_app/services/plan_allocation.dart';
-import 'package:test_app/services/shopping_suggestion.dart';
-import 'package:test_app/widgets/deduct_confirm_sheet.dart';
+import 'package:test_app/services/fridge_stock.dart'; // หักวัตถุดิบ FIFO
+import 'package:test_app/services/gemini_retry.dart'; // ข้อความ error ของ AI
+import 'package:test_app/services/meal_nutrition.dart'; // คำนวณโภชนาการใหม่
+import 'package:test_app/services/plan_allocation.dart'; // จองของให้มื้อในแพลน
+import 'package:test_app/services/shopping_suggestion.dart'; // ของพื้นฐาน
+import 'package:test_app/widgets/deduct_confirm_sheet.dart'; // แผ่นยืนยันหักวัตถุดิบ
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/widgets/recipe_flow_widgets.dart';
 
@@ -17,7 +17,7 @@ import 'package:test_app/widgets/recipe_flow_widgets.dart';
 /// เท่านั้น (ไม่มีข้อมูล mock) และเมื่อกด "ทำแล้ว" จะหักวัตถุดิบที่ใช้ออกจาก
 /// ตู้เย็นจริงด้วย
 class CookMealScreen extends StatefulWidget {
-  final String mealId;
+  final String mealId; // id ของมื้อที่จะแสดง
 
   /// true = เปิดดูก่อนบันทึกแพลน: ดู/แก้สูตรได้ แต่ไม่มีปุ่ม "ทำแล้ว" (ยังไม่หักของ)
   final bool previewOnly;
@@ -35,15 +35,15 @@ class CookMealScreen extends StatefulWidget {
 class _CookMealScreenState extends State<CookMealScreen> {
   final supabase = Supabase.instance.client;
 
-  Map<String, dynamic>? meal;
-  bool loading = true;
-  bool saving = false;
+  Map<String, dynamic>? meal; // ข้อมูลมื้อ
+  bool loading = true; // กำลังโหลดไหม
+  bool saving = false; // กำลังบันทึก "ทำแล้ว" ไหม
 
   /// มื้อนี้กด "ทำแล้ว" (หักวัตถุดิบ) ไปแล้ว -> ห้ามกดซ้ำ
   bool get _cooked => meal?['is_cooked'] == true;
-  bool recalculating = false;
+  bool recalculating = false; // กำลังคำนวณโภชนาการใหม่ไหม
 
-  final Map<String, String> _dayThai = const {
+  final Map<String, String> _dayThai = const { // [UI] ชื่อวันภาษาไทย
     "Monday": "วันจันทร์",
     "Tuesday": "วันอังคาร",
     "Wednesday": "วันพุธ",
@@ -56,17 +56,18 @@ class _CookMealScreenState extends State<CookMealScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMeal();
+    _loadMeal(); // เปิดหน้ามาโหลดข้อมูลมื้อ
   }
 
+  // โหลดข้อมูลมื้อ แล้วตรวจว่ามีวัตถุดิบในตู้จริงไหม
   Future<void> _loadMeal() async {
     try {
-      await ShoppingSuggestion.loadStaples();
+      await ShoppingSuggestion.loadStaples(); // โหลดรายการของพื้นฐาน
       final data = await supabase
-          .from('weekly_meals')
+          .from('weekly_meals') // ดึงมื้อนี้
           .select()
           .eq('id', widget.mealId)
-          .single();
+          .single(); // เอาแถวเดียว
 
       final loadedMeal = Map<String, dynamic>.from(data);
 
@@ -83,7 +84,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
         final user = supabase.auth.currentUser;
         if (user != null) {
           final fridgeItems = List<Map<String, dynamic>>.from(
-            await supabase.from('fridge_items').select().eq('user_id', user.id),
+            await supabase.from('fridge_items').select().eq('user_id', user.id), // ดึงของในตู้
           );
           // จองของในตู้ให้มื้อที่ใกล้ถึงก่อน (ทั้งแพลน) แล้วติ๊กตามผลของมื้อนี้
           // สถานะจะตรงกับหน้าแผนรายสัปดาห์ และไม่ติ๊กของที่จองให้มื้อก่อนหน้าไปแล้ว
@@ -92,15 +93,15 @@ class _CookMealScreenState extends State<CookMealScreen> {
           if (planId != null) {
             try {
               final planMeals = await supabase
-                  .from('weekly_meals')
+                  .from('weekly_meals') // ดึงมื้อทั้งแพลน
                   .select()
                   .eq('plan_id', planId);
               final plan = await supabase
-                  .from('meal_plans')
+                  .from('meal_plans') // ดึงวันที่สร้างแพลน
                   .select('created_at')
                   .eq('id', planId)
                   .maybeSingle();
-              allocation = PlanAllocation.allocate(
+              allocation = PlanAllocation.allocate( // จองของให้ทุกมื้อในแพลน
                 meals: planMeals,
                 fridgeItems: fridgeItems,
                 planStart: DateTime.tryParse(
@@ -111,13 +112,13 @@ class _CookMealScreenState extends State<CookMealScreen> {
               debugPrint('จองวัตถุดิบทั้งแพลนไม่สำเร็จ (เช็กเฉพาะมื้อนี้): $e');
             }
           }
-          final statuses = allocation?[widget.mealId];
+          final statuses = allocation?[widget.mealId]; // ผลของมื้อนี้
           if (statuses != null) {
-            ingredientsList = [
+            ingredientsList = [ // มีผลจองทั้งแพลน -> ติ๊กตามผลนั้น
               for (final ing in ingredientsList)
                 {
                   ...ing,
-                  'checked':
+                  'checked': // มีพอ = ติ๊ก
                       statuses
                           .where(
                             (st) =>
@@ -130,7 +131,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                 },
             ];
           } else {
-            ingredientsList = _withRealAvailability(
+            ingredientsList = _withRealAvailability( // จองทั้งแพลนไม่ได้ -> เช็คเฉพาะมื้อนี้
               ingredientsList,
               fridgeItems,
             );
@@ -140,7 +141,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
       }
 
       if (mounted) {
-        setState(() {
+        setState(() { // อัปเดตหน้าจอ
           meal = loadedMeal;
           loading = false;
         });
@@ -162,11 +163,11 @@ class _CookMealScreenState extends State<CookMealScreen> {
     return ingredients.map((ing) {
       final nameRaw = ing['name']?.toString() ?? '';
       final name = nameRaw.trim().toLowerCase();
-      final needAmount = _parseQuantityAmount(
+      final needAmount = _parseQuantityAmount( // จำนวนที่ต้องใช้
         ing['quantity']?.toString() ?? '',
       );
 
-      if (name.isEmpty) {
+      if (name.isEmpty) { // ไม่มีชื่อ = ไม่ติ๊ก
         return {...ing, 'checked': false};
       }
 
@@ -175,7 +176,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
         return {...ing, 'checked': true};
       }
 
-      final matches = fridgeItems.where((item) {
+      final matches = fridgeItems.where((item) { // หาของในตู้ที่ชื่อตรง/คล้าย
         final itemName = (item['name']?.toString() ?? '').trim().toLowerCase();
         return itemName.isNotEmpty &&
             (itemName == name ||
@@ -185,20 +186,21 @@ class _CookMealScreenState extends State<CookMealScreen> {
 
       bool isAvailable;
       if (matches.isEmpty) {
-        isAvailable = false;
+        isAvailable = false; // ไม่มีในตู้
       } else {
-        final haveQty = matches.fold<num>(0, (sum, item) {
+        final haveQty = matches.fold<num>(0, (sum, item) { // รวมจำนวนทุกลอต
           final q = item['quantity'];
           final qNum = q is num ? q : (num.tryParse(q?.toString() ?? '') ?? 0);
           return sum + qNum;
         });
-        isAvailable = haveQty > 0 && (needAmount <= 0 || haveQty >= needAmount);
+        isAvailable = haveQty > 0 && (needAmount <= 0 || haveQty >= needAmount); // มีของ และพอ (ถ้าไม่รู้จำนวนที่ต้องใช้ แค่มีก็พอ)
       }
 
       return {...ing, 'checked': isAvailable};
     }).toList();
   }
 
+  // รายการวัตถุดิบของมื้อ (ผิดรูปแบบ = ลิสต์ว่าง)
   List<Map<String, dynamic>> get _ingredients {
     final raw = meal?['ingredients'];
     if (raw is List) {
@@ -207,6 +209,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
     return [];
   }
 
+  // บันทึกรายการวัตถุดิบ (อัปเดตจอก่อน แล้วบันทึกฐานข้อมูล)
   Future<void> _saveIngredients(List<Map<String, dynamic>> updated) async {
     setState(() {
       meal = {...?meal, 'ingredients': updated};
@@ -215,7 +218,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
     try {
       await supabase
           .from('weekly_meals')
-          .update({'ingredients': updated})
+          .update({'ingredients': updated}) // บันทึกลงฐานข้อมูล
           .eq('id', widget.mealId);
     } catch (e) {
       if (!mounted) return;
@@ -225,14 +228,16 @@ class _CookMealScreenState extends State<CookMealScreen> {
     }
   }
 
+  // แตะแถววัตถุดิบ -> สลับติ๊ก
   void _toggleChecked(int index, bool value) {
     final updated = _ingredients;
     updated[index] = {...updated[index], 'checked': value};
     _saveIngredients(updated);
   }
 
+  // ป๊อปอัปแก้รายการวัตถุดิบ (ชื่อ + ปริมาณ)
   Future<void> _editIngredientsDialog() async {
-    final controllers = _ingredients
+    final controllers = _ingredients // สร้างช่องกรอกให้ทุกวัตถุดิบเดิม
         .map(
           (e) => {
             'name': TextEditingController(text: e['name']?.toString() ?? ''),
@@ -246,23 +251,23 @@ class _CookMealScreenState extends State<CookMealScreen> {
     await showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
+        return StatefulBuilder( // ให้ป๊อปอัปวาดใหม่ได้ตอนเพิ่ม/ลบแถว
           builder: (context, setDialogState) {
             return AlertDialog(
               title: const Text("แก้ไขวัตถุดิบที่ต้องใช้"),
               content: SizedBox(
-                width: double.maxFinite,
+                width: double.maxFinite, // [UI] กว้างเต็มป๊อปอัป
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       ...List.generate(controllers.length, (i) {
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.only(bottom: 10), // [UI] ระยะใต้แถว
                           child: Row(
                             children: [
                               Expanded(
-                                flex: 3,
+                                flex: 3, // [UI] ช่องชื่อกว้าง 3 ส่วน
                                 child: TextField(
                                   controller:
                                       controllers[i]['name']
@@ -272,9 +277,9 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 8), // [UI] ระยะระหว่างช่อง
                               Expanded(
-                                flex: 2,
+                                flex: 2, // [UI] ช่องปริมาณกว้าง 2 ส่วน
                                 child: TextField(
                                   controller:
                                       controllers[i]['quantity']
@@ -287,12 +292,12 @@ class _CookMealScreenState extends State<CookMealScreen> {
                               IconButton(
                                 icon: const Icon(
                                   Icons.close,
-                                  size: 18,
-                                  color: Colors.red,
+                                  size: 18, // [UI] ไอคอน X ขนาด 18
+                                  color: Colors.red, // [UI] สีแดง
                                 ),
                                 onPressed: () {
                                   setDialogState(() {
-                                    controllers.removeAt(i);
+                                    controllers.removeAt(i); // ลบแถวนี้
                                   });
                                 },
                               ),
@@ -303,7 +308,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                       TextButton.icon(
                         onPressed: () {
                           setDialogState(() {
-                            controllers.add({
+                            controllers.add({ // เพิ่มแถวว่าง
                               'name': TextEditingController(),
                               'quantity': TextEditingController(),
                             });
@@ -326,10 +331,10 @@ class _CookMealScreenState extends State<CookMealScreen> {
                     // เก็บสถานะติ๊กเดิมไว้ถ้าชื่อวัตถุดิบไม่เปลี่ยน ไม่งั้นเริ่มใหม่
                     final existing = _ingredients;
                     final updated = controllers
-                        .map((c) {
+                        .map((c) { // แปลงช่องกรอกเป็นวัตถุดิบ
                           final name = (c['name'] as TextEditingController).text
                               .trim();
-                          final prev = existing.firstWhere(
+                          final prev = existing.firstWhere( // หาข้อมูลเดิมของชื่อนี้
                             (e) => (e['name']?.toString() ?? '') == name,
                             orElse: () => {},
                           );
@@ -345,20 +350,20 @@ class _CookMealScreenState extends State<CookMealScreen> {
                             'quantity': (c['quantity'] as TextEditingController)
                                 .text
                                 .trim(),
-                            'checked': prev['checked'] == true,
+                            'checked': prev['checked'] == true, // คงสถานะติ๊กเดิม
                             if (toBuy) ShoppingSuggestion.toBuyKey: true,
                           };
                         })
-                        .where((e) => (e['name'] as String).isNotEmpty)
+                        .where((e) => (e['name'] as String).isNotEmpty) // ตัดแถวที่ไม่มีชื่อ
                         .toList();
                     // วัตถุดิบเปลี่ยนจริง (ชื่อ/ปริมาณ/จำนวนรายการ) -> แคลอรี/โปรตีน
                     // ไม่ตรงแล้ว ติดธงไว้ให้ผู้ใช้กด "คำนวณใหม่"
                     String key(Map e) =>
                         '${e['name']}|${(e['quantity'] ?? '').toString().trim()}';
-                    final changed =
+                    final changed = // รายการเปลี่ยนจริงไหม
                         existing.map(key).join('\n') !=
                         updated.map(key).join('\n');
-                    final wasStale = MealNutrition.isStale(meal);
+                    final wasStale = MealNutrition.isStale(meal); // เดิมติดธงอยู่แล้วไหม
                     if (changed || wasStale) {
                       // จำ "ค่าเดิม" (วัตถุดิบ + แคลอรี/โปรตีนก่อนแก้ครั้งแรก) ไว้
                       // ให้ตอนคำนวณใหม่ ปรับจากค่าเดิมตามส่วนที่เปลี่ยน
@@ -369,13 +374,13 @@ class _CookMealScreenState extends State<CookMealScreen> {
                           (wasStale
                               ? null
                               : MealNutrition.snapshot(meal, existing));
-                      for (final e in updated) {
+                      for (final e in updated) { // ติดธง "ต้องคำนวณใหม่" ทุกแถว
                         e[MealNutrition.staleKey] = true;
                         if (base != null) e[MealNutrition.baseKey] = base;
                       }
                     }
-                    Navigator.pop(context);
-                    _saveIngredients(updated);
+                    Navigator.pop(context); // ปิดป๊อปอัป
+                    _saveIngredients(updated); // บันทึก
                   },
                   child: const Text("บันทึก"),
                 ),
@@ -387,6 +392,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
     );
   }
 
+  // ป๊อปอัปแก้ขั้นตอน (กล่องข้อความหลายบรรทัด)
   Future<void> _editStepsDialog() async {
     final controller = TextEditingController(
       text: meal?['steps']?.toString() ?? '',
@@ -399,10 +405,10 @@ class _CookMealScreenState extends State<CookMealScreen> {
           title: const Text("แก้ไขขั้นตอนการทำ"),
           content: TextField(
             controller: controller,
-            maxLines: 8,
+            maxLines: 8, // [UI] สูง 8 บรรทัด
             decoration: const InputDecoration(
               hintText: "กรุณาเพิ่มขั้นตอนการทำอาหาร...",
-              border: OutlineInputBorder(),
+              border: OutlineInputBorder(), // [UI] กรอบรอบช่อง
             ),
           ),
           actions: [
@@ -416,11 +422,11 @@ class _CookMealScreenState extends State<CookMealScreen> {
                 Navigator.pop(context);
 
                 setState(() {
-                  meal = {...?meal, 'steps': text};
+                  meal = {...?meal, 'steps': text}; // อัปเดตจอก่อน
                 });
 
                 try {
-                  await supabase
+                  await supabase // บันทึกลงฐานข้อมูล
                       .from('weekly_meals')
                       .update({'steps': text})
                       .eq('id', widget.mealId);
@@ -442,15 +448,15 @@ class _CookMealScreenState extends State<CookMealScreen> {
   // แยกตัวเลขปริมาณออกจากข้อความ เช่น "1 ชิ้น" -> 1, "1/2 หัว" -> 0.5
   // เพื่อเอาไปหักออกจากจำนวนจริงในตู้เย็น
   double _parseQuantityAmount(String qtyText) {
-    final match = RegExp(
+    final match = RegExp( // หาเศษส่วน
       r'(\d+(\.\d+)?)\s*/\s*(\d+(\.\d+)?)',
     ).firstMatch(qtyText);
     if (match != null) {
       final numerator = double.tryParse(match.group(1) ?? '') ?? 0;
       final denominator = double.tryParse(match.group(3) ?? '') ?? 1;
-      return denominator == 0 ? 0 : numerator / denominator;
+      return denominator == 0 ? 0 : numerator / denominator; // กันหารด้วย 0
     }
-    final single = RegExp(r'\d+(\.\d+)?').firstMatch(qtyText);
+    final single = RegExp(r'\d+(\.\d+)?').firstMatch(qtyText); // ไม่มีเศษส่วน -> ตัวเลขแรก
     return double.tryParse(single?.group(0) ?? '') ?? 0;
   }
 
@@ -464,21 +470,21 @@ class _CookMealScreenState extends State<CookMealScreen> {
     List<Map<String, dynamic>> fridgeItems,
     List<DeductChoice> choices,
   ) async {
-    int deducted = 0;
-    List<String> notFound = [];
-    List<String> errors = [];
+    int deducted = 0; // นับที่หักสำเร็จ
+    List<String> notFound = []; // ชื่อที่หาไม่เจอ
+    List<String> errors = []; // error ตอนบันทึก
 
     // หักตามปริมาณที่ผู้ใช้ยืนยันแบบ FIFO: ลอตที่ใกล้หมดอายุ/เก่าที่สุดก่อน
     // ถ้าลอตนั้นไม่พอก็หักลอตถัดไปต่อจนครบ (ดู fridge_stock.dart) วัตถุดิบชิ้น
     // ไหนอัปเดตไม่ผ่าน ชิ้นอื่นยังหักต่อได้ตามปกติ
     for (final choice in choices) {
       if (choice.amount == null) {
-        notFound.add(choice.name);
+        notFound.add(choice.name); // ไม่มีในตู้
         continue;
       }
       if (choice.amount! <= 0) continue; // ผู้ใช้เลือก "ไม่ได้ใช้"
 
-      final result = await deductIngredientFifo(
+      final result = await deductIngredientFifo( // หักแบบ FIFO
         supabase: supabase,
         inventory: fridgeItems,
         name: choice.name,
@@ -490,13 +496,14 @@ class _CookMealScreenState extends State<CookMealScreen> {
       } else if (result.error != null) {
         errors.add("${choice.name}: ${result.error}");
       } else {
-        deducted++;
+        deducted++; // สำเร็จ
       }
     }
 
     return (deducted: deducted, notFound: notFound, errors: errors);
   }
 
+  // กด "ทำแล้ว": ยืนยันจำนวน -> จองสถานะ "ทำแล้ว" -> หักวัตถุดิบ
   Future<void> _markAsCooked() async {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -505,7 +512,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
     // ค่าเริ่มต้นตามที่แผนบอก — กดยกเลิกก็ไม่บันทึก/ไม่หักอะไรเลย
     final List<Map<String, dynamic>> fridgeItems;
     try {
-      fridgeItems = List<Map<String, dynamic>>.from(
+      fridgeItems = List<Map<String, dynamic>>.from( // ดึงของในตู้ล่าสุด
         await supabase.from('fridge_items').select().eq('user_id', user.id),
       );
     } catch (e) {
@@ -517,13 +524,13 @@ class _CookMealScreenState extends State<CookMealScreen> {
     }
     if (!mounted) return;
 
-    final choices = await showDeductConfirmSheet(
+    final choices = await showDeductConfirmSheet( // เปิดแผ่นยืนยันจำนวนที่ใช้
       context,
       inventory: fridgeItems,
       requests: [
         for (final ing in _ingredients)
           if ((ing['name']?.toString() ?? '').trim().isNotEmpty)
-            DeductRequest(
+            DeductRequest( // คำขอหักวัตถุดิบ 1 รายการ
               name: ing['name'].toString(),
               suggested: _parseQuantityAmount(
                 ing['quantity']?.toString() ?? '',
@@ -536,9 +543,9 @@ class _CookMealScreenState extends State<CookMealScreen> {
             ),
       ],
     );
-    if (choices == null || !mounted) return;
+    if (choices == null || !mounted) return; // กดยกเลิก -> ไม่ทำอะไร
 
-    setState(() => saving = true);
+    setState(() => saving = true); // เริ่มบันทึก
 
     // จองสถานะ "ทำแล้ว" ก่อนหักของ — อัปเดตเฉพาะเมื่อยังไม่เคยทำ (เงื่อนไขอยู่ใน
     // คำสั่งเดียวกัน) ถ้าไม่มีแถวถูกอัปเดต แปลว่ามื้อนี้ทำไปแล้ว (เปิดหน้าค้างไว้,
@@ -547,10 +554,10 @@ class _CookMealScreenState extends State<CookMealScreen> {
     try {
       claimed = await supabase
           .from('weekly_meals')
-          .update({'is_cooked': true})
+          .update({'is_cooked': true}) // ตั้งเป็นทำแล้ว
           .eq('id', widget.mealId)
-          .not('is_cooked', 'is', true)
-          .select('id');
+          .not('is_cooked', 'is', true) // เฉพาะที่ยังไม่เคยทำ
+          .select('id'); // ขอ id กลับมาเช็คว่าอัปเดตจริง
     } catch (e) {
       if (mounted) {
         setState(() => saving = false);
@@ -560,7 +567,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
       }
       return;
     }
-    if (claimed.isEmpty) {
+    if (claimed.isEmpty) { // ไม่มีแถวถูกอัปเดต = ทำไปแล้ว
       if (!mounted) return;
       setState(() {
         saving = false;
@@ -569,14 +576,14 @@ class _CookMealScreenState extends State<CookMealScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("มื้อนี้ทำไปแล้ว ไม่ได้หักวัตถุดิบซ้ำ"),
-          backgroundColor: Colors.orange,
+          backgroundColor: Colors.orange, // [UI] แถบส้ม
         ),
       );
       return;
     }
 
     try {
-      final result = await _deductFridgeIngredients(fridgeItems, choices);
+      final result = await _deductFridgeIngredients(fridgeItems, choices); // หักวัตถุดิบ
 
       if (!mounted) return;
 
@@ -585,33 +592,33 @@ class _CookMealScreenState extends State<CookMealScreen> {
       Color bgColor;
       if (result.errors.isNotEmpty) {
         message = "หักวัตถุดิบไม่สำเร็จบางรายการ: ${result.errors.join(' | ')}";
-        bgColor = Colors.red;
+        bgColor = Colors.red; // [UI] แดง
       } else if (result.deducted == 0) {
         message = result.notFound.isEmpty
             ? "บันทึกว่าทำแล้ว ไม่ได้หักวัตถุดิบออกจากตู้เย็น"
             : "บันทึกว่าทำแล้ว แต่หาวัตถุดิบในคลังไม่เจอ: "
                   "${result.notFound.join(', ')}";
-        bgColor = Colors.orange;
+        bgColor = Colors.orange; // [UI] ส้ม
       } else if (result.notFound.isNotEmpty) {
         message =
             "หักวัตถุดิบไปแล้ว ${result.deducted} รายการ "
             "แต่หาไม่เจอในคลัง: ${result.notFound.join(', ')}";
-        bgColor = Colors.orange;
+        bgColor = Colors.orange; // [UI] ส้ม
       } else {
         message = "ทำอาหารเสร็จสิ้น! หักวัตถุดิบเรียบร้อยแล้ว 🍲";
-        bgColor = Colors.green;
+        bgColor = Colors.green; // [UI] เขียว
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: bgColor),
       );
-      Navigator.pop(context, true);
+      Navigator.pop(context, true); // ปิดหน้า ส่ง true
     } catch (e) {
       // หักของล้มเหลวทั้งก้อน -> คืนสถานะ "ยังไม่ทำ" ให้กดใหม่ได้
       try {
         await supabase
             .from('weekly_meals')
-            .update({'is_cooked': false})
+            .update({'is_cooked': false}) // คืนสถานะยังไม่ทำ
             .eq('id', widget.mealId);
       } catch (_) {}
       if (!mounted) return;
@@ -619,25 +626,26 @@ class _CookMealScreenState extends State<CookMealScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text("บันทึกไม่สำเร็จ: $e")));
     } finally {
-      if (mounted) setState(() => saving = false);
+      if (mounted) setState(() => saving = false); // หยุดโหลด
     }
   }
 
+  // กด "คำนวณใหม่" -> ให้ AI คำนวณแคลอรี/โปรตีนใหม่
   Future<void> _recalculateNutrition() async {
     final current = meal;
     if (current == null) return;
-    setState(() => recalculating = true);
+    setState(() => recalculating = true); // เริ่มโหลด
     try {
-      final updated = await MealNutrition.recalculate(current);
+      final updated = await MealNutrition.recalculate(current); // ให้ AI คำนวณและบันทึก
       if (!mounted) return;
-      setState(() => meal = {...?meal, ...updated});
+      setState(() => meal = {...?meal, ...updated}); // อัปเดตจอ
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             "คำนวณใหม่แล้ว ✅ ${updated['calories']} kcal · "
             "โปรตีน ${updated['protein']} g",
           ),
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.green, // [UI] แถบเขียว
         ),
       );
     } catch (e) {
@@ -647,7 +655,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
           content: Text(
             geminiErrorMessage(e, fallback: 'คำนวณค่าโภชนาการไม่สำเร็จ'),
           ),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red, // [UI] แถบแดง
         ),
       );
     } finally {
@@ -657,15 +665,15 @@ class _CookMealScreenState extends State<CookMealScreen> {
 
   /// การ์ดพลังงาน/โปรตีนของมื้อนี้ + เตือนเมื่อแก้วัตถุดิบแล้วค่ายังเป็นของเมนูเดิม
   Widget _nutritionCard() {
-    final stale = MealNutrition.isStale(meal);
+    final stale = MealNutrition.isStale(meal); // ค่าโภชนาการเก่าไหม
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(14), // [UI] ระยะในการ์ด
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white, // [UI] พื้นขาว
+        borderRadius: BorderRadius.circular(16), // [UI] มุมโค้ง
         border: stale
-            ? Border.all(color: const Color(0xffE67E22), width: 1.4)
+            ? Border.all(color: const Color(0xffE67E22), width: 1.4) // [UI] ค่าเก่า = ขอบส้มหนา 1.4
             : null,
       ),
       child: Column(
@@ -676,45 +684,45 @@ class _CookMealScreenState extends State<CookMealScreen> {
               Text(
                 "${meal?['calories'] ?? 0} kcal",
                 style: const TextStyle(
-                  color: Colors.orange,
+                  color: Colors.orange, // [UI] แคลอรีสีส้ม
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 16, // [UI] ขนาด 16
                 ),
               ),
-              const SizedBox(width: 20),
+              const SizedBox(width: 20), // [UI] ระยะระหว่างแคลอรีกับโปรตีน
               Text(
                 "โปรตีน ${meal?['protein'] ?? 0} g",
                 style: const TextStyle(
-                  color: Colors.blue,
+                  color: Colors.blue, // [UI] โปรตีนสีฟ้า
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
               ),
-              const Spacer(),
+              const Spacer(), // ดันปุ่มไปชิดขวา
               // ยังไม่ได้แก้วัตถุดิบก็คำนวณใหม่ได้ เผื่อตัวเลขจากตอนสร้างแพลนไม่สมจริง
               // (คำนวณจากวัตถุดิบจริงทั้งหมด) — มื้อที่แก้แล้วใช้ปุ่มใหญ่ด้านล่างแทน
               if (!stale)
                 recalculating
                     ? const SizedBox(
-                        width: 18,
+                        width: 18, // [UI] ขนาดวงหมุน
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : TextButton.icon(
                         onPressed: _recalculateNutrition,
                         style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
+                          visualDensity: VisualDensity.compact, // [UI] ปุ่มกระชับ
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
                         icon: const Icon(
                           Icons.refresh_rounded,
-                          size: 18,
+                          size: 18, // [UI] ไอคอนรีเฟรช ขนาด 18
                           color: Color(0xff5189C9),
                         ),
                         label: const Text(
                           "คำนวณใหม่",
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 13, // [UI] ขนาด 13
                             color: Color(0xff5189C9),
                             fontWeight: FontWeight.bold,
                           ),
@@ -726,11 +734,11 @@ class _CookMealScreenState extends State<CookMealScreen> {
             const SizedBox(height: 8),
             const Text(
               "⚠️ แก้วัตถุดิบแล้ว ค่าโภชนาการยังเป็นของเมนูเดิม",
-              style: TextStyle(fontSize: 13, color: Color(0xffB85C00)),
+              style: TextStyle(fontSize: 13, color: Color(0xffB85C00)), // [UI] ขนาด 13 สีส้มเข้ม
             ),
             const SizedBox(height: 8),
             SizedBox(
-              width: double.infinity,
+              width: double.infinity, // [UI] ปุ่มกว้างเต็ม
               child: OutlinedButton.icon(
                 onPressed: recalculating ? null : _recalculateNutrition,
                 icon: recalculating
@@ -739,16 +747,16 @@ class _CookMealScreenState extends State<CookMealScreen> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.auto_awesome_outlined, size: 18),
+                    : const Icon(Icons.auto_awesome_outlined, size: 18), // [UI] ไอคอนประกาย ขนาด 18
                 label: Text(
                   recalculating ? "กำลังคำนวณ..." : "คำนวณแคลอรีและโปรตีนใหม่",
                 ),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xffB85C00),
-                  side: const BorderSide(color: Color(0xffE67E22), width: 1.4),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  foregroundColor: const Color(0xffB85C00), // [UI] สีตัวอักษรส้มเข้ม
+                  side: const BorderSide(color: Color(0xffE67E22), width: 1.4), // [UI] ขอบส้มหนา 1.4
+                  padding: const EdgeInsets.symmetric(vertical: 12), // [UI] ความสูงปุ่ม
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(12), // [UI] มุมโค้ง 12
                   ),
                   textStyle: const TextStyle(fontWeight: FontWeight.w600),
                 ),
@@ -762,65 +770,65 @@ class _CookMealScreenState extends State<CookMealScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dayLabel = _dayThai[meal?['day']] ?? '';
-    final mealType = meal?['meal_type']?.toString() ?? '';
-    final foodName = meal?['food_name']?.toString() ?? '';
-    final ingredients = _ingredients;
-    final checkedCount = ingredients.where((e) => e['checked'] == true).length;
-    final steps = meal?['steps']?.toString() ?? '';
-    final stepLines = steps
+    final dayLabel = _dayThai[meal?['day']] ?? ''; // ชื่อวันภาษาไทย
+    final mealType = meal?['meal_type']?.toString() ?? ''; // ชื่อมื้อ
+    final foodName = meal?['food_name']?.toString() ?? ''; // ชื่อเมนู
+    final ingredients = _ingredients; // วัตถุดิบ
+    final checkedCount = ingredients.where((e) => e['checked'] == true).length; // จำนวนที่ติ๊กแล้ว
+    final steps = meal?['steps']?.toString() ?? ''; // ขั้นตอน (ข้อความ)
+    final stepLines = steps // แยกเป็นบรรทัด ตัดบรรทัดว่าง
         .split('\n')
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xffD8EEFF),
+      backgroundColor: const Color(0xffD8EEFF), // [UI] สีพื้นหลัง
       body: SafeArea(
         child: loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator()) // กำลังโหลด
             : Column(
                 children: [
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 15), // [UI] ระยะจากขอบบน
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20), // [UI] ระยะซ้ายขวา
                     child: Row(
                       children: [
                         InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          onTap: () => Navigator.pop(context),
+                          onTap: () => Navigator.pop(context), // ย้อนกลับ
                           child: Container(
-                            height: 45,
+                            height: 45, // [UI] ขนาดปุ่ม 45x45
                             width: 45,
                             decoration: BoxDecoration(
-                              color: const Color(0xfffff7d0),
+                              color: const Color(0xfffff7d0), // [UI] สีครีม
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: const Center(child: BackIcon(size: 20)),
+                            child: const Center(child: BackIcon(size: 20)), // [UI] ไอคอนย้อนกลับ
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Container(
-                            height: 50,
+                            height: 50, // [UI] ความสูงแคปซูล
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7D0),
-                              borderRadius: BorderRadius.circular(25),
+                              color: const Color(0xFFFFF7D0), // [UI] สีครีม
+                              borderRadius: BorderRadius.circular(25), // [UI] ทรงแคปซูล
                             ),
                             child: Row(
                               children: [
-                                const CalendarIcon(size: 20),
+                                const CalendarIcon(size: 20), // [UI] ไอคอนปฏิทิน
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     widget.previewOnly
                                         ? "ดูสูตร $mealType $dayLabel"
                                         : "ทำอาหาร $mealType $dayLabel",
-                                    overflow: TextOverflow.ellipsis,
+                                    overflow: TextOverflow.ellipsis, // [UI] ยาวเกินตัดเป็น ...
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w500,
-                                      fontSize: 16,
+                                      fontSize: 16, // [UI] ขนาดชื่อหน้า
                                       color: Colors.black87,
                                     ),
                                   ),
@@ -832,7 +840,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 20), // [UI] ระยะห่างหัวกับเนื้อหา
                   Expanded(
                     // ให้ดึงลงเพื่อรีเฟรชได้ทุกเมื่อ เผื่อของในคลังถูกแก้ไข
                     // จากหน้าจออื่นระหว่างที่ค้างอยู่หน้านี้ (เช่น หักสต็อก
@@ -840,36 +848,36 @@ class _CookMealScreenState extends State<CookMealScreen> {
                     // "สถานะวัตถุดิบ" ที่ตรงกับของจริงเสมอ ไม่ใช่แค่ตอนเปิด
                     // หน้าครั้งแรกเท่านั้น
                     child: RefreshIndicator(
-                      onRefresh: _loadMeal,
+                      onRefresh: _loadMeal, // ดึงลงเพื่อโหลดใหม่
                       child: ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(horizontal: 20), // [UI] ระยะซ้ายขวา
                         children: [
                           // ชื่อเมนู — กล่องขาวตรงกลาง ตามดีไซน์เดียวกับหน้า
                           // สูตรอาหารที่บันทึกไว้ (recipe_detail_screen.dart)
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            padding: const EdgeInsets.symmetric(vertical: 14), // [UI] ระยะในบนล่าง
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
+                              color: Colors.white, // [UI] พื้นขาว
+                              borderRadius: BorderRadius.circular(16), // [UI] มุมโค้ง
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               foodName,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 16, // [UI] ขนาดชื่อเมนู
                                 fontWeight: FontWeight.bold,
                                 color: Colors.black87,
                               ),
                             ),
                           ),
                           const SizedBox(height: 12),
-                          _nutritionCard(),
+                          _nutritionCard(), // การ์ดโภชนาการ
                           const SizedBox(height: 20),
 
                           // สถานะวัตถุดิบ (แถบความคืบหน้า ของจริงจากฐานข้อมูล)
-                          RecipeStatusBar(
+                          RecipeStatusBar( // แถบสถานะวัตถุดิบ
                             label: "สถานะวัตถุดิบ",
                             have: checkedCount,
                             total: ingredients.length,
@@ -879,14 +887,14 @@ class _CookMealScreenState extends State<CookMealScreen> {
                           // วัตถุดิบที่ต้องใช้
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(16), // [UI] ระยะในการ์ด
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
+                              color: Colors.white, // [UI] พื้นขาว
+                              borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                               boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black12,
-                                  blurRadius: 5,
+                                  blurRadius: 5, // [UI] ความฟุ้งเงา
                                   offset: Offset(0, 2),
                                 ),
                               ],
@@ -900,29 +908,29 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                   children: [
                                     Container(
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
+                                        horizontal: 14, // [UI] ระยะในป้าย
                                         vertical: 8,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFFF7D0),
+                                        color: const Color(0xFFFFF7D0), // [UI] สีป้าย (ครีม)
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: const Text(
                                         "วัตถุดิบที่ต้องใช้",
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                          fontSize: 14, // [UI] ขนาดป้าย
                                           color: Colors.black87,
                                         ),
                                       ),
                                     ),
-                                    EditPillButton(
+                                    EditPillButton( // ปุ่มแก้ไขวัตถุดิบ
                                       onTap: _editIngredientsDialog,
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 14),
-                                if (ingredients.isEmpty)
+                                if (ingredients.isEmpty) // ไม่มีวัตถุดิบ
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                       vertical: 4,
@@ -930,20 +938,20 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                     child: Text(
                                       "ยังไม่มีวัตถุดิบ กด \"แก้ไข\" เพื่อเพิ่ม",
                                       style: TextStyle(
-                                        color: Colors.grey.shade600,
+                                        color: Colors.grey.shade600, // [UI] สีเทา
                                       ),
                                     ),
                                   )
                                 else
-                                  ...List.generate(ingredients.length, (index) {
+                                  ...List.generate(ingredients.length, (index) { // แถววัตถุดิบ
                                     final ing = ingredients[index];
                                     final checked = ing['checked'] == true;
                                     return InkWell(
-                                      onTap: () =>
+                                      onTap: () => // แตะสลับติ๊ก
                                           _toggleChecked(index, !checked),
                                       child: Padding(
                                         padding: const EdgeInsets.only(
-                                          bottom: 10.0,
+                                          bottom: 10.0, // [UI] ระยะใต้แถว
                                         ),
                                         child: Row(
                                           mainAxisAlignment:
@@ -952,9 +960,9 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                             Row(
                                               children: [
                                                 SizedBox(
-                                                  width: 20,
+                                                  width: 20, // [UI] ช่องไอคอนกว้าง 20
                                                   child: checked
-                                                      ? const CheckIcon(
+                                                      ? const CheckIcon( // [UI] ติ๊กถูก ขนาด 18
                                                           size: 18,
                                                         )
                                                       : null,
@@ -963,7 +971,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                                 Text(
                                                   ing['name']?.toString() ?? '',
                                                   style: const TextStyle(
-                                                    fontSize: 15,
+                                                    fontSize: 15, // [UI] ขนาดชื่อ
                                                     color: Colors.black87,
                                                   ),
                                                 ),
@@ -972,7 +980,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                             Text(
                                               ing['quantity']?.toString() ?? '',
                                               style: TextStyle(
-                                                color: Colors.grey.shade700,
+                                                color: Colors.grey.shade700, // [UI] ปริมาณสีเทา
                                               ),
                                             ),
                                           ],
@@ -988,14 +996,14 @@ class _CookMealScreenState extends State<CookMealScreen> {
                           // ขั้นตอนการทำ
                           Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.all(16),
+                            padding: const EdgeInsets.all(16), // [UI] ระยะในการ์ด
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                               boxShadow: const [
                                 BoxShadow(
                                   color: Colors.black12,
-                                  blurRadius: 5,
+                                  blurRadius: 5, // [UI] ความฟุ้งเงา
                                   offset: Offset(0, 2),
                                 ),
                               ],
@@ -1013,40 +1021,40 @@ class _CookMealScreenState extends State<CookMealScreen> {
                                         vertical: 8,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFFFF7D0),
+                                        color: const Color(0xFFFFF7D0), // [UI] สีป้าย
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: const Text(
                                         "ขั้นตอนการทำ",
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                          fontSize: 14, // [UI] ขนาดป้าย
                                           color: Colors.black87,
                                         ),
                                       ),
                                     ),
-                                    EditPillButton(onTap: _editStepsDialog),
+                                    EditPillButton(onTap: _editStepsDialog), // ปุ่มแก้ไขขั้นตอน
                                   ],
                                 ),
                                 const SizedBox(height: 14),
-                                if (stepLines.isEmpty)
+                                if (stepLines.isEmpty) // ยังไม่มีขั้นตอน
                                   Text(
                                     "กรุณาเพิ่มขั้นตอนการทำอาหาร...",
                                     style: TextStyle(
-                                      color: Colors.grey.shade500,
+                                      color: Colors.grey.shade500, // [UI] สีเทา
                                     ),
                                   )
                                 else
-                                  ...stepLines.map((step) {
+                                  ...stepLines.map((step) { // แสดงขั้นตอนทีละบรรทัด
                                     return Padding(
                                       padding: const EdgeInsets.only(
-                                        bottom: 12.0,
+                                        bottom: 12.0, // [UI] ระยะใต้แต่ละขั้น
                                       ),
                                       child: Text(
                                         step,
                                         style: const TextStyle(
-                                          fontSize: 15,
-                                          height: 1.5,
+                                          fontSize: 15, // [UI] ขนาดตัวอักษร
+                                          height: 1.5, // [UI] ระยะบรรทัด 1.5
                                           color: Colors.black87,
                                         ),
                                       ),
@@ -1055,7 +1063,7 @@ class _CookMealScreenState extends State<CookMealScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(height: 100),
+                          const SizedBox(height: 100), // [UI] ระยะว่างท้าย (กันโดนแถบปุ่มบัง)
                         ],
                       ),
                     ),
@@ -1070,41 +1078,41 @@ class _CookMealScreenState extends State<CookMealScreen> {
           // ทำไปแล้ว -> ไม่มีปุ่ม "ทำแล้ว" ให้กดซ้ำ (กันหักวัตถุดิบซ้ำ)
           ? SafeArea(
               child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                margin: const EdgeInsets.fromLTRB(20, 10, 20, 20), // [UI] ระยะรอบกล่อง
+                padding: const EdgeInsets.symmetric(vertical: 14), // [UI] ระยะในบนล่าง
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(25),
+                  color: Colors.white, // [UI] พื้นขาว
+                  borderRadius: BorderRadius.circular(25), // [UI] มุมโค้ง
                 ),
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle, color: Color(0xff3F9142)),
+                    Icon(Icons.check_circle, color: Color(0xff3F9142)), // [UI] ไอคอนติ๊กสีเขียว
                     SizedBox(width: 8),
                     Text(
                       "ทำมื้อนี้แล้ว (หักวัตถุดิบไปแล้ว)",
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(fontWeight: FontWeight.bold), // [UI] ตัวหนา
                     ),
                   ],
                 ),
               ),
             )
           : Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20), // [UI] ระยะรอบแถบปุ่ม
               child: Row(
                 children: [
                   Expanded(
                     child: SizedBox(
-                      height: 48,
+                      height: 48, // [UI] ความสูงปุ่ม
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
-                          backgroundColor: const Color(0xFFE0E0E0),
+                          backgroundColor: const Color(0xFFE0E0E0), // [UI] ปุ่มยกเลิกสีเทา
                           side: BorderSide.none,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
+                            borderRadius: BorderRadius.circular(25), // [UI] ทรงแคปซูล
                           ),
                         ),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () => Navigator.pop(context), // ยกเลิก = ออกจากหน้า
                         child: const Text(
                           "ยกเลิก",
                           style: TextStyle(
@@ -1118,26 +1126,26 @@ class _CookMealScreenState extends State<CookMealScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: SizedBox(
-                      height: 48,
+                      height: 48, // [UI] ความสูงปุ่ม
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFF7D0),
+                          backgroundColor: const Color(0xFFFFF7D0), // [UI] ปุ่ม "ทำแล้ว" สีครีม
                           foregroundColor: Colors.black87,
-                          elevation: 0,
+                          elevation: 0, // [UI] ไม่มีเงา
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(25),
                           ),
                         ),
-                        onPressed: saving ? null : _markAsCooked,
+                        onPressed: saving ? null : _markAsCooked, // กำลังบันทึก = กดไม่ได้
                         icon: saving
                             ? const SizedBox(
-                                width: 16,
+                                width: 16, // [UI] ขนาดวงหมุน
                                 height: 16,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Icon(Icons.check, size: 18),
+                            : const Icon(Icons.check, size: 18), // [UI] ไอคอนติ๊ก ขนาด 18
                         label: const Text(
                           "ทำแล้ว",
                           style: TextStyle(fontWeight: FontWeight.bold),

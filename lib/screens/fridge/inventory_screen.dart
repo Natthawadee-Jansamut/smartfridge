@@ -1,18 +1,19 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:test_app/screens/fridge/item_detail_screen.dart';
-import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart';
-import 'package:test_app/screens/ingredient_scan/result_screen.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล
+import 'package:test_app/screens/fridge/item_detail_screen.dart'; // หน้ารายละเอียดวัตถุดิบ
+import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart'; // หน้าสแกนวัตถุดิบ
+import 'package:test_app/screens/ingredient_scan/result_screen.dart'; // หน้ากรอกวัตถุดิบ
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
 import 'package:test_app/utils/category_icons.dart';
 import 'package:test_app/utils/fridge_age.dart';
 import 'package:test_app/utils/shelf_life.dart';
-import 'package:test_app/widgets/overdue_notice.dart';
-import 'package:test_app/widgets/shelf_days_dialog.dart';
-import 'package:test_app/services/fridge_stock.dart';
-import 'package:test_app/services/notification_service.dart';
+import 'package:test_app/widgets/overdue_notice.dart'; // กล่องเตือนของเกินกำหนด
+import 'package:test_app/widgets/shelf_days_dialog.dart'; // หน้าต่างแก้ระยะเก็บ
+import 'package:test_app/services/fridge_stock.dart'; // ต่อเวลา
+import 'package:test_app/services/notification_service.dart'; // ตั้งแจ้งเตือนใหม่
 
+// หน้า "คลัง" ตู้เย็น: ดูของตามหมวดหมู่ ค้นหา ปรับจำนวน ลบ
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
 
@@ -21,30 +22,31 @@ class InventoryScreen extends StatefulWidget {
 }
 
 class _InventoryScreenState extends State<InventoryScreen> {
-  String? _selectedCategory;
-  List<Map<String, dynamic>> _inventoryItems = [];
-  bool _isLoading = true;
+  String? _selectedCategory; // หมวดหมู่ที่เปิดดูอยู่ (null = หน้ารวมหมวดหมู่)
+  List<Map<String, dynamic>> _inventoryItems = []; // ของในตู้ทั้งหมด
+  bool _isLoading = true; // กำลังโหลดไหม
 
   // ช่องค้นหาวัตถุดิบด้านบน — เดิมเป็นแค่ TextField เปล่าๆ พิมพ์แล้วไม่มีอะไร
   // เกิดขึ้นเลย ตอนนี้ผูกกับ state จริง พิมพ์แล้วต้องกรองรายการวัตถุดิบจริง
   // จากคลังให้ขึ้นมา
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
+  String _searchQuery = ''; // คำค้นหาปัจจุบัน
 
   @override
   void initState() {
     super.initState();
-    _fetchInventoryData();
+    _fetchInventoryData(); // เปิดหน้ามาโหลดของในตู้
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController.dispose(); // ปิดหน้า คืนหน่วยความจำช่องค้นหา
     super.dispose();
   }
 
+  // ดึงของในตู้ทั้งหมดจากฐานข้อมูล
   Future<void> _fetchInventoryData() async {
-    setState(() => _isLoading = true);
+    setState(() => _isLoading = true); // เริ่มโหลด
     try {
       final response = await Supabase.instance.client
           .from('fridge_items')
@@ -56,7 +58,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
       // เรียงแบบ FIFO: ลอตที่ใกล้หมดอายุ/เก่าที่สุดขึ้นก่อนในแต่ละหมวดหมู่
       final items = List<Map<String, dynamic>>.from(response)
-        ..sort(compareFifo);
+        ..sort(compareFifo); // เรียงแบบ FIFO (ใกล้หมดอายุก่อน)
 
       setState(() {
         _inventoryItems = items;
@@ -72,22 +74,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text("เกิดข้อผิดพลาดในการดึงข้อมูล: $e"),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.red, // [UI] แถบสีแดง
           ),
         );
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false); // โหลดเสร็จ
     }
   }
 
+  // ลบวัตถุดิบ 1 ชิ้นแล้วโหลดใหม่
   Future<void> _deleteItem(String id) async {
     try {
       await Supabase.instance.client
           .from('fridge_items')
           .delete()
           .eq('item_id', id); // อ้างอิงตาม item_id
-      _fetchInventoryData();
+      _fetchInventoryData(); // โหลดรายการใหม่
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -99,21 +102,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
   // ต้องอ้างอิงตาม เพื่อไม่ให้ชุดอิโมจิหมวดหมู่เพี้ยนไปคนละหน้า)
   String _getCategoryIcon(String category) => categoryEmoji(category);
 
-  num _toNum(dynamic v) =>
+  num _toNum(dynamic v) => // แปลงค่าเป็นตัวเลข
       v is num ? v : num.tryParse(v?.toString() ?? '') ?? 0;
 
-  String _formatQty(num v) =>
+  String _formatQty(num v) => // แสดงตัวเลข: จำนวนเต็มไม่มีทศนิยม, ไม่งั้น 1 ตำแหน่ง
       v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
 
   // ปรับลด/เพิ่มปริมาณคงเหลือเองแบบ Manual (Manual Override) ให้ตรงกับของจริง
   // ถ้าลดจนเหลือ 0 จะถามก่อนว่าจะลบลอตนี้ออกจากตู้เย็นเลยไหม
   Future<void> _adjustQuantity(Map<String, dynamic> item, num delta) async {
-    final id = item['item_id'].toString();
-    final current = _toNum(item['quantity']);
-    num next = current + delta;
-    if (next < 0) next = 0;
+    final id = item['item_id'].toString(); // id ของชิ้นนี้
+    final current = _toNum(item['quantity']); // จำนวนตอนนี้
+    num next = current + delta; // จำนวนใหม่
+    if (next < 0) next = 0; // ไม่ให้ติดลบ
 
-    if (next <= 0) {
+    if (next <= 0) { // ลดจนเหลือ 0 -> ถามว่าจะลบทิ้งไหม
       final confirm = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -131,15 +134,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ],
         ),
       );
-      if (confirm == true) await _deleteItem(id);
+      if (confirm == true) await _deleteItem(id); // ยืนยัน -> ลบ
       return;
     }
 
     // ปุ่ม + ใช้คืนจำนวนที่กดลดไป (เช่นกดลบผิด) ได้ไม่เกินปริมาณทั้งหมดตอนเก็บ
     // ไม่ไปเพิ่ม "ทั้งหมด" ให้เอง — ถ้าซื้อมาเพิ่มจริงควรสแกนเป็นลอตใหม่ ส่วน
     // ถ้าจำนวนตั้งต้นผิด ให้แก้ "ทั้งหมด" ในหน้ารายละเอียด
-    final maxQty = _toNum(item['max_quantity']);
-    if (maxQty > 0 && next > maxQty) {
+    final maxQty = _toNum(item['max_quantity']); // จำนวนสูงสุดตอนเก็บเข้าตู้
+    if (maxQty > 0 && next > maxQty) { // เกินจำนวนตอนเก็บ -> ไม่ให้เพิ่ม แจ้งเตือนแทน
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -153,20 +156,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
       return;
     }
 
-    final update = <String, dynamic>{'quantity': next};
-    setState(() => item['quantity'] = next);
+    final update = <String, dynamic>{'quantity': next}; // ค่าที่จะบันทึก
+    setState(() => item['quantity'] = next); // อัปเดตหน้าจอทันที (ไม่ต้องรอฐานข้อมูล)
 
     try {
       await Supabase.instance.client
           .from('fridge_items')
-          .update(update)
+          .update(update) // บันทึกลงฐานข้อมูล
           .eq('item_id', id);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("ปรับจำนวนไม่สำเร็จ: $e")));
-      _fetchInventoryData();
+      _fetchInventoryData(); // บันทึกไม่ได้ -> โหลดของจริงกลับมา
       return;
     }
 
@@ -179,10 +182,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
           "${item['name'] ?? 'วัตถุดิบ'} เหลือ ${_formatQty(next)} "
           "${item['unit'] ?? ''}",
         ),
-        duration: const Duration(seconds: 4),
-        action: SnackBarAction(
+        duration: const Duration(seconds: 4), // [UI] แถบแสดง 4 วินาที
+        action: SnackBarAction( // ปุ่ม "เลิกทำ" บนแถบข้อความ
           label: "เลิกทำ",
-          onPressed: () => _adjustQuantity(item, current - next),
+          onPressed: () => _adjustQuantity(item, current - next), // กดเลิกทำ = ปรับกลับเท่าเดิม
         ),
       ),
     );
@@ -190,11 +193,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    bool isCategoryView = _selectedCategory == null;
-    final Set<String> uniqueCategories = _inventoryItems
+    bool isCategoryView = _selectedCategory == null; // ยังไม่ได้เลือกหมวด = หน้ารวมหมวดหมู่
+    final Set<String> uniqueCategories = _inventoryItems // รายชื่อหมวดที่มีของ (ไม่ซ้ำ)
         .map((item) => (item['category'] ?? 'อื่นๆ').toString())
         .toSet();
-    final List<Map<String, dynamic>> displayedItems = isCategoryView
+    final List<Map<String, dynamic>> displayedItems = isCategoryView // ของที่จะแสดง: ทั้งหมด หรือเฉพาะหมวดที่เลือก
         ? _inventoryItems
         : _inventoryItems
               .where(
@@ -204,102 +207,102 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     // ถ้ามีการพิมพ์ค้นหา ให้ค้นจากชื่อวัตถุดิบทั้งหมดในคลังจริง (ไม่สนใจว่า
     // ตอนนี้อยู่ในมุมมองหมวดหมู่ไหน) เทียบแบบไม่สนตัวพิมพ์เล็ก/ใหญ่
-    final String trimmedQuery = _searchQuery.trim().toLowerCase();
-    final bool isSearching = trimmedQuery.isNotEmpty;
-    final List<Map<String, dynamic>> searchResults = isSearching
+    final String trimmedQuery = _searchQuery.trim().toLowerCase(); // คำค้นแบบตัวพิมพ์เล็ก
+    final bool isSearching = trimmedQuery.isNotEmpty; // กำลังค้นหาไหม
+    final List<Map<String, dynamic>> searchResults = isSearching // ผลค้นหา (ชื่อมีคำค้น)
         ? _inventoryItems.where((item) {
             final name = (item['name']?.toString() ?? '').toLowerCase();
             return name.contains(trimmedQuery);
           }).toList()
         : <Map<String, dynamic>>[];
 
-    int totalItems = isCategoryView
+    int totalItems = isCategoryView // จำนวนรายการ
         ? _inventoryItems.length
         : displayedItems.length;
-    int nearExpiryCount = 0;
-    int expiredCount = 0;
+    int nearExpiryCount = 0; // จำนวนใกล้ครบกำหนด
+    int expiredCount = 0; // จำนวนเกินกำหนด
 
     // ของที่ใช้หมดแล้ว (เหลือ 0 ชิ้น) ไม่ควรถูกนับทั้ง "ใกล้หมดอายุ" และ
     // "หมดแล้ว" เพราะไม่มีของเหลือให้ต้องพูดถึงวันหมดอายุอีกต่อไป (ปกติแล้ว
     // พอเหลือ 0 ตอนทำอาหาร ระบบจะลบรายการนี้ออกจากคลังไปเลย)
-    for (var item in (isCategoryView ? _inventoryItems : displayedItems)) {
-      if (isUsedUp(item)) continue;
-      final diff = daysLeft(item);
+    for (var item in (isCategoryView ? _inventoryItems : displayedItems)) { // นับใกล้/เกินกำหนด
+      if (isUsedUp(item)) continue; // หมดแล้ว ข้าม
+      final diff = daysLeft(item); // เหลืออีกกี่วัน
       if (diff == null) continue;
       if (diff < 0) {
-        expiredCount++;
-      } else if (diff <= 3) {
+        expiredCount++; // ติดลบ = เกินกำหนด
+      } else if (diff <= 3) { // 0-3 วัน = ใกล้ครบกำหนด (แก้เลข 3 เพื่อเปลี่ยนเกณฑ์)
         nearExpiryCount++;
       }
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFD8EEFF),
-      bottomNavigationBar: const AppBottomNav(current: AppTab.inventory),
+      backgroundColor: const Color(0xFFD8EEFF), // [UI] สีพื้นหลัง
+      bottomNavigationBar: const AppBottomNav(current: AppTab.inventory), // แถบเมนูล่าง ไฮไลต์ "คลัง"
       body: SafeArea(
-        child: RefreshIndicator(
+        child: RefreshIndicator( // ดึงลงเพื่อรีเฟรช
           onRefresh: _fetchInventoryData,
-          color: Colors.blue,
+          color: Colors.blue, // [UI] สีวงหมุนตอนรีเฟรช
           child: Column(
             children: [
-              const SizedBox(height: 15),
+              const SizedBox(height: 15), // [UI] ระยะจากขอบบน
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                padding: const EdgeInsets.symmetric(horizontal: 20.0), // [UI] ระยะซ้ายขวา
                 child: Row(
                   children: [
-                    if (!isCategoryView) ...[
+                    if (!isCategoryView) ...[ // อยู่ในหมวด -> มีปุ่มย้อนกลับไปหน้ารวมหมวด
                       Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7D0),
-                          borderRadius: BorderRadius.circular(20),
+                          color: const Color(0xFFFFF7D0), // [UI] สีปุ่ม
+                          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                         ),
                         child: IconButton(
-                          icon: const BackIcon(size: 24),
+                          icon: const BackIcon(size: 24), // [UI] ไอคอนย้อนกลับ
                           onPressed: () =>
-                              setState(() => _selectedCategory = null),
+                              setState(() => _selectedCategory = null), // กลับไปหน้ารวมหมวด
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 10), // [UI] ระยะปุ่มกับช่องค้นหา
                     ],
                     Expanded(
                       child: Container(
-                        height: 50,
+                        height: 50, // [UI] ความสูงช่องค้นหา
                         // สีเดียวกับแถบหัวข้อของหน้าอื่นๆ ในแอป (เหลืองอ่อน)
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7D0),
-                          borderRadius: BorderRadius.circular(25),
+                          color: const Color(0xFFFFF7D0), // [UI] สีช่อง (ครีม)
+                          borderRadius: BorderRadius.circular(25), // [UI] ทรงแคปซูล
                         ),
-                        child: TextField(
+                        child: TextField( // ช่องค้นหา
                           controller: _searchController,
                           onChanged: (value) =>
-                              setState(() => _searchQuery = value),
+                              setState(() => _searchQuery = value), // พิมพ์แล้วกรองทันที
                           decoration: InputDecoration(
-                            hintText: isCategoryView
+                            hintText: isCategoryView // ข้อความจางในช่อง = ชื่อหน้า/ชื่อหมวด
                                 ? "วัตถุดิบทั้งหมด"
                                 : _selectedCategory,
                             hintStyle: const TextStyle(
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.bold, // [UI] ตัวหนา
                               color: Colors.black87,
                             ),
                             prefixIcon: const Padding(
-                              padding: EdgeInsets.all(14),
-                              child: ListIcon(size: 20),
+                              padding: EdgeInsets.all(14), // [UI] ระยะรอบไอคอน
+                              child: ListIcon(size: 20), // [UI] ไอคอนรายการ ขนาด 20
                             ),
                             suffixIcon: _searchQuery.isEmpty
-                                ? const Icon(Icons.search, color: Colors.black)
+                                ? const Icon(Icons.search, color: Colors.black) // ยังไม่พิมพ์ = แว่นขยาย, พิมพ์แล้ว = ปุ่ม X
                                 : IconButton(
                                     icon: const Icon(
                                       Icons.close,
                                       color: Colors.black,
                                     ),
                                     onPressed: () {
-                                      _searchController.clear();
+                                      _searchController.clear(); // ล้างคำค้น
                                       setState(() => _searchQuery = '');
                                     },
                                   ),
-                            border: InputBorder.none,
+                            border: InputBorder.none, // [UI] ไม่มีเส้นขอบ
                             contentPadding: const EdgeInsets.symmetric(
-                              vertical: 13,
+                              vertical: 13, // [UI] ระยะในบนล่าง
                             ),
                           ),
                         ),
@@ -308,23 +311,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 20), // [UI] ระยะห่างก่อนกล่องสรุป
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20.0),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  padding: const EdgeInsets.symmetric(vertical: 15), // [UI] ระยะในกล่องสรุปบนล่าง
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white, // [UI] พื้นขาว
+                    borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                   ),
-                  child: IntrinsicHeight(
+                  child: IntrinsicHeight( // ให้เส้นคั่นสูงเท่ากล่อง
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly, // [UI] กระจาย 3 ช่องเท่าๆ กัน
                       children: [
                         _buildStatColumn("$totalItems", "รายการ"),
                         const VerticalDivider(
-                          color: Colors.grey,
-                          thickness: 0.5,
+                          color: Colors.grey, // [UI] เส้นคั่นสีเทา
+                          thickness: 0.5, // [UI] ความหนาเส้นคั่น
                         ),
                         _buildStatColumn("$nearExpiryCount", "ใกล้ครบกำหนด"),
                         const VerticalDivider(
@@ -340,9 +343,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
               const SizedBox(height: 20),
               // ในหน้า inventory_screen.dart ส่วนของ build method
               Expanded(
-                child: _isLoading
+                child: _isLoading // กำลังโหลด
                     ? const Center(
-                        child: CircularProgressIndicator(color: Colors.blue),
+                        child: CircularProgressIndicator(color: Colors.blue), // [UI] วงหมุนสีฟ้า
                       )
                     : isSearching
                     // 🔍 กำลังพิมพ์ค้นหา — โชว์ผลลัพธ์ที่ตรงกับคำค้นจากของ
@@ -353,19 +356,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 "ไม่พบวัตถุดิบที่ค้นหา",
                                 style: TextStyle(
                                   color: Colors.black54,
-                                  fontSize: 16,
+                                  fontSize: 16, // [UI] ขนาด 16
                                 ),
                               ),
                             )
                           : ListView(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
+                                horizontal: 20, // [UI] ระยะซ้ายขวา
                               ),
                               children: [
                                 ...searchResults.map(
-                                  (item) => _buildItemCard(context, item),
+                                  (item) => _buildItemCard(context, item), // การ์ดผลค้นหา
                                 ),
-                                const SizedBox(height: 30),
+                                const SizedBox(height: 30), // [UI] ระยะว่างท้าย
                               ],
                             ))
                     : _inventoryItems
@@ -373,14 +376,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ? const Center(
                         child: Text(
                           "ยังไม่มีวัตถุดิบในตู้เย็น", // ข้อความนี้จะขึ้นเมื่อไม่มีของ
-                          style: TextStyle(color: Colors.black54, fontSize: 16),
+                          style: TextStyle(color: Colors.black54, fontSize: 16), // [UI] สีเทา ขนาด 16
                         ),
                       )
                     : ListView(
                         // 🚀 ถ้ามีของค่อยแสดง ListView
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         children: [
-                          if (isCategoryView)
+                          if (isCategoryView) // หน้ารวม -> การ์ดหมวดหมู่
                             ...uniqueCategories.map(
                               (cat) => _buildCategoryCard(
                                 cat,
@@ -388,11 +391,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               ),
                             )
                           else
-                            ...displayedItems.map(
+                            ...displayedItems.map( // ในหมวด -> การ์ดวัตถุดิบ
                               (item) => _buildItemCard(context, item),
                             ),
                           const SizedBox(height: 10),
-                          isCategoryView
+                          isCategoryView // ปุ่มเพิ่มด้านล่าง (หน้ารวม = เพิ่มหมวด, ในหมวด = เพิ่มวัตถุดิบ)
                               ? _buildAddButton(
                                   "+ เพิ่มหมวดหมู่",
                                   () => _showAddCategorySheet(uniqueCategories),
@@ -409,13 +412,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  // ช่องตัวเลขสรุป 1 ช่อง
   Widget _buildStatColumn(String number, String label) {
     return Column(
       children: [
         Text(
           number,
           style: const TextStyle(
-            fontSize: 18,
+            fontSize: 18, // [UI] ขนาดตัวเลข
             fontWeight: FontWeight.bold,
             color: Colors.black87,
           ),
@@ -423,31 +427,32 @@ class _InventoryScreenState extends State<InventoryScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: Colors.black87),
+          style: const TextStyle(fontSize: 12, color: Colors.black87), // [UI] ขนาดชื่อช่อง
         ),
       ],
     );
   }
 
+  // การ์ดหมวดหมู่ (กดเพื่อเข้าไปดูของในหมวด)
   Widget _buildCategoryCard(String name, String icon) {
     return GestureDetector(
-      onTap: () => setState(() => _selectedCategory = name),
+      onTap: () => setState(() => _selectedCategory = name), // กดแล้วเลือกหมวดนี้
       child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 25),
+        margin: const EdgeInsets.only(bottom: 15), // [UI] ระยะใต้การ์ด
+        padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 25), // [UI] ระยะใน ซ้ายขวา 30 บนล่าง 25
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7D0),
-          borderRadius: BorderRadius.circular(20),
+          color: const Color(0xFFFFF7D0), // [UI] สีการ์ด (ครีม)
+          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
         ),
         child: Row(
           children: [
-            Text(icon, style: const TextStyle(fontSize: 35)),
-            const SizedBox(width: 20),
+            Text(icon, style: const TextStyle(fontSize: 35)), // [UI] อิโมจิขนาด 35
+            const SizedBox(width: 20), // [UI] ระยะอิโมจิกับชื่อ
             Text(
               name,
               style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
+                fontSize: 20, // [UI] ขนาดชื่อหมวด
+                fontWeight: FontWeight.w600, // [UI] กึ่งหนา
                 color: Colors.black87,
               ),
             ),
@@ -461,7 +466,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   // (หน่วยที่ใช้หักต่างจากที่ตรวจพบ) เช่น "ซื้อมา 1 แพ็ค แบ่งเป็น 3 ส่วน"
   String? _detectedText(Map<String, dynamic> item) {
     final detectedUnit = item['detected_unit']?.toString();
-    if (detectedUnit == null || detectedUnit == item['unit']?.toString()) {
+    if (detectedUnit == null || detectedUnit == item['unit']?.toString()) { // หน่วยเดียวกับที่ตรวจพบ ไม่ต้องแสดง
       return null;
     }
     final detectedQty = _formatQty(_toNum(item['detected_quantity']));
@@ -471,13 +476,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   // ผู้ใช้ตรวจแล้วว่ายังใช้ได้ ต่อเวลาให้ "เก็บได้อีก X วัน" (ดู extendShelfLife)
   Future<void> _extend(Map<String, dynamic> item, int days) async {
-    try {
+    try { // ต่อเวลาในฐานข้อมูล
       await extendShelfLife(
         supabase: Supabase.instance.client,
         item: item,
         moreDays: days,
       );
-      await _fetchInventoryData();
+      await _fetchInventoryData(); // โหลดใหม่
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -492,12 +497,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  // [UI] สีพื้นป้ายวันหมดอายุ: ≤1 วัน = ชมพู, ≤3 วัน = ส้มอ่อน, นอกนั้น = เขียวอ่อน
   Color _expiryBadgeColor(int days) {
     if (days <= 1) return const Color(0xFFFADBD8);
     if (days <= 3) return const Color(0xFFFFE0B2);
     return const Color(0xFFDCF3DC);
   }
 
+  // [UI] สีตัวอักษรป้าย: ≤1 วัน = แดง, ≤3 วัน = ส้ม, นอกนั้น = เขียว
   Color _expiryTextColor(int days) {
     if (days <= 1) return const Color(0xffD64545);
     if (days <= 3) return const Color(0xffE67E22);
@@ -508,53 +515,53 @@ class _InventoryScreenState extends State<InventoryScreen> {
   // อยู่ในตู้เย็นมาแล้วกี่วัน, แถบปริมาณคงเหลือ "เหลือ 2 จาก 3 ส่วน (67%)",
   // ป้ายวันหมดอายุ และปุ่ม -/+ ปรับปริมาณคงเหลือเอง
   Widget _buildItemCard(BuildContext context, Map<String, dynamic> item) {
-    String id = item['item_id'].toString();
-    String name = item['name'] ?? 'ไม่ระบุชื่อ';
-    String icon = _getCategoryIcon(item['category'] ?? '');
+    String id = item['item_id'].toString(); // id
+    String name = item['name'] ?? 'ไม่ระบุชื่อ'; // ชื่อ
+    String icon = _getCategoryIcon(item['category'] ?? ''); // อิโมจิหมวด
     final category = item['category']?.toString() ?? 'อื่นๆ';
-    final storage = item['storage']?.toString();
-    final unit = item['unit']?.toString() ?? '';
+    final storage = item['storage']?.toString(); // ช่องที่เก็บ
+    final unit = item['unit']?.toString() ?? ''; // หน่วย
 
-    final qty = _toNum(item['quantity']);
-    num maxQty = _toNum(item['max_quantity']);
-    if (maxQty < qty) maxQty = qty;
-    final ratio = maxQty > 0 ? (qty / maxQty).clamp(0.0, 1.0) : 0.0;
-    final percent = (ratio * 100).round();
-    const segments = 8;
-    final filled = (ratio * segments).round();
+    final qty = _toNum(item['quantity']); // เหลือเท่าไหร่
+    num maxQty = _toNum(item['max_quantity']); // ทั้งหมดตอนเก็บ
+    if (maxQty < qty) maxQty = qty; // กันข้อมูลแปลก (เหลือมากกว่าทั้งหมด)
+    final ratio = maxQty > 0 ? (qty / maxQty).clamp(0.0, 1.0) : 0.0; // สัดส่วนที่เหลือ 0-1
+    final percent = (ratio * 100).round(); // เปอร์เซ็นต์ที่เหลือ
+    const segments = 8; // [UI] จำนวนช่องของแถบปริมาณ (แก้เลขเพื่อให้ละเอียดขึ้น/ลดลง)
+    final filled = (ratio * segments).round(); // จำนวนช่องที่ระบายสี
 
-    final expiryDays = daysLeft(item);
+    final expiryDays = daysLeft(item); // เหลืออีกกี่วัน
 
     return GestureDetector(
-      onTap: () {
+      onTap: () { // กดการ์ด -> หน้ารายละเอียด
         Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => ItemDetailScreen(itemData: item, itemId: id),
           ),
-        ).then((_) => _fetchInventoryData());
+        ).then((_) => _fetchInventoryData()); // กลับมาแล้วโหลดใหม่
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 15),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 15), // [UI] ระยะใต้การ์ด
+        padding: const EdgeInsets.all(16), // [UI] ระยะในการ์ด
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7D0),
-          borderRadius: BorderRadius.circular(20),
+          color: const Color(0xFFFFF7D0), // [UI] สีการ์ด (ครีม)
+          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              height: 56,
+              height: 56, // [UI] ขนาดกล่องอิโมจิ
               width: 56,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                color: Colors.white, // [UI] พื้นขาว
+                borderRadius: BorderRadius.circular(16), // [UI] มุมโค้ง 16
               ),
-              child: Text(icon, style: const TextStyle(fontSize: 30)),
+              child: Text(icon, style: const TextStyle(fontSize: 30)), // [UI] อิโมจิขนาด 30
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 12), // [UI] ระยะอิโมจิกับข้อความ
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -566,29 +573,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         child: Text(
                           name,
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 18, // [UI] ขนาดชื่อวัตถุดิบ
                             fontWeight: FontWeight.bold,
                             color: Colors.black87,
                           ),
                         ),
                       ),
-                      if (expiryDays != null)
+                      if (expiryDays != null) // มีข้อมูลวันหมดอายุถึงแสดงป้าย
                         Container(
-                          margin: const EdgeInsets.only(left: 6),
+                          margin: const EdgeInsets.only(left: 6), // [UI] ห่างจากชื่อ 6
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
+                            horizontal: 10, // [UI] ระยะในป้ายซ้ายขวา
+                            vertical: 4, // [UI] ระยะในป้ายบนล่าง
                           ),
                           decoration: BoxDecoration(
-                            color: _expiryBadgeColor(expiryDays),
-                            borderRadius: BorderRadius.circular(12),
+                            color: _expiryBadgeColor(expiryDays), // [UI] สีพื้นป้ายตามจำนวนวัน
+                            borderRadius: BorderRadius.circular(12), // [UI] มุมโค้ง 12
                           ),
                           child: Text(
                             expiryText(expiryDays),
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 12, // [UI] ขนาดตัวอักษรป้าย
                               fontWeight: FontWeight.bold,
-                              color: _expiryTextColor(expiryDays),
+                              color: _expiryTextColor(expiryDays), // [UI] สีตัวอักษรตามจำนวนวัน
                             ),
                           ),
                         ),
@@ -600,7 +607,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ? category
                         : "$category · ${storageEmoji(storage)} ${storageLabel(storage)}",
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 13, // [UI] ขนาด 13
                       fontWeight: FontWeight.w600,
                       color: Colors.black87,
                     ),
@@ -612,7 +619,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         children: [
                           const Icon(
                             Icons.schedule,
-                            size: 15,
+                            size: 15, // [UI] ไอคอนนาฬิกา ขนาด 15
                             color: Color(0xff5189C9),
                           ),
                           const SizedBox(width: 4),
@@ -622,7 +629,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xff5189C9),
+                                color: Color(0xff5189C9), // [UI] สีฟ้า
                               ),
                             ),
                           ),
@@ -630,16 +637,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       ),
                     ),
                   // เกินระยะที่เก็บได้แล้ว: คำแนะนำตามชนิดของ และปุ่ม "ตรวจแล้วยังใช้ได้"
-                  if (expiryDays != null && expiryDays < 0)
+                  if (expiryDays != null && expiryDays < 0) // เกินกำหนดแล้วเท่านั้นถึงแสดงกล่องเตือน
                     Padding(
                       padding: const EdgeInsets.only(top: 6, bottom: 2),
                       child: OverdueNotice(
                         item: item,
-                        onExtend: (days) => _extend(item, days),
+                        onExtend: (days) => _extend(item, days), // กด +N วัน -> ต่อเวลา
                       ),
                     ),
                   // ที่มาของระยะที่เก็บได้ + ปุ่มแก้ (เช่นกด +วันผิด จะได้แก้กลับได้)
-                  if (displayShelfDays(item) != null)
+                  if (displayShelfDays(item) != null) // มีข้อมูลระยะเก็บถึงแสดง
                     Row(
                       children: [
                         Expanded(
@@ -655,16 +662,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         TextButton.icon(
                           style: TextButton.styleFrom(
                             visualDensity: VisualDensity.compact,
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 6), // [UI] ระยะในปุ่ม "แก้"
                           ),
                           onPressed: () async {
-                            if (await editShelfDaysDialog(context, item)) {
+                            if (await editShelfDaysDialog(context, item)) { // เปิดหน้าต่างแก้ระยะเก็บ บันทึกแล้วโหลดใหม่
                               _fetchInventoryData();
                             }
                           },
                           icon: const Icon(
                             Icons.edit_outlined,
-                            size: 15,
+                            size: 15, // [UI] ไอคอนดินสอ ขนาด 15
                             color: Color(0xff5189C9),
                           ),
                           label: const Text(
@@ -678,7 +685,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ),
                       ],
                     ),
-                  if (_detectedText(item) != null)
+                  if (_detectedText(item) != null) // ของที่แบ่งเป็นส่วน -> บอกว่าซื้อมาเท่าไหร่
                     Text(
                       _detectedText(item)!,
                       style: const TextStyle(
@@ -689,18 +696,18 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      for (int i = 0; i < segments; i++)
+                      for (int i = 0; i < segments; i++) // สร้างแถบปริมาณทีละช่อง
                         Expanded(
                           child: Container(
-                            height: 6,
+                            height: 6, // [UI] ความสูงแถบ
                             margin: EdgeInsets.only(
-                              right: i == segments - 1 ? 0 : 3,
+                              right: i == segments - 1 ? 0 : 3, // [UI] ช่องว่างระหว่างช่อง 3 (ช่องสุดท้ายไม่มี)
                             ),
                             decoration: BoxDecoration(
-                              color: i < filled
-                                  ? const Color(0xff8BCB6A)
+                              color: i < filled // ช่องที่ระบาย = เขียว, ที่เหลือ = เทาจาง
+                                  ? const Color(0xff8BCB6A) // [UI] สีเขียวของแถบ
                                   : Colors.black12,
-                              borderRadius: BorderRadius.circular(3),
+                              borderRadius: BorderRadius.circular(3), // [UI] มุมโค้ง
                             ),
                           ),
                         ),
@@ -713,23 +720,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         child: Text(
                           "เหลือ ${_formatQty(qty)} จาก ${_formatQty(maxQty)} $unit ($percent%)",
                           style: const TextStyle(
-                            fontSize: 13,
+                            fontSize: 13, // [UI] ขนาดข้อความ
                             color: Colors.black87,
                           ),
                         ),
                       ),
                       _buildQtyButton(
                         Icons.remove,
-                        () => _adjustQuantity(item, -1),
+                        () => _adjustQuantity(item, -1), // ปุ่ม − ลดทีละ 1
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 6), // [UI] ระยะห่างปุ่ม
                       _buildQtyButton(
                         Icons.add,
-                        () => _adjustQuantity(item, 1),
+                        () => _adjustQuantity(item, 1), // ปุ่ม + เพิ่มทีละ 1
                       ),
                       const SizedBox(width: 6),
                       GestureDetector(
-                        onTap: () {
+                        onTap: () { // กดถังขยะ -> ถามยืนยัน
                           showDialog(
                             context: context,
                             builder: (context) => AlertDialog(
@@ -743,7 +750,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 TextButton(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    _deleteItem(id);
+                                    _deleteItem(id); // ลบจริง
                                   },
                                   child: const Text(
                                     "ลบ",
@@ -755,9 +762,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                           );
                         },
                         child: const Icon(
-                          Icons.delete,
+                          Icons.delete, // [UI] ไอคอนถังขยะ
                           color: Colors.black87,
-                          size: 24,
+                          size: 24, // [UI] ขนาด 24
                         ),
                       ),
                     ],
@@ -771,38 +778,40 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  // ปุ่ม − / + ปรับจำนวน
   Widget _buildQtyButton(IconData icon, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        width: 30,
+        width: 30, // [UI] ขนาดปุ่ม 30x30
         height: 30,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFFFD191)),
+          color: Colors.white, // [UI] พื้นขาว
+          borderRadius: BorderRadius.circular(10), // [UI] มุมโค้ง 10
+          border: Border.all(color: const Color(0xFFFFD191)), // [UI] ขอบส้มอ่อน
         ),
-        child: Icon(icon, size: 18, color: Colors.black87),
+        child: Icon(icon, size: 18, color: Colors.black87), // [UI] ไอคอนขนาด 18
       ),
     );
   }
 
+  // ปุ่ม "+ เพิ่ม..." ใหญ่ด้านล่าง
   Widget _buildAddButton(String text, VoidCallback onTap) {
     return Material(
-      color: const Color(0xFFFFF7D0),
-      borderRadius: BorderRadius.circular(20),
+      color: const Color(0xFFFFF7D0), // [UI] สีปุ่ม (ครีม)
+      borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 25),
+          padding: const EdgeInsets.symmetric(vertical: 25), // [UI] ความสูงปุ่ม (ระยะบนล่าง 25)
           child: Center(
             child: Text(
               text,
               style: const TextStyle(
-                fontSize: 18,
+                fontSize: 18, // [UI] ขนาดตัวอักษร
                 fontWeight: FontWeight.bold,
                 color: Colors.black87,
               ),
@@ -823,10 +832,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
         builder: (_) => ResultScreen(
           foundItems: [],
           manual: true,
-          initialCategory: category,
-        ),
+          initialCategory: category, // โหมดกรอกเอง
+        ), // ตั้งหมวดไว้ให้
       ),
-    ).then((_) => _fetchInventoryData());
+    ).then((_) => _fetchInventoryData()); // กลับมาแล้วโหลดใหม่
   }
 
   /// "+ เพิ่มวัตถุดิบ": ไปหน้าสแกนวัตถุดิบ (ในหน้านั้นเลือกถ่ายภาพ/คลังรูป/กรอกเองได้)
@@ -837,6 +846,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     ).then((_) => _fetchInventoryData());
   }
 
+  // ตัวเลือก 1 แถวในแผ่นเมนูด้านล่าง
   Widget _sheetOption({
     required Widget leading,
     required String title,
@@ -848,32 +858,33 @@ class _InventoryScreenState extends State<InventoryScreen> {
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: subtitle == null ? null : Text(subtitle),
       onTap: () {
-        Navigator.pop(context);
-        onTap();
+        Navigator.pop(context); // ปิดแผ่นก่อน
+        onTap(); // แล้วทำงานที่เลือก
       },
     );
   }
 
+  // เปิดแผ่นเมนูเลื่อนขึ้นจากด้านล่าง
   Future<void> _showSheet(String title, List<Widget> options) {
     return showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Colors.white, // [UI] พื้นขาว
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)), // [UI] มุมบนโค้ง 24
       ),
       builder: (_) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 16), // [UI] ระยะบนล่างในแผ่น
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), // [UI] ระยะรอบหัวข้อ
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 18, // [UI] ขนาดหัวข้อ
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -889,8 +900,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   /// "+ เพิ่มหมวดหมู่": หมวดหมู่เป็นชุดตายตัว (fixedCategories) และจะแสดงเมื่อมี
   /// วัตถุดิบอย่างน้อย 1 ชิ้น จึงให้เลือกหมวดที่ยังไม่มี แล้วกรอกวัตถุดิบชิ้นแรก
   void _showAddCategorySheet(Set<String> shown) {
-    final missing = fixedCategories.where((c) => !shown.contains(c)).toList();
-    if (missing.isEmpty) {
+    final missing = fixedCategories.where((c) => !shown.contains(c)).toList(); // หมวดที่ยังไม่มีของ
+    if (missing.isEmpty) { // มีครบทุกหมวดแล้ว
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("มีวัตถุดิบครบทุกหมวดหมู่แล้ว")),
       );
@@ -901,14 +912,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
         padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
         child: Text(
           "หมวดหมู่จะแสดงในคลังเมื่อมีวัตถุดิบอย่างน้อย 1 ชิ้น",
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: Colors.black54), // [UI] ข้อความสีเทา
         ),
       ),
       for (final c in missing)
         _sheetOption(
-          leading: Text(categoryEmoji(c), style: const TextStyle(fontSize: 24)),
+          leading: Text(categoryEmoji(c), style: const TextStyle(fontSize: 24)), // [UI] อิโมจิขนาด 24
           title: c,
-          onTap: () => _openManualEntry(c),
+          onTap: () => _openManualEntry(c), // เลือกหมวด -> เปิดฟอร์มกรอกวัตถุดิบชิ้นแรก
         ),
     ]);
   }

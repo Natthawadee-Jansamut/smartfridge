@@ -1,5 +1,6 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล/ผู้ใช้
+// หน้าที่ไปต่อได้จากหน้าหลัก
 import 'package:test_app/screens/profile/profile_screen.dart';
 import 'package:test_app/screens/ingredient_scan/image_scanning_screen.dart';
 import 'package:test_app/screens/fridge/inventory_screen.dart';
@@ -7,9 +8,10 @@ import 'package:test_app/screens/menu_generator/ai_recipe_screen.dart';
 import 'package:test_app/screens/meal_plan/plan_menu_screen.dart';
 import 'package:test_app/screens/notification/expiration_alert_screen.dart';
 import 'package:test_app/screens/recipe_scan/scan_recipe_screen.dart';
-import 'package:test_app/services/notification_service.dart';
-import 'package:test_app/utils/fridge_age.dart';
+import 'package:test_app/services/notification_service.dart'; // เช็คว่าแอปเปิดจากการกดแจ้งเตือนไหม
+import 'package:test_app/utils/fridge_age.dart'; // นับวันที่เหลือ
 
+// หน้าหลักของแอป: หัว (ชื่อผู้ใช้) + กล่องสรุปจำนวนของ + ตะแกรงเมนู 6 ปุ่ม
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
 
@@ -21,23 +23,23 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   // ดึงชื่อ User จาก Supabase
   final supabase = Supabase.instance.client;
 
-  String userName = "User";
-  int totalItems = 0;
+  String userName = "User"; // ชื่อที่แสดงบนหัว
+  int totalItems = 0; // จำนวนของทั้งหมดในตู้
 
-  int nearExpiryItems = 0;
+  int nearExpiryItems = 0; // จำนวนของใกล้ครบกำหนด
 
-  int expiredItems = 0;
+  int expiredItems = 0; // จำนวนของเกินกำหนด
 
   @override
   void initState() {
     super.initState();
 
-    loadUser();
-    loadExpiryStatus();
+    loadUser(); // โหลดชื่อ
+    loadExpiryStatus(); // โหลดตัวเลขสรุป
 
     // แอปถูกเปิดจากการกดแจ้งเตือน (ตอนแอปปิดอยู่) -> พาไปหน้าแจ้งเตือนเลย
     if (NotificationService.takeOpenAlertsOnLaunch()) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { // รอหน้าจอวาดเสร็จก่อน
         if (!mounted) return;
         Navigator.push(
           context,
@@ -48,12 +50,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   @override
-  void didChangeDependencies() {
+  void didChangeDependencies() { // ทำงานเมื่อข้อมูลที่หน้านี้พึ่งพาเปลี่ยน
     super.didChangeDependencies();
 
     loadUser();
   }
 
+  // โหลดชื่อ-นามสกุลของผู้ใช้
   Future<void> loadUser() async {
     final session = supabase.auth.currentSession;
 
@@ -62,7 +65,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       return;
     }
 
-    final response = await supabase.auth.getUser();
+    final response = await supabase.auth.getUser(); // ขอข้อมูลผู้ใช้ล่าสุด
 
     final user = response.user;
 
@@ -89,26 +92,26 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     }
 
     final response = await supabase
-        .from('fridge_items')
+        .from('fridge_items') // ดึงของในตู้ทั้งหมด
         .select()
         .eq('user_id', user.id);
 
-    int total = response.length;
+    int total = response.length; // นับทั้งหมด
 
     int near = 0;
 
     int expired = 0;
 
-    for (var item in response) {
-      if (isUsedUp(item)) continue;
+    for (var item in response) { // ไล่นับทีละชิ้น
+      if (isUsedUp(item)) continue; // หมดแล้ว ไม่นับ
 
-      final diff = daysLeft(item);
+      final diff = daysLeft(item); // เหลืออีกกี่วัน
       if (diff == null) continue;
 
       if (diff < 0) {
-        expired++;
+        expired++; // ติดลบ = เกินกำหนด
       } else if (diff <= 3) {
-        near++;
+        near++; // เหลือ 0-3 วัน = ใกล้ครบกำหนด (แก้เลข 3 เพื่อเปลี่ยนเกณฑ์)
       }
     }
 
@@ -126,45 +129,45 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffD8EEFF),
+      backgroundColor: const Color(0xffD8EEFF), // [UI] สีพื้นหลัง (ฟ้าอ่อน)
 
       body: SafeArea(
-        child: LayoutBuilder(
+        child: LayoutBuilder( // รู้ขนาดจอ เพื่อคำนวณขนาดของต่างๆ เป็นสัดส่วนของจอ (จอเล็ก/ใหญ่ดูเหมือนกัน)
           builder: (context, size) {
-            final screenHeight = size.maxHeight;
+            final screenHeight = size.maxHeight; // ความสูงจอที่ใช้ได้
 
-            final screenWidth = size.maxWidth;
+            final screenWidth = size.maxWidth; // ความกว้างจอ
 
             return Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: screenWidth * 0.07,
+                horizontal: screenWidth * 0.07, // [UI] ระยะซ้ายขวา = 7% ของความกว้างจอ
 
-                vertical: screenHeight * 0.03,
+                vertical: screenHeight * 0.03, // [UI] ระยะบนล่าง = 3% ของความสูงจอ
               ),
 
               child: Column(
                 children: [
                   // ================= HEADER =================
                   SizedBox(
-                    height: screenHeight * 0.12,
+                    height: screenHeight * 0.12, // [UI] ความสูงส่วนหัว = 12% ของจอ
 
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: screenWidth * 0.07,
+                        CircleAvatar( // รูปโปรไฟล์วงกลม
+                          radius: screenWidth * 0.07, // [UI] รัศมี = 7% ของความกว้างจอ
 
-                          backgroundColor: const Color(0xff5189C9),
+                          backgroundColor: const Color(0xff5189C9), // [UI] สีวงกลม (ฟ้า)
 
                           child: Icon(
                             Icons.person,
 
-                            size: screenWidth * 0.09,
+                            size: screenWidth * 0.09, // [UI] ขนาดไอคอนคน
 
                             color: Colors.white,
                           ),
                         ),
 
-                        SizedBox(width: screenWidth * 0.03),
+                        SizedBox(width: screenWidth * 0.03), // [UI] ระยะรูปกับข้อความ
 
                         Expanded(
                           child: Column(
@@ -174,10 +177,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
                             children: [
                               Text(
-                                "SmartFridge",
+                                "SmartFridge", // ชื่อแอป
 
                                 style: TextStyle(
-                                  fontSize: screenWidth * 0.065,
+                                  fontSize: screenWidth * 0.065, // [UI] ขนาดชื่อแอป (6.5% ของความกว้างจอ)
 
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -186,14 +189,14 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                               Text(
                                 "ตู้เย็นอัจฉริยะของคุณ $userName",
 
-                                style: TextStyle(fontSize: screenWidth * 0.035),
+                                style: TextStyle(fontSize: screenWidth * 0.035), // [UI] ขนาดข้อความรอง
                               ),
                             ],
                           ),
                         ),
 
-                        IconButton(
-                          icon: Icon(Icons.settings, size: screenWidth * 0.08),
+                        IconButton( // ปุ่มฟันเฟือง -> หน้าโปรไฟล์
+                          icon: Icon(Icons.settings, size: screenWidth * 0.08), // [UI] ขนาดไอคอนฟันเฟือง
 
                           onPressed: () async {
                             await Navigator.push(
@@ -213,40 +216,40 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     ),
                   ),
 
-                  SizedBox(height: screenHeight * 0.025),
+                  SizedBox(height: screenHeight * 0.025), // [UI] ระยะหัวกับกล่องสรุป
 
                   // ================= SUMMARY =================
                   // กดแล้วไปหน้าคลัง (เช็คตู้เย็น) ที่มีป้ายวันหมดอายุบนการ์ดทุกใบ
                   // จะได้ดูได้ว่าชิ้นไหนใกล้หมดอายุ/หมดแล้ว กลับมาแล้วรีเฟรชตัวเลข
                   GestureDetector(
-                    behavior: HitTestBehavior.opaque,
+                    behavior: HitTestBehavior.opaque, // กดตรงไหนของกล่องก็ได้
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const InventoryScreen(),
                         ),
-                      ).then((_) => loadExpiryStatus());
+                      ).then((_) => loadExpiryStatus()); // กลับมาแล้วนับใหม่
                     },
                     child: Container(
-                      height: screenHeight * 0.09,
+                      height: screenHeight * 0.09, // [UI] ความสูงกล่องสรุป (9% ของจอ)
 
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Colors.white, // [UI] พื้นขาว
 
-                        borderRadius: BorderRadius.circular(25),
+                        borderRadius: BorderRadius.circular(25), // [UI] มุมโค้ง 25
                       ),
 
                       child: Row(
                         children: [
-                          stat(totalItems.toString(), "รายการ", Colors.green),
+                          stat(totalItems.toString(), "รายการ", Colors.green), // [UI] ตัวเลขสีเขียว
 
                           divider(),
 
                           stat(
                             nearExpiryItems.toString(),
                             "ใกล้ครบกำหนด",
-                            Colors.orange,
+                            Colors.orange, // [UI] ตัวเลขสีส้ม
                           ),
 
                           divider(),
@@ -254,36 +257,37 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           stat(
                             expiredItems.toString(),
                             "เกินกำหนด",
-                            Colors.red,
+                            Colors.red, // [UI] ตัวเลขสีแดง
                           ),
                         ],
                       ),
                     ),
                   ),
 
-                  SizedBox(height: screenHeight * 0.06),
+                  SizedBox(height: screenHeight * 0.06), // [UI] ระยะกล่องสรุปกับตะแกรงเมนู
 
                   // ================= MENU =================
                   Expanded(
-                    child: GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
+                    child: GridView.builder( // ตะแกรงปุ่มเมนู
+                      physics: const NeverScrollableScrollPhysics(), // [UI] ห้ามเลื่อน (6 ปุ่มพอดีจอ)
 
-                      itemCount: 6,
+                      itemCount: 6, // จำนวนปุ่ม
 
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
+                        crossAxisCount: 2, // [UI] 2 คอลัมน์
 
-                        crossAxisSpacing: screenWidth * 0.04,
+                        crossAxisSpacing: screenWidth * 0.04, // [UI] ระยะห่างแนวนอนระหว่างปุ่ม
 
-                        mainAxisSpacing: screenHeight * 0.025,
+                        mainAxisSpacing: screenHeight * 0.025, // [UI] ระยะห่างแนวตั้งระหว่างปุ่ม
 
-                        childAspectRatio: 1.15,
+                        childAspectRatio: 1.15, // [UI] สัดส่วนกว้าง:สูงของปุ่ม (มากขึ้น = ปุ่มเตี้ยลง)
                       ),
 
                       itemBuilder: (context, index) {
                         // เรียงตามแถบเมนูด้านล่าง: สแกน (วัตถุดิบ, สูตร) → คลัง
                         // → เมนูอาหาร → แจ้งเตือน → แพลน
                         // ไอคอน/ชื่อ/หน้าที่เปิด อยู่ในรายการเดียวกัน จะได้ไม่สลับกัน
+                        // [UI] แต่ละรายการ = (ไอคอน, ชื่อปุ่ม, คำอธิบาย, หน้าที่เปิด) แก้ได้ที่นี่
                         const menus = <(IconData, String, String, Widget)>[
                           (
                             Icons.camera_alt,
@@ -322,7 +326,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             PlanMenuScreen(),
                           ),
                         ];
-                        final (icon, title, subtitle, page) = menus[index];
+                        final (icon, title, subtitle, page) = menus[index]; // หยิบข้อมูลปุ่มลำดับนี้
 
                         return menuCard(icon, title, subtitle, () {
                           // กลับมาหน้าหลักแล้วโหลดตัวเลขสรุปใหม่ทุกครั้ง (เช่น
@@ -345,8 +349,9 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     );
   }
 
+  // ช่องตัวเลขสรุป 1 ช่อง (ตัวเลขใหญ่ + ชื่อใต้)
   Widget stat(String number, String title, Color color) {
-    return Expanded(
+    return Expanded( // แบ่งความกว้างเท่ากันทั้ง 3 ช่อง
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
 
@@ -355,26 +360,28 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             number,
 
             style: TextStyle(
-              color: color,
+              color: color, // [UI] สีตัวเลข (ส่งมาจากตอนเรียก)
 
               fontWeight: FontWeight.bold,
 
-              fontSize: 28,
+              fontSize: 28, // [UI] ขนาดตัวเลข
             ),
           ),
 
           const SizedBox(height: 3),
 
-          Text(title, style: const TextStyle(color: Colors.blue, fontSize: 13)),
+          Text(title, style: const TextStyle(color: Colors.blue, fontSize: 13)), // [UI] ชื่อช่อง สีฟ้า ขนาด 13
         ],
       ),
     );
   }
 
+  // เส้นคั่นแนวตั้งระหว่างช่องตัวเลข
   Widget divider() {
-    return Container(height: 45, width: 1, color: Colors.amber);
+    return Container(height: 45, width: 1, color: Colors.amber); // [UI] สูง 45 หนา 1 สีเหลืองอำพัน
   }
 
+  // ปุ่มเมนู 1 ปุ่มในตะแกรง
   Widget menuCard(
     IconData icon,
 
@@ -391,29 +398,29 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Colors.white, // [UI] พื้นปุ่ม
 
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
 
-          border: Border.all(color: const Color(0xff4F8FE8)),
+          border: Border.all(color: const Color(0xff4F8FE8)), // [UI] เส้นขอบสีฟ้า
         ),
 
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center, // [UI] จัดกลางแนวตั้ง
 
           children: [
-            Container(
-              width: 55,
+            Container( // วงกลมเหลืองรองไอคอน
+              width: 55, // [UI] ขนาดวงกลม
 
               height: 55,
 
               decoration: const BoxDecoration(
-                color: Color(0xfffff38a),
+                color: Color(0xfffff38a), // [UI] สีเหลือง
 
                 shape: BoxShape.circle,
               ),
 
-              child: Icon(icon, color: const Color(0xff5189C9), size: 32),
+              child: Icon(icon, color: const Color(0xff5189C9), size: 32), // [UI] ไอคอนสีฟ้า ขนาด 32
             ),
 
             const SizedBox(height: 10),
@@ -423,7 +430,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
               textAlign: TextAlign.center,
 
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), // [UI] ชื่อปุ่ม ขนาด 15
             ),
 
             Text(
@@ -431,7 +438,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
               textAlign: TextAlign.center,
 
-              style: const TextStyle(fontSize: 11),
+              style: const TextStyle(fontSize: 11), // [UI] คำอธิบาย ขนาด 11
             ),
           ],
         ),

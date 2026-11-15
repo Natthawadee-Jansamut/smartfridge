@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart' show VoidCallback, debugPrint;
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // ไลบรารีแจ้งเตือนในเครื่อง
+import 'package:permission_handler/permission_handler.dart'; // ขอสิทธิ์แจ้งเตือน
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz; // ข้อมูลเขตเวลา (ใช้ตั้งเวลาแจ้งเตือน)
 import 'package:timezone/timezone.dart' as tz;
 
 import 'package:test_app/utils/fridge_age.dart';
@@ -26,9 +26,9 @@ import 'package:test_app/utils/fridge_age.dart';
 /// (pending) ได้สูงสุด 64 รายการต่อแอป ถ้ามีวัตถุดิบเยอะมากพร้อมกัน อาจมีบาง
 /// รายการที่ตั้งล่วงหน้าไม่ติด แต่กลไกข้อ 2 (เช็กตอนเปิดแอป) จะช่วยชดเชยได้เสมอ
 class NotificationService {
-  static final notifications = FlutterLocalNotificationsPlugin();
+  static final notifications = FlutterLocalNotificationsPlugin(); // ตัวสั่งแจ้งเตือน
 
-  static bool _initialized = false;
+  static bool _initialized = false; // เตรียมระบบแจ้งเตือนไปแล้วหรือยัง (ทำครั้งเดียวพอ)
 
   /// เรียกเมื่อผู้ใช้กดแจ้งเตือนตอนแอปเปิดอยู่/อยู่เบื้องหลัง — main.dart ตั้งให้
   /// เปิดหน้าแจ้งเตือน (ExpirationAlertScreen)
@@ -40,22 +40,23 @@ class NotificationService {
 
   /// คืน true ครั้งเดียวถ้าแอปถูกเปิดจากการกดแจ้งเตือน (เรียกซ้ำได้ false)
   static bool takeOpenAlertsOnLaunch() {
-    final value = _openAlertsOnLaunch;
-    _openAlertsOnLaunch = false;
+    final value = _openAlertsOnLaunch; // อ่านค่า
+    _openAlertsOnLaunch = false; // รีเซ็ต จะได้ไม่พาไปซ้ำ
     return value;
   }
 
+  // เตรียมระบบแจ้งเตือน (เรียกตอนเปิดแอปใน main.dart)
   static Future<void> init() async {
-    if (_initialized) return;
+    if (_initialized) return; // เตรียมไปแล้ว ไม่ต้องทำซ้ำ
 
-    tz.initializeTimeZones();
+    tz.initializeTimeZones(); // โหลดข้อมูลเขตเวลา
 
     const settings = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'), // [UI] ไอคอนเล็กบนแจ้งเตือน Android (ใช้ไอคอนแอป)
       iOS: DarwinInitializationSettings(
-        requestAlertPermission: true,
-        requestBadgePermission: true,
-        requestSoundPermission: true,
+        requestAlertPermission: true, // ขอสิทธิ์แสดงป๊อปอัป
+        requestBadgePermission: true, // ขอสิทธิ์ตัวเลขแดงบนไอคอนแอป
+        requestSoundPermission: true, // ขอสิทธิ์เสียง
       ),
     );
 
@@ -85,29 +86,30 @@ class NotificationService {
       // เครื่อง/แพลตฟอร์มที่ไม่รองรับ permission_handler ตัวนี้ (เช่นเว็บ) ข้ามไป
     }
 
-    _initialized = true;
+    _initialized = true; // จำว่าเตรียมเสร็จแล้ว
   }
 
+  // ยิงแจ้งเตือนทันที 1 อัน
   static Future<void> showExpiryAlert({required String message}) async {
     debugPrint('[NotificationService] showExpiryAlert: $message');
     await notifications.show(
-      1,
-      "🔔 SmartFridge",
-      message,
+      1, // id ของแจ้งเตือน (ใช้ 1 เสมอ อันใหม่จะทับอันเก่า)
+      "🔔 SmartFridge", // [UI] หัวข้อแจ้งเตือน
+      message, // ข้อความแจ้งเตือน
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'expiry_channel',
-          'แจ้งเตือนวัตถุดิบในตู้เย็น',
-          channelDescription: 'แจ้งเตือนเมื่อวัตถุดิบอยู่ในตู้เย็นนานแล้ว',
-          importance: Importance.high,
+          'expiry_channel', // รหัสช่องแจ้งเตือนของ Android
+          'แจ้งเตือนวัตถุดิบในตู้เย็น', // [UI] ชื่อช่องที่ผู้ใช้เห็นในตั้งค่าเครื่อง
+          channelDescription: 'แจ้งเตือนเมื่อวัตถุดิบอยู่ในตู้เย็นนานแล้ว', // [UI] คำอธิบายช่อง
+          importance: Importance.high, // [UI] ความสำคัญสูง = เด้งขึ้นบนจอ
           priority: Priority.high,
         ),
         iOS: DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-          presentBanner: true,
-          presentList: true,
+          presentAlert: true, // [UI] แสดงป๊อปอัป
+          presentBadge: true, // [UI] แสดงตัวเลขบนไอคอนแอป
+          presentSound: true, // [UI] มีเสียง
+          presentBanner: true, // [UI] แสดงแบนเนอร์ด้านบน (แม้แอปเปิดอยู่)
+          presentList: true, // [UI] แสดงในศูนย์แจ้งเตือน
         ),
       ),
     );
@@ -121,6 +123,7 @@ class NotificationService {
     return tz.TZDateTime.from(local.toUtc(), tz.UTC);
   }
 
+  // แปลงข้อความเป็นเลข id ที่คงที่และไม่ติดลบ (ของชิ้นเดียวกันได้ id เดิมเสมอ)
   static int _stableId(String key) => key.hashCode & 0x7fffffff;
 
   /// ตั้งแจ้งเตือนล่วงหน้าให้ระบบปฏิบัติการยิงเองตามเวลาที่กำหนด สำหรับ
@@ -132,17 +135,17 @@ class NotificationService {
   static Future<void> scheduleExpiryReminders() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return; // ยังไม่ล็อกอิน
 
-    await init();
+    await init(); // เตรียมระบบแจ้งเตือนก่อน
 
-    final notifyDays = readOldItemDays(user);
-    final notifyTime = readNotifyTime(user);
+    final notifyDays = readOldItemDays(user); // เตือนล่วงหน้ากี่วัน
+    final notifyTime = readNotifyTime(user); // เตือนกี่โมง
 
     List<Map<String, dynamic>> items;
     try {
       final response = await supabase
-          .from('fridge_items')
+          .from('fridge_items') // ดึงของในตู้ทั้งหมดของผู้ใช้
           .select()
           .eq('user_id', user.id);
       items = List<Map<String, dynamic>>.from(response);
@@ -157,14 +160,14 @@ class NotificationService {
 
     final now = DateTime.now();
 
-    for (final item in items) {
+    for (final item in items) { // ไล่ตั้งแจ้งเตือนทีละชิ้น
       final createdRaw = item['created_at'];
-      if (createdRaw == null) continue;
+      if (createdRaw == null) continue; // ไม่รู้วันใส่ตู้ ข้าม
       if (isUsedUp(item)) continue; // ใช้หมดแล้ว ไม่ต้องเตือน
 
       final addedDate = parseCreatedAt(createdRaw);
       if (addedDate == null) continue;
-      final addedDay = DateTime(addedDate.year, addedDate.month, addedDate.day);
+      final addedDay = DateTime(addedDate.year, addedDate.month, addedDate.day); // วันที่ใส่ตู้ (ตัดเวลาออก)
 
       final name = item['name']?.toString() ?? 'วัตถุดิบ';
       final itemId = item['item_id']?.toString() ?? name;
@@ -177,8 +180,8 @@ class NotificationService {
         now.month,
         now.day,
       ).add(Duration(days: remaining.floor()));
-      final triggerDay = shelfEndDay.subtract(Duration(days: notifyDays));
-      final ageAtTrigger = triggerDay.difference(addedDay).inDays;
+      final triggerDay = shelfEndDay.subtract(Duration(days: notifyDays)); // วันที่จะเตือน = วันครบกำหนด - เตือนล่วงหน้า
+      final ageAtTrigger = triggerDay.difference(addedDay).inDays; // วันนั้นจะอยู่ในตู้มากี่วัน (ใส่ในข้อความ)
       final triggerTime = DateTime(
         triggerDay.year,
         triggerDay.month,
@@ -193,11 +196,11 @@ class NotificationService {
       // มีของที่อยู่นานเกินกำหนดอยู่แล้ว) checkAndShowDueReminders() จะช่วยจับแทน
       if (triggerTime.isAfter(now)) {
         try {
-          await notifications.zonedSchedule(
-            _stableId(itemId),
-            "🔔 SmartFridge",
+          await notifications.zonedSchedule( // ตั้งแจ้งเตือนล่วงหน้าให้ระบบยิงเอง
+            _stableId(itemId), // id ของแจ้งเตือน
+            "🔔 SmartFridge", // [UI] หัวข้อ
             "$name อยู่ในตู้เย็นมาแล้ว ${ageAtTrigger < 0 ? 0 : ageAtTrigger} วัน — ${useWithinText(notifyDays)}",
-            _toTz(triggerTime),
+            _toTz(triggerTime), // เวลาที่จะยิง
             const NotificationDetails(
               android: AndroidNotificationDetails(
                 'expiry_channel',
@@ -215,7 +218,7 @@ class NotificationService {
                 presentList: true,
               ),
             ),
-            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // ยิงได้แม้เครื่องพักหน้าจอ (เวลาอาจคลาดนิดหน่อย ประหยัดแบต)
           );
         } catch (e) {
           debugPrint(
@@ -246,12 +249,12 @@ class NotificationService {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    final days = notifyDays ?? readOldItemDays(user);
+    final days = notifyDays ?? readOldItemDays(user); // ใช้ค่าที่ส่งมา หรืออ่านจากตั้งค่าผู้ใช้
 
     List<Map<String, dynamic>> fridgeItems;
     if (items != null) {
-      fridgeItems = items;
-    } else {
+      fridgeItems = items; // มีข้อมูลส่งมาแล้ว ไม่ต้องดึงใหม่
+    } else { // ไม่มี -> ดึงจากฐานข้อมูล
       try {
         final response = await supabase
             .from('fridge_items')
@@ -281,21 +284,23 @@ class NotificationService {
     );
     if (now.isBefore(notifyAt)) return;
 
-    final List<String> oldItemNames = [];
+    final List<String> oldItemNames = []; // รายชื่อของที่ถึงเวลาเตือน
     for (final item in fridgeItems) {
-      if (isDueForReminder(item, days)) {
+      if (isDueForReminder(item, days)) { // ถึงช่วงต้องเตือนแล้ว
         oldItemNames.add(item['name']?.toString() ?? 'วัตถุดิบ');
       }
     }
 
-    if (oldItemNames.isEmpty) return;
+    if (oldItemNames.isEmpty) return; // ไม่มีของต้องเตือน
 
+    // วันนี้ในรูปแบบ "ปปปป-ดด-วว" ไว้เทียบว่าเตือนไปแล้วหรือยัง
     final todayKey =
         "${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}";
     final lastNotified = user.userMetadata?['last_expiry_notify_date']
         ?.toString();
     if (lastNotified == todayKey) return; // วันนี้เตือนไปแล้ว ไม่เตือนซ้ำ
 
+    // [UI] ข้อความแจ้งเตือน: ชิ้นเดียวบอกชื่อ, หลายชิ้นบอกจำนวน + ชื่อ 5 ชิ้นแรก
     final String message = oldItemNames.length == 1
         ? "${oldItemNames.first} ใกล้ครบอายุการเก็บรักษาแล้ว รีบเอาไปทำอาหารนะ!"
         : "มีวัตถุดิบใกล้ครบอายุการเก็บรักษา ${oldItemNames.length} รายการ: "
@@ -303,10 +308,10 @@ class NotificationService {
               "${oldItemNames.length > 5 ? ' และอื่นๆ' : ''}";
 
     await init();
-    await showExpiryAlert(message: message);
+    await showExpiryAlert(message: message); // ยิงแจ้งเตือน
 
     try {
-      await supabase.auth.updateUser(
+      await supabase.auth.updateUser( // จำว่าวันนี้เตือนแล้ว
         UserAttributes(data: {"last_expiry_notify_date": todayKey}),
       );
     } catch (e) {

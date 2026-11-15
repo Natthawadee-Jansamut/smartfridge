@@ -1,6 +1,6 @@
-import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:async'; // TimeoutException
+import 'dart:convert'; // jsonDecode
+import 'dart:typed_data'; // Uint8List (ไฟล์รูป)
 
 import 'package:flutter/foundation.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
@@ -11,7 +11,7 @@ import 'package:test_app/services/gemini_retry.dart';
 
 /// ข้อผิดพลาดที่ตั้งใจแสดงให้ผู้ใช้เห็นตรงๆ
 class RecipeAiException implements Exception {
-  final String message;
+  final String message; // ข้อความที่จะแสดงให้ผู้ใช้
 
   /// true = รูปนี้ไม่ใช่สูตรอาหาร (Gemini ตอบ {"error": "not_recipe"})
   final bool notRecipe;
@@ -22,11 +22,12 @@ class RecipeAiException implements Exception {
 
 /// งานฝั่ง Gemini ของฟีเจอร์สูตรอาหาร: สแกนสูตรจากรูป
 class RecipeAiService {
-  RecipeAiService._();
+  RecipeAiService._(); // ห้ามสร้างตัวแปรจากคลาสนี้
 
-  static const _timeout = Duration(seconds: 60);
-  static final _stepNumberPrefix = RegExp(r'^\s*\d+\s*[\.\)]\s*');
+  static const _timeout = Duration(seconds: 60); // รอ AI สแกนนานสุด 60 วินาที
+  static final _stepNumberPrefix = RegExp(r'^\s*\d+\s*[\.\)]\s*'); // รูปแบบเลขข้อหน้าขั้นตอน เช่น "1." หรือ "2)" (ไว้ตัดทิ้ง)
 
+  // รูปแบบคำตอบที่บังคับให้ AI ตอบกลับ (ต่อท้าย prompt) — แก้ข้อความในนี้ = เปลี่ยนคำสั่งที่ส่งให้ AI
   static const _schema = '''
 ตอบกลับเป็น JSON Object เท่านั้น ตามรูปแบบนี้เป๊ะๆ:
 {
@@ -53,12 +54,13 @@ class RecipeAiService {
 - ห้ามมีข้อความอธิบายอื่น และห้ามมี Markdown
 ''';
 
+  // สร้างตัวเรียก Gemini สำหรับสแกนสูตร
   static GenerativeModel _model() => GenerativeModel(
     model: geminiModel,
-    apiKey: ApiKeys.scanRecipeScreen,
+    apiKey: ApiKeys.scanRecipeScreen, // คีย์ของหน้าสแกนสูตร
     generationConfig: GenerationConfig(
-      responseMimeType: 'application/json',
-      temperature: 0.4,
+      responseMimeType: 'application/json', // บังคับตอบเป็น JSON
+      temperature: 0.4, // ความสุ่ม (0 = ตอบเหมือนเดิมทุกครั้ง, 1 = สร้างสรรค์มาก)
     ),
   );
 
@@ -69,6 +71,7 @@ class RecipeAiService {
     String mimeType = 'image/jpeg',
     String? imageHash,
   }) async {
+    // คำสั่งที่ส่งให้ AI พร้อมรูป (ข้อความในนี้ AI อ่าน ไม่ใช่คอมเมนต์)
     final prompt = '''
 วิเคราะห์สูตรอาหารจากรูปภาพนี้ (อาจเป็นภาพถ่ายจากตำรา หนังสือ ใบสั่งอาหาร ลายมือ
 หรือรูปที่มีแค่ชื่อเมนูอาหาร)
@@ -85,6 +88,7 @@ class RecipeAiService {
 - เรียงขั้นตอนตามลำดับการทำจริง (แทรกขั้นตอนที่คิดเพิ่มไว้ตรงตำแหน่งที่เหมาะสม)
 $_schema''';
 
+    // ส่งให้ AI แล้วแปลงคำตอบด้วย _parse
     return _callAndLog(
       prompt: prompt,
       bytes: bytes,
@@ -119,15 +123,15 @@ $_schema''';
       bytes: bytes,
       mimeType: mimeType,
       imageHash: imageHash,
-      parse: (text) {
-        final json = _decodeObject(text);
-        if (json['error'] != null) {
+      parse: (text) { // วิธีแปลงคำตอบของขั้นนี้
+        final json = _decodeObject(text); // แปลงข้อความเป็น JSON
+        if (json['error'] != null) { // AI บอกว่าไม่ใช่สูตรอาหาร
           throw const RecipeAiException(
             'ไม่พบสูตรอาหารในรูปนี้ ลองถ่ายให้เห็นตัวหนังสือชัดขึ้น',
             notRecipe: true,
           );
         }
-        bool flag(Object? v) => v == true || v == 'true';
+        bool flag(Object? v) => v == true || v == 'true'; // แปลงค่า true/"true" เป็น bool
         return RecipeImageInfo(
           name: (json['recipe_name'] ?? '').toString().trim(),
           hasIngredients: flag(json['has_ingredients']),
@@ -146,6 +150,7 @@ $_schema''';
     required String? imageHash,
     required T Function(String? text) parse,
   }) async {
+    // ตัวช่วยบันทึกประวัติการใช้ AI
     void log(String result, [UsageMetadata? usage]) => logAiRequest(
       event: AiEvent.scanRecipe,
       result: result,
@@ -156,16 +161,16 @@ $_schema''';
 
     final GenerateContentResponse res;
     try {
-      res = await generateContentWithRetry(_model(), [
+      res = await generateContentWithRetry(_model(), [ // ส่งข้อความ + รูปไปให้ AI
         Content.multi([TextPart(prompt), DataPart(mimeType, bytes)]),
       ], timeout: _timeout);
     } catch (_) {
-      log(AiResult.failed);
+      log(AiResult.failed); // เรียก AI ไม่สำเร็จ
       rethrow;
     }
     try {
-      final result = parse(res.text);
-      log(AiResult.gemini, res.usageMetadata);
+      final result = parse(res.text); // แปลงคำตอบ
+      log(AiResult.gemini, res.usageMetadata); // บันทึกว่าสำเร็จ
       return result;
     } on RecipeAiException catch (e) {
       log(
@@ -184,20 +189,21 @@ $_schema''';
     if (text == null || text.trim().isEmpty) {
       throw const RecipeAiException('AI ไม่ได้ส่งผลลัพธ์กลับมา กรุณาลองใหม่');
     }
-    final clean = text.replaceAll('```json', '').replaceAll('```', '').trim();
-    final start = clean.indexOf('{');
-    final end = clean.lastIndexOf('}');
+    final clean = text.replaceAll('```json', '').replaceAll('```', '').trim(); // ล้างเครื่องหมาย ```
+    final start = clean.indexOf('{'); // จุดเริ่ม JSON
+    final end = clean.lastIndexOf('}'); // จุดจบ JSON
     if (start == -1 || end <= start) {
       debugPrint('AI response อ่านไม่ได้: $text');
       throw const RecipeAiException('อ่านผลลัพธ์จาก AI ไม่ได้ กรุณาลองใหม่');
     }
-    final decoded = jsonDecode(clean.substring(start, end + 1));
+    final decoded = jsonDecode(clean.substring(start, end + 1)); // แปลงข้อความเป็นข้อมูล
     if (decoded is! Map) {
       throw const RecipeAiException('อ่านผลลัพธ์จาก AI ไม่ได้ กรุณาลองใหม่');
     }
     return Map<String, dynamic>.from(decoded);
   }
 
+  // แปลงคำตอบของการสแกนสูตรเต็ม ให้อยู่ในรูปแบบที่หน้าจอใช้
   static Map<String, dynamic> _parse(String? text) {
     final recipe = _decodeObject(text);
     if (recipe['error'] != null) {
@@ -207,6 +213,7 @@ $_schema''';
       );
     }
 
+    // วัตถุดิบ: ให้เป็นลิสต์ของ Map เสมอ (ข้อมูลผิดรูปแบบ = ลิสต์ว่าง)
     final rawIng = recipe['detailed_ingredients'];
     recipe['detailed_ingredients'] = rawIng is List
         ? rawIng
@@ -220,19 +227,19 @@ $_schema''';
     final steps = <String>[];
     final aiIndexes = <int>[];
     if (rawSteps is List) {
-      for (final item in rawSteps) {
+      for (final item in rawSteps) { // ไล่ทีละขั้นตอน
         String text;
-        var isAi = false;
-        if (item is Map) {
+        var isAi = false; // ขั้นตอนนี้ AI แต่งเองไหม
+        if (item is Map) { // รูปแบบ {text, ai_generated}
           text = (item['text'] ?? '').toString();
           isAi = item['ai_generated'] == true || item['ai_generated'] == 'true';
-        } else {
+        } else { // เป็นข้อความเฉยๆ
           text = item?.toString() ?? '';
         }
-        text = text.replaceFirst(_stepNumberPrefix, '').trim();
+        text = text.replaceFirst(_stepNumberPrefix, '').trim(); // ตัดเลขข้อเดิมออก
         if (text.isEmpty) continue;
-        if (isAi) aiIndexes.add(steps.length);
-        steps.add('${steps.length + 1}. $text');
+        if (isAi) aiIndexes.add(steps.length); // จำตำแหน่งขั้นที่ AI แต่ง
+        steps.add('${steps.length + 1}. $text'); // ใส่เลขข้อใหม่ให้เรียงถูก
       }
     }
     recipe['instructions'] = steps;
@@ -246,7 +253,7 @@ $_schema''';
 
   /// ข้อความ error ที่อ่านเข้าใจง่ายสำหรับแสดงใน SnackBar
   static String friendlyError(Object e) {
-    if (e is TimeoutException) {
+    if (e is TimeoutException) { // รอนานเกิน
       return 'AI ใช้เวลานานเกินไป กรุณาลองใหม่อีกครั้ง (เช็คสัญญาณอินเทอร์เน็ตด้วย)';
     }
     if (e is RecipeAiException) return e.message;
@@ -258,9 +265,9 @@ $_schema''';
 
 /// ผลจากขั้นที่ 1: รูปนี้คือเมนูอะไร และในรูปมีอะไรเขียนไว้บ้าง
 class RecipeImageInfo {
-  final String name;
-  final bool hasIngredients;
-  final bool hasSteps;
+  final String name; // ชื่อเมนูที่อ่านได้
+  final bool hasIngredients; // ในรูปมีรายการวัตถุดิบไหม
+  final bool hasSteps; // ในรูปมีวิธีทำไหม
 
   const RecipeImageInfo({
     required this.name,

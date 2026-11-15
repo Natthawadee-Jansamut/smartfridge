@@ -1,11 +1,12 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ระบบล็อกอิน
 
-import 'package:test_app/services/remember_me.dart';
-import 'package:test_app/screens/auth/register_screen.dart';
-import 'package:test_app/screens/home/main_menu_screen.dart';
-import 'package:test_app/screens/auth/forgot_password_screen.dart';
+import 'package:test_app/services/remember_me.dart'; // เก็บค่า "Remember me"
+import 'package:test_app/screens/auth/register_screen.dart'; // หน้าสมัครสมาชิก
+import 'package:test_app/screens/home/main_menu_screen.dart'; // หน้าหลัก (ไปต่อหลังล็อกอินสำเร็จ)
+import 'package:test_app/screens/auth/forgot_password_screen.dart'; // หน้าลืมรหัสผ่าน
 
+// หน้าเข้าสู่ระบบ (อีเมล + รหัสผ่าน)
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -14,24 +15,25 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>(); // กุญแจของฟอร์ม ใช้สั่งตรวจความถูกต้องของทุกช่อง
 
   final supabase = Supabase.instance.client;
 
-  final emailController = TextEditingController();
+  final emailController = TextEditingController(); // ช่องอีเมล
 
-  final passwordController = TextEditingController();
+  final passwordController = TextEditingController(); // ช่องรหัสผ่าน
 
-  bool obscurePassword = true;
+  bool obscurePassword = true; // true = ซ่อนรหัส
 
-  bool isLoading = false;
+  bool isLoading = false; // กำลังล็อกอินอยู่ไหม
 
-  bool rememberMe = false;
+  bool rememberMe = false; // ติ๊ก Remember me ไหม
 
   @override
   void initState() {
     super.initState();
 
+    // อ่านค่า Remember me ที่เคยติ๊กไว้ มาแสดงในช่องติ๊ก
     RememberMe.isEnabled().then((value) {
       if (mounted) {
         setState(() {
@@ -42,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   @override
-  void dispose() {
+  void dispose() { // ปิดหน้า คืนหน่วยความจำ
     emailController.dispose();
 
     passwordController.dispose();
@@ -50,34 +52,35 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  // กดปุ่ม Login
   Future<void> _login() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return; // ตรวจทุกช่อง ถ้ามีช่องผิดให้หยุด (ข้อความแดงจะขึ้นใต้ช่อง)
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      await RememberMe.setEnabled(rememberMe);
+      await RememberMe.setEnabled(rememberMe); // จำค่าติ๊ก Remember me
 
-      final response = await supabase.auth.signInWithPassword(
+      final response = await supabase.auth.signInWithPassword( // ล็อกอินด้วยอีเมล+รหัส
         email: emailController.text.trim(),
 
         password: passwordController.text.trim(),
       );
 
-      if (response.user != null && mounted) {
-        Navigator.pushReplacement(
+      if (response.user != null && mounted) { // ล็อกอินสำเร็จ
+        Navigator.pushReplacement( // ไปหน้าหลัก แบบแทนที่หน้า Login (กดย้อนกลับไม่กลับมาหน้านี้)
           context,
 
           MaterialPageRoute(builder: (_) => const MainMenuScreen()),
         );
       }
-    } on AuthException catch (e) {
+    } on AuthException catch (e) { // อีเมล/รหัสผิด ฯลฯ
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
-    } catch (e) {
+    } catch (e) { // error อื่น
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Login failed")));
@@ -93,14 +96,14 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        width: double.infinity,
+      body: Container( // พื้นหลังเต็มจอ
+        width: double.infinity, // [UI] กว้างเต็มจอ
 
-        height: double.infinity,
+        height: double.infinity, // [UI] สูงเต็มจอ
 
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xffD8EEFF), Colors.white],
+          gradient: LinearGradient( // [UI] พื้นหลังไล่สี
+            colors: [Color(0xffD8EEFF), Colors.white], // [UI] ฟ้าอ่อน (บน) -> ขาว (ล่าง)
 
             begin: Alignment.topCenter,
 
@@ -110,18 +113,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
         child: SafeArea(
           child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: SingleChildScrollView( // เลื่อนได้ กันคีย์บอร์ดบัง
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32), // [UI] ระยะ ซ้ายขวา 24 บนล่าง 32
 
-              child: Form(
+              child: Form( // ฟอร์มที่ตรวจความถูกต้องได้
                 key: _formKey,
 
                 child: Column(
                   children: [
                     const Icon(
-                      Icons.lock_open,
+                      Icons.lock_open, // [UI] ไอคอนแม่กุญแจเปิด
 
-                      size: 80,
+                      size: 80, // [UI] ขนาด
 
                       color: Color(0xff5189C9),
                     ),
@@ -129,10 +132,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
 
                     const Text(
-                      "Welcome Back",
+                      "Welcome Back", // หัวข้อ
 
                       style: TextStyle(
-                        fontSize: 28,
+                        fontSize: 28, // [UI] ขนาดหัวข้อ
 
                         fontWeight: FontWeight.bold,
 
@@ -140,24 +143,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
 
-                    const SizedBox(height: 40),
-                    TextFormField(
+                    const SizedBox(height: 40), // [UI] ระยะหัวข้อกับช่องกรอก
+                    TextFormField( // ช่องอีเมล
                       controller: emailController,
 
-                      keyboardType: TextInputType.emailAddress,
+                      keyboardType: TextInputType.emailAddress, // [UI] คีย์บอร์ดแบบอีเมล (มี @)
 
-                      validator: (value) {
+                      validator: (value) { // ตรวจรูปแบบอีเมล
                         if (value == null ||
-                            !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) {
-                          return "Enter valid email";
+                            !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(value)) { // ต้องเป็น xxx@xxx.xxx
+                          return "Enter valid email"; // ข้อความแดงใต้ช่อง
                         }
 
-                        return null;
+                        return null; // ผ่าน
                       },
 
                       decoration: InputDecoration(
                         prefixIcon: const Icon(
-                          Icons.email,
+                          Icons.email, // [UI] ไอคอนซองจดหมาย
 
                           color: Color(0xff5189C9),
                         ),
@@ -166,25 +169,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         filled: true,
 
-                        fillColor: Colors.white,
+                        fillColor: Colors.white, // [UI] พื้นช่องขาว
 
                         border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
 
-                          borderSide: BorderSide.none,
+                          borderSide: BorderSide.none, // [UI] ไม่มีเส้นขอบ
                         ),
                       ),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 16), // [UI] ระยะระหว่างช่อง
 
-                    TextFormField(
+                    TextFormField( // ช่องรหัสผ่าน
                       controller: passwordController,
 
-                      obscureText: obscurePassword,
+                      obscureText: obscurePassword, // ซ่อน/แสดงรหัส
 
                       validator: (value) {
-                        if (value == null || value.isEmpty) {
+                        if (value == null || value.isEmpty) { // ยังไม่กรอก
                           return "Enter password";
                         }
 
@@ -193,14 +196,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       decoration: InputDecoration(
                         prefixIcon: const Icon(
-                          Icons.lock,
+                          Icons.lock, // [UI] ไอคอนแม่กุญแจ
 
                           color: Color(0xff5189C9),
                         ),
 
                         labelText: "Password",
 
-                        suffixIcon: IconButton(
+                        suffixIcon: IconButton( // ปุ่มรูปตา สลับซ่อน/แสดง
                           icon: Icon(
                             obscurePassword
                                 ? Icons.visibility
@@ -228,7 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     const SizedBox(height: 8),
 
-                    CheckboxListTile(
+                    CheckboxListTile( // ช่องติ๊ก Remember me
                       value: rememberMe,
 
                       onChanged: (value) {
@@ -240,37 +243,37 @@ class _LoginScreenState extends State<LoginScreen> {
                       title: const Text(
                         "Remember me",
 
-                        style: TextStyle(color: Color(0xff5189C9)),
+                        style: TextStyle(color: Color(0xff5189C9)), // [UI] สีข้อความ
                       ),
 
-                      activeColor: const Color(0xff5189C9),
+                      activeColor: const Color(0xff5189C9), // [UI] สีช่องติ๊กตอนติ๊กแล้ว
 
-                      controlAffinity: ListTileControlAffinity.leading,
+                      controlAffinity: ListTileControlAffinity.leading, // [UI] ช่องติ๊กอยู่ซ้ายของข้อความ
 
-                      contentPadding: EdgeInsets.zero,
+                      contentPadding: EdgeInsets.zero, // [UI] ไม่มีระยะขอบใน
 
-                      dense: true,
+                      dense: true, // [UI] แบบกระชับ (เตี้ยลง)
                     ),
 
                     const SizedBox(height: 14),
 
                     SizedBox(
-                      width: double.infinity,
+                      width: double.infinity, // [UI] ปุ่มกว้างเต็ม
 
-                      height: 55,
+                      height: 55, // [UI] ความสูงปุ่ม
 
                       child: ElevatedButton(
                         onPressed: isLoading ? null : _login,
 
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xffffd84d),
+                          backgroundColor: const Color(0xffffd84d), // [UI] สีปุ่มเหลือง
 
-                          foregroundColor: const Color(0xff5189C9),
+                          foregroundColor: const Color(0xff5189C9), // [UI] สีตัวอักษรฟ้า
 
-                          elevation: 6,
+                          elevation: 6, // [UI] เงาปุ่ม
 
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(25),
+                            borderRadius: BorderRadius.circular(25), // [UI] มุมโค้ง
                           ),
                         ),
 
@@ -295,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     // Forgot Password
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.push( // ไปหน้าลืมรหัสผ่าน
                           context,
 
                           MaterialPageRoute(
@@ -319,7 +322,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
+                        Navigator.push( // ไปหน้าสมัครสมาชิก
                           context,
 
                           MaterialPageRoute(

@@ -1,10 +1,10 @@
-import 'dart:convert';
-import 'dart:typed_data';
+import 'dart:convert'; // jsonEncode
+import 'dart:typed_data'; // Uint8List (ไฟล์รูป)
 
-import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:test_app/services/fridge_images.dart';
+import 'package:crypto/crypto.dart'; // sha256
+import 'package:flutter/foundation.dart'; // debugPrint
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล
+import 'package:test_app/services/fridge_images.dart'; // อัปโหลดรูปส่วนตัว
 
 import 'package:test_app/services/fridge_stock.dart';
 import 'package:test_app/services/global_recipe_service.dart';
@@ -15,15 +15,16 @@ import 'package:test_app/services/non_food_check.dart';
 /// งานฝั่ง Supabase ทั้งหมดของฟีเจอร์สูตรอาหาร รวมไว้ที่เดียว
 /// (หน้าจอจะได้ไม่ต้องเขียน query / logic เทียบวัตถุดิบซ้ำกันหลายที่)
 class RecipeRepository {
-  RecipeRepository._();
+  RecipeRepository._(); // ห้ามสร้างตัวแปรจากคลาสนี้
 
-  static SupabaseClient get _db => Supabase.instance.client;
+  static SupabaseClient get _db => Supabase.instance.client; // ทางลัดเรียกฐานข้อมูล
 
   /// bucket ใน Supabase Storage สำหรับรูปเมนูที่ผู้ใช้แนบ (หน้าเขียนสูตรเอง)
   static const imageBucket = 'recipe-images';
 
   // ---------------------------------------------------------------- Inventory
 
+  // ดึงของในตู้ทั้งหมด
   static Future<List<Map<String, dynamic>>> fetchInventory() async {
     final res = await _db.from('fridge_items').select();
     return List<Map<String, dynamic>>.from(res);
@@ -31,6 +32,7 @@ class RecipeRepository {
 
   // ------------------------------------------------------------- Number utils
 
+  // แปลงค่าเป็นตัวเลข (แปลงไม่ได้ = 0)
   static num toNum(dynamic v) {
     if (v is num) return v;
     return num.tryParse(v?.toString() ?? '') ?? 0;
@@ -41,24 +43,24 @@ class RecipeRepository {
   static num? parseQuantity(dynamic v) {
     if (v == null) return null;
     if (v is num) return v;
-    final s = v.toString().trim().replaceAll(',', '.');
+    final s = v.toString().trim().replaceAll(',', '.'); // เปลี่ยนลูกน้ำเป็นจุด
     if (s.isEmpty) return null;
-    final direct = num.tryParse(s);
+    final direct = num.tryParse(s); // แปลงตรงๆ ได้
     if (direct != null) return direct;
 
-    num total = 0;
+    num total = 0; // ลองอ่านทีละส่วน เช่น "1 1/2" = 1 + 0.5
     for (final part in s.split(RegExp(r'\s+'))) {
-      if (part.contains('/')) {
+      if (part.contains('/')) { // ส่วนที่เป็นเศษส่วน
         final f = part.split('/');
         if (f.length != 2) return null;
         final a = num.tryParse(f[0]);
         final b = num.tryParse(f[1]);
-        if (a == null || b == null || b == 0) return null;
-        total += a / b;
+        if (a == null || b == null || b == 0) return null; // รูปแบบผิด หรือหารด้วย 0
+        total += a / b; // บวกค่าเศษส่วน
       } else {
         final n = num.tryParse(part);
         if (n == null) return null;
-        total += n;
+        total += n; // ส่วนที่เป็นจำนวนเต็ม
       }
     }
     return total;
@@ -69,7 +71,7 @@ class RecipeRepository {
     if (v == null) return null;
     if (v is num) return v;
     final text = v.toString();
-    final frac = RegExp(
+    final frac = RegExp( // หาเศษส่วนก่อน
       r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)',
     ).firstMatch(text);
     if (frac != null) {
@@ -77,7 +79,7 @@ class RecipeRepository {
       final b = num.parse(frac.group(2)!);
       return b == 0 ? null : a / b;
     }
-    final m = RegExp(r'\d+(?:\.\d+)?').firstMatch(text);
+    final m = RegExp(r'\d+(?:\.\d+)?').firstMatch(text); // ไม่มีเศษส่วน -> หาตัวเลขแรก
     return m == null ? null : num.parse(m.group(0)!);
   }
 
@@ -86,12 +88,12 @@ class RecipeRepository {
     if (v == null) return null;
     if (v is num) return v.round();
     final text = v.toString();
-    final hour = RegExp(r'(\d+(?:\.\d+)?)\s*(?:ชั่วโมง|ชม)').firstMatch(text);
-    final minute = RegExp(r'(\d+)\s*(?:นาที|น\.)').firstMatch(text);
-    if (hour == null && minute == null) return leadingNumber(text)?.round();
+    final hour = RegExp(r'(\d+(?:\.\d+)?)\s*(?:ชั่วโมง|ชม)').firstMatch(text); // หาชั่วโมง
+    final minute = RegExp(r'(\d+)\s*(?:นาที|น\.)').firstMatch(text); // หานาที
+    if (hour == null && minute == null) return leadingNumber(text)?.round(); // ไม่มีทั้งคู่ -> ใช้ตัวเลขแรก
     final h = hour == null ? 0 : num.parse(hour.group(1)!);
     final m = minute == null ? 0 : int.parse(minute.group(1)!);
-    return (h * 60 + m).round();
+    return (h * 60 + m).round(); // ชั่วโมง x 60 + นาที
   }
 
   /// นาที -> ข้อความที่เก็บลงฐานข้อมูล (null/0 = ไม่ได้ระบุ)
@@ -107,8 +109,8 @@ class RecipeRepository {
     if (v == null) return '';
     final n = v is num ? v : num.tryParse(v.toString());
     if (n == null) return v.toString();
-    if (n == n.roundToDouble()) return n.toInt().toString();
-    return double.parse(n.toStringAsFixed(2)).toString();
+    if (n == n.roundToDouble()) return n.toInt().toString(); // จำนวนเต็ม -> ไม่มีทศนิยม
+    return double.parse(n.toStringAsFixed(2)).toString(); // ทศนิยมไม่เกิน 2 ตำแหน่ง
   }
 
   // ------------------------------------------------------ Ingredient matching
@@ -123,23 +125,23 @@ class RecipeRepository {
         .toString()
         .trim()
         .toLowerCase();
-    if (neededName.isEmpty) return false;
-    final neededQty = toNum(ingredient['use_quantity']);
+    if (neededName.isEmpty) return false; // ไม่มีชื่อ = ไม่มี
+    final neededQty = toNum(ingredient['use_quantity']); // จำนวนที่ต้องใช้
 
-    final hasMatch = inventory.any((inv) {
+    final hasMatch = inventory.any((inv) { // มีของที่ชื่อตรง/คล้ายไหม
       final invName = (inv['name'] ?? '').toString().trim().toLowerCase();
       return invName.isNotEmpty &&
           (invName == neededName ||
               invName.contains(neededName) ||
               neededName.contains(invName));
     });
-    return hasMatch && availableQuantity(inventory, neededName) >= neededQty;
+    return hasMatch && availableQuantity(inventory, neededName) >= neededQty; // มี และจำนวนรวมทุกลอตพอ
   }
 
   // ------------------------------------------------- เครื่องปรุงพื้นฐาน
 
   /// คำที่บอกว่าเป็นเครื่องปรุงพื้นฐานที่ทุกบ้านน่าจะมีอยู่แล้ว (ชื่อมีคำนี้อยู่ = ใช่)
-  static const _stapleKeywords = [
+  static const _stapleKeywords = [ // [UI] คำที่ถือว่าเป็นเครื่องปรุงพื้นฐาน (เพิ่มคำได้)
     'น้ำปลา',
     'ซีอิ๊ว',
     'ซอส',
@@ -163,13 +165,13 @@ class RecipeRepository {
   /// ดูจาก "is_staple": true (พจนานุกรมกลาง ingredients.is_staple หรือ AI ระบุมา)
   /// ถ้าไม่มี ใช้รายการคำด้านบนเทียบกับชื่อ
   static bool isStapleIngredient(Map<String, dynamic> ingredient) {
-    if (ingredient['is_staple'] == true) return true;
-    final name = (ingredient['name'] ?? '').toString().replaceAll(
+    if (ingredient['is_staple'] == true) return true; // มีธง is_staple อยู่แล้ว
+    final name = (ingredient['name'] ?? '').toString().replaceAll( // ตัดช่องว่าง
       RegExp(r'\s+'),
       '',
     );
     if (name.isEmpty) return false;
-    return _stapleExactNames.contains(name) ||
+    return _stapleExactNames.contains(name) || // ชื่อตรงคำสั้น หรือมีคำในลิสต์
         _stapleKeywords.any(name.contains);
   }
 
@@ -178,13 +180,14 @@ class RecipeRepository {
     Map<String, dynamic> recipe,
     List<Map<String, dynamic>> inventory,
   ) {
-    final list = ingredientsOf(
+    final list = ingredientsOf( // วัตถุดิบหลัก (ไม่ใช่เครื่องปรุงพื้นฐาน)
       recipe,
     ).where((i) => !isStapleIngredient(i)).toList();
-    final have = list.where((i) => isIngredientAvailable(i, inventory)).length;
+    final have = list.where((i) => isIngredientAvailable(i, inventory)).length; // นับที่มีในตู้
     return (have, list.length);
   }
 
+  // ดึงรายการวัตถุดิบของสูตร (ผิดรูปแบบ = ลิสต์ว่าง)
   static List<Map<String, dynamic>> ingredientsOf(Map<String, dynamic> recipe) {
     final raw = recipe['detailed_ingredients'];
     if (raw is! List) return [];
@@ -196,14 +199,14 @@ class RecipeRepository {
 
   // ------------------------------------------------------------------- Steps
 
-  static final _stepNumberPrefix = RegExp(r'^\s*\d+\s*[\.\)]\s*');
+  static final _stepNumberPrefix = RegExp(r'^\s*\d+\s*[\.\)]\s*'); // รูปแบบเลขข้อ เช่น "1." "2)"
 
   /// ขั้นตอนการทำ (ข้อความล้วน ตัดเลขข้อ "1." ออกแล้ว)
   static List<String> stepTextsOf(Map<String, dynamic> recipe) {
     final raw = recipe['instructions'];
     if (raw is! List) return [];
     return raw
-        .map((e) => e.toString().replaceFirst(_stepNumberPrefix, '').trim())
+        .map((e) => e.toString().replaceFirst(_stepNumberPrefix, '').trim()) // ตัดเลขข้อออก
         .toList();
   }
 
@@ -212,7 +215,7 @@ class RecipeRepository {
     final raw = recipe['ai_step_indexes'];
     if (raw is! List) return {};
     return raw
-        .map((e) => e is num ? e.toInt() : int.tryParse(e.toString()))
+        .map((e) => e is num ? e.toInt() : int.tryParse(e.toString())) // แปลงเป็นตัวเลข
         .whereType<int>()
         .toSet();
   }
@@ -228,12 +231,12 @@ class RecipeRepository {
   // detailed_ingredients, instructions, ai_step_indexes, image_url) เหมือนเดิม
   // โดย 'id' = id ของแถวใน user_saved_recipes
 
-  static const _recipeSelect =
+  static const _recipeSelect = // คอลัมน์ที่ดึงจากตาราง recipes (+ วัตถุดิบ)
       'id, name, time_text, servings_text, instructions, '
       'ai_step_indexes, image_url, source, '
       'recipe_ingredients(sort_order, ingredient_id, display_name, quantity, unit, is_main, ingredients(is_staple))';
 
-  static const _savedSelect =
+  static const _savedSelect = // คอลัมน์ที่ดึงจาก user_saved_recipes (+ ตัวสูตร)
       'id, recipe_id, overrides, is_favorite, created_at, '
       'recipes($_recipeSelect)';
 
@@ -258,14 +261,14 @@ class RecipeRepository {
     int? limit,
   }) async {
     final user = _db.auth.currentUser;
-    if (user == null) return [];
+    if (user == null) return []; // ยังไม่ล็อกอิน
     var query = _db
-        .from('user_saved_recipes')
+        .from('user_saved_recipes') // ตารางสูตรที่ผู้ใช้บันทึก
         .select(_savedSelect)
-        .eq('user_id', user.id)
-        .order('created_at', ascending: false);
-    final res = limit == null ? await query : await query.limit(limit);
-    return List<Map<String, dynamic>>.from(res).map(_flatten).toList();
+        .eq('user_id', user.id) // ของผู้ใช้คนนี้
+        .order('created_at', ascending: false); // ใหม่สุดก่อน
+    final res = limit == null ? await query : await query.limit(limit); // จำกัดจำนวน (ถ้าส่งมา)
+    return List<Map<String, dynamic>>.from(res).map(_flatten).toList(); // แปลงทุกแถวเป็นรูปแบบที่หน้าจอใช้
   }
 
   /// ลายนิ้วมือของไฟล์รูป (SHA-256 แบบ hex) — รูปไฟล์เดียวกันได้ค่าเดียวกันเสมอ
@@ -280,18 +283,18 @@ class RecipeRepository {
     final rows = await _db
         .from('recipes')
         .select(_recipeSelect)
-        .eq('image_hash', imageHash)
+        .eq('image_hash', imageHash) // รูปเดียวกัน
         .limit(1);
     if (rows.isEmpty) return null;
-    return _recipeToMap(Map<String, dynamic>.from(rows.first));
+    return _recipeToMap(Map<String, dynamic>.from(rows.first)); // เจอ -> แปลงเป็นรูปแบบหน้าจอ
   }
 
   /// สัดส่วนขั้นตอนที่ AI คิดเพิ่มเอง (0.0 - 1.0) ไม่มีขั้นตอนเลย = 1.0
   /// ใช้แยกว่าสูตรมาจากรูปจริง หรือ AI แต่งขึ้นเกือบทั้งหมด
   static double aiStepRatio(Map<String, dynamic> recipe) {
     final steps = stepTextsOf(recipe).length;
-    if (steps == 0) return 1;
-    return aiStepIndexesOf(recipe).where((i) => i < steps).length / steps;
+    if (steps == 0) return 1; // ไม่มีขั้นตอน = ถือว่า AI ทั้งหมด
+    return aiStepIndexesOf(recipe).where((i) => i < steps).length / steps; // ขั้นที่ AI แต่ง ÷ ขั้นทั้งหมด
   }
 
   /// สองสูตรใช้วัตถุดิบเหมือนกันแค่ไหน (0.0 - 1.0) เทียบจากชื่อวัตถุดิบ
@@ -300,17 +303,17 @@ class RecipeRepository {
     Map<String, dynamic> a,
     Map<String, dynamic> b,
   ) {
-    Set<String> names(Map<String, dynamic> r) => ingredientsOf(r)
+    Set<String> names(Map<String, dynamic> r) => ingredientsOf(r) // ชุดชื่อวัตถุดิบ (ตัวพิมพ์เล็ก)
         .map((i) => (i['name'] ?? '').toString().trim().toLowerCase())
         .where((n) => n.isNotEmpty)
         .toSet();
     final na = names(a), nb = names(b);
-    if (na.isEmpty && nb.isEmpty) return 1;
-    if (na.isEmpty || nb.isEmpty) return 0;
-    bool same(String x, String y) => x == y || x.contains(y) || y.contains(x);
-    final matched = na.where((x) => nb.any((y) => same(x, y))).length;
-    final union = na.length + nb.length - matched;
-    return matched / union;
+    if (na.isEmpty && nb.isEmpty) return 1; // ว่างทั้งคู่ = เหมือนกัน
+    if (na.isEmpty || nb.isEmpty) return 0; // ว่างข้างเดียว = ไม่เหมือน
+    bool same(String x, String y) => x == y || x.contains(y) || y.contains(x); // ชื่อตรงกัน หรือชื่อหนึ่งอยู่ในอีกชื่อ
+    final matched = na.where((x) => nb.any((y) => same(x, y))).length; // จำนวนที่ตรงกัน
+    final union = na.length + nb.length - matched; // จำนวนรวมไม่ซ้ำ
+    return matched / union; // สัดส่วนความเหมือน
   }
 
   /// ค้นสูตรในฐานข้อมูลจากชื่อเมนู (ไม่สนตัวพิมพ์เล็ก/ใหญ่ และช่องว่างหัวท้าย)
@@ -321,7 +324,7 @@ class RecipeRepository {
     String name,
   ) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return null;
+    if (trimmed.isEmpty) return null; // ตัดช่องว่างหัวท้าย
     // escape ตัวอักษรพิเศษของ ILIKE ให้เป็นการเทียบชื่อตรงตัว
     final pattern = trimmed.replaceAllMapped(
       RegExp(r'[\\%_]'),
@@ -330,9 +333,9 @@ class RecipeRepository {
     final rows = await _db
         .from('recipes')
         .select(_recipeSelect)
-        .ilike('name', pattern)
-        .order('use_count', ascending: false)
-        .limit(10);
+        .ilike('name', pattern) // เทียบชื่อไม่สนตัวพิมพ์
+        .order('use_count', ascending: false) // คนใช้เยอะก่อน
+        .limit(10); // ดูแค่ 10 สูตร
     if (rows.isEmpty) return null;
     final candidates = [
       for (final r in rows) _recipeToMap(Map<String, dynamic>.from(r)),
@@ -341,7 +344,7 @@ class RecipeRepository {
     final order = {
       for (var i = 0; i < candidates.length; i++) candidates[i]: i,
     };
-    candidates.sort((a, b) {
+    candidates.sort((a, b) { // เรียงตาม AI แต่งน้อยก่อน
       final byAi = aiStepRatio(a).compareTo(aiStepRatio(b));
       return byAi != 0 ? byAi : order[a]!.compareTo(order[b]!);
     });
@@ -351,7 +354,7 @@ class RecipeRepository {
   /// ชื่อเมนูสำหรับเทียบ: ตัวพิมพ์เล็ก + ตัดช่องว่างทั้งหมด
   /// สระบน/ล่าง และวรรณยุกต์ภาษาไทย (พิมพ์สลับลำดับกันได้ เช่น "เตี๋ยว"
   /// ใส่ ี ก่อนหรือหลัง ๋ ก็ได้ ตาเห็นเหมือนกัน แต่คอมพิวเตอร์มองเป็นคนละคำ)
-  static final _thaiMarks = RegExp('[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]');
+  static final _thaiMarks = RegExp('[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]'); // ตัวอักษรสระบน/ล่าง/วรรณยุกต์ภาษาไทย
 
   /// ชื่อเมนูสำหรับเทียบ: ตัวพิมพ์เล็ก ตัดช่องว่าง และตัดสระบน/ล่าง+วรรณยุกต์
   /// ทำให้ชื่อที่พิมพ์ลำดับต่างกันเทียบกันได้
@@ -364,13 +367,13 @@ class RecipeRepository {
   /// ชื่อเมนูเดียวกันไหม (ไม่สนช่องว่าง ตัวพิมพ์ และลำดับวรรณยุกต์/สระบนล่าง)
   /// ชื่อเมนูมีคำค้นอยู่ข้างในไหม (ไม่สนช่องว่าง ตัวพิมพ์ และลำดับวรรณยุกต์)
   static bool nameMatchesQuery(Object? name, String query) {
-    final q = _nameForMatch(query);
-    return q.isEmpty || _nameForMatch(name).contains(q);
+    final q = _nameForMatch(query); // คำค้นแบบปรับรูปแล้ว
+    return q.isEmpty || _nameForMatch(name).contains(q); // ไม่มีคำค้น = ผ่าน, มี = ชื่อต้องมีคำค้น
   }
 
   static bool isSameRecipeName(Object? a, Object? b) {
     final x = _nameForMatch(a);
-    return x.isNotEmpty && x == _nameForMatch(b);
+    return x.isNotEmpty && x == _nameForMatch(b); // ชื่อไม่ว่างและเหมือนกัน
   }
 
   /// ค้นสูตรที่ชื่อคล้ายกัน (ชื่อหนึ่งอยู่ในอีกชื่อ) หรือชื่อเดียวกันแต่พิมพ์
@@ -382,34 +385,34 @@ class RecipeRepository {
     String name, {
     int limit = 3,
   }) async {
-    final key = _nameForMatch(name);
-    if (key.length < 3) return [];
+    final key = _nameForMatch(name); // ชื่อแบบปรับรูปแล้ว
+    if (key.length < 3) return []; // สั้นเกินไป ไม่ค้น
 
     // ค้นในฐานข้อมูลด้วยตัวอักษรหลักคั่นด้วย * (ไม่สนวรรณยุกต์/สระบนล่าง)
     // เช่น "ก*ว*ย*เ*ต*ย*ว*..." แล้วค่อยกรองให้แม่นในแอปอีกที
     // - แบบเต็มชื่อ: เจอสูตรที่ชื่อในระบบยาวกว่า/เท่ากัน
     // - แบบ 3 ตัวแรก: เผื่อชื่อในระบบสั้นกว่าชื่อที่สแกนได้
-    final chars = key
+    final chars = key // แยกเป็นตัวอักษรทีละตัว (ตัดอักขระพิเศษ)
         .replaceAll(RegExp(r'[\\%_,()"*.:]'), '')
         .runes
         .map(String.fromCharCode)
         .toList();
     if (chars.length < 3) return [];
-    final fullPattern = '*${chars.join('*')}*';
-    final headPattern = '${chars.take(3).join('*')}*';
+    final fullPattern = '*${chars.join('*')}*'; // รูปแบบค้นทั้งชื่อ
+    final headPattern = '${chars.take(3).join('*')}*'; // รูปแบบค้น 3 ตัวแรก
     final rows = await _db
         .from('recipes')
         .select(_recipeSelect)
-        .or('name.ilike.$fullPattern,name.ilike.$headPattern')
+        .or('name.ilike.$fullPattern,name.ilike.$headPattern') // ค้นแบบใดแบบหนึ่ง
         .order('use_count', ascending: false)
-        .limit(50);
+        .limit(50); // ดูมา 50 แถว
 
     final matches = <Map<String, dynamic>>[];
-    for (final row in rows) {
+    for (final row in rows) { // กรองให้แม่นในแอป
       final recipe = _recipeToMap(Map<String, dynamic>.from(row));
       final other = _nameForMatch(recipe['recipe_name']);
       if (other.isEmpty) continue;
-      if (other.contains(key) || key.contains(other)) matches.add(recipe);
+      if (other.contains(key) || key.contains(other)) matches.add(recipe); // ชื่อหนึ่งอยู่ในอีกชื่อ = คล้าย
     }
     debugPrint(
       'ค้นสูตรชื่อคล้าย "$name": ฐานข้อมูลส่งมา ${rows.length} แถว, '
@@ -418,15 +421,15 @@ class RecipeRepository {
     );
 
     final order = {for (var i = 0; i < matches.length; i++) matches[i]: i};
-    int lengthGap(Map<String, dynamic> r) =>
+    int lengthGap(Map<String, dynamic> r) => // ความยาวชื่อต่างกันเท่าไหร่
         (_nameForMatch(r['recipe_name']).length - key.length).abs();
-    matches.sort((a, b) {
+    matches.sort((a, b) { // เรียง: ยาวใกล้เคียงก่อน -> AI แต่งน้อยก่อน -> คนใช้เยอะก่อน
       final byLength = lengthGap(a).compareTo(lengthGap(b));
       if (byLength != 0) return byLength;
       final byAi = aiStepRatio(a).compareTo(aiStepRatio(b));
       return byAi != 0 ? byAi : order[a]!.compareTo(order[b]!);
     });
-    return matches.take(limit).toList();
+    return matches.take(limit).toList(); // เอาแค่ limit สูตร
   }
 
   /// เก็บผลสแกนเข้าคลังกลางแบบส่วนตัวทันที (ยังไม่เข้าคลังของผู้ใช้) พร้อม image_hash
@@ -436,16 +439,16 @@ class RecipeRepository {
     Map<String, dynamic> recipe,
     String? imageHash,
   ) {
-    if (imageHash == null || imageHash.isEmpty) return;
+    if (imageHash == null || imageHash.isEmpty) return; // ไม่มี hash ไม่ต้องเก็บ
     final steps = stepTextsOf(recipe).length;
     final aiSteps = aiStepIndexesOf(recipe).length;
     // รูปมีแค่ชื่อเมนู (AI แต่งขั้นตอนเองทั้งหมด) = ai_generated, นอกนั้น = scanned
     final source = steps > 0 && aiSteps >= steps ? 'ai_generated' : 'scanned';
-    GlobalRecipeService.cacheRecipe(
+    GlobalRecipeService.cacheRecipe( // บันทึกเข้าคลังกลาง (เบื้องหลัง)
       recipe,
       source: source,
       imageHash: imageHash,
-      isPublic: false,
+      isPublic: false, // ส่วนตัว ไม่ให้คนอื่นเห็น
     );
   }
 
@@ -460,17 +463,17 @@ class RecipeRepository {
     String name, {
     int limit = 10,
   }) async {
-    final rows = await _db.rpc(
+    final rows = await _db.rpc( // เรียกฟังก์ชันค้นชื่อในฐานข้อมูล
       'search_recipes_by_name',
-      params: {'p_query': name.trim(), 'p_limit': limit},
+      params: {'p_query': name.trim(), 'p_limit': limit}, // คำค้น + จำนวน
     );
-    if (rows is! List) return [];
+    if (rows is! List) return []; // ผลไม่ใช่ลิสต์ = ไม่เจอ
     return [
       for (final row in rows.whereType<Map>())
         if (row['recipe'] is Map)
           (
-            toNum(row['score']).toDouble(),
-            {
+            toNum(row['score']).toDouble(), // คะแนน
+            { // ตัวสูตร + id
               ...Map<String, dynamic>.from(row['recipe'] as Map),
               'recipe_id': row['recipe_id'],
             },
@@ -482,21 +485,21 @@ class RecipeRepository {
   /// เจอหลายสูตร -> เลือกสูตรที่มาจากรูปจริง (AI แต่งน้อยสุด) ก่อน แล้วค่อยดูคนใช้เยอะ
   /// Map ที่คืนมามี 'recipe_id' = id ของสูตรในตาราง recipes, ไม่เจอ -> null
   static Future<Map<String, dynamic>?> findRecipeByName(String name) async {
-    if (name.trim().isEmpty) return null;
+    if (name.trim().isEmpty) return null; // ไม่มีชื่อ
     try {
       final exact = [
-        for (final (score, r) in await _searchByNameRpc(name))
+        for (final (score, r) in await _searchByNameRpc(name)) // เอาเฉพาะชื่อตรงจริง
           if (score >= 0.999 || isSameRecipeName(r['recipe_name'], name)) r,
       ];
-      if (exact.isEmpty) return null;
+      if (exact.isEmpty) return null; // จำลำดับเดิม
       final order = {for (var i = 0; i < exact.length; i++) exact[i]: i};
-      exact.sort((a, b) {
+      exact.sort((a, b) { // เรียง AI แต่งน้อยก่อน
         final byAi = aiStepRatio(a).compareTo(aiStepRatio(b));
         return byAi != 0 ? byAi : order[a]!.compareTo(order[b]!);
       });
       return exact.first;
     } catch (e) {
-      debugPrint('search_recipes_by_name ใช้ไม่ได้ (ใช้วิธีค้นเดิม): $e');
+      debugPrint('search_recipes_by_name ใช้ไม่ได้ (ใช้วิธีค้นเดิม): $e'); // ฟังก์ชันใช้ไม่ได้ -> ใช้วิธีค้นเดิม
       return _findRecipeByNameDirect(name);
     }
   }
@@ -508,12 +511,12 @@ class RecipeRepository {
     String name, {
     int limit = 3,
   }) async {
-    if (_nameForMatch(name).length < 3) return [];
+    if (_nameForMatch(name).length < 3) return []; // ชื่อสั้นเกิน ไม่ค้น
     try {
-      final results = await _searchByNameRpc(name, limit: limit + 5);
+      final results = await _searchByNameRpc(name, limit: limit + 5); // ขอเผื่อมา 5 สูตร
       return [
         for (final (score, r) in results)
-          if (score < 0.999 && !isSameRecipeName(r['recipe_name'], name)) r,
+          if (score < 0.999 && !isSameRecipeName(r['recipe_name'], name)) r, // ตัดชื่อที่ตรงทั้งชื่อออก
       ].take(limit).toList();
     } catch (e) {
       debugPrint('search_recipes_by_name ใช้ไม่ได้ (ใช้วิธีค้นเดิม): $e');
@@ -537,9 +540,9 @@ class RecipeRepository {
     List<String> dietTags = const [],
   }) async {
     try {
-      if (_db.auth.currentUser == null) return null;
-      if (ingredientsOf(recipe).isEmpty) return null;
-      final id = await _db.rpc(
+      if (_db.auth.currentUser == null) return null; // ยังไม่ล็อกอิน
+      if (ingredientsOf(recipe).isEmpty) return null; // ไม่มีวัตถุดิบ ไม่เก็บ
+      final id = await _db.rpc( // เรียกฟังก์ชันบันทึกสูตร
         'save_recipe',
         params: {
           'p_recipe': {
@@ -551,12 +554,12 @@ class RecipeRepository {
               'protein_per_serving': proteinPerServing,
             'diet_tags': dietTags,
           },
-          'p_source': 'ai_generated',
-          'p_is_public': true,
-          'p_bookmark': false,
+          'p_source': 'ai_generated', // ที่มา = AI สร้าง
+          'p_is_public': true, // ให้ทุกคนใช้ได้
+          'p_bookmark': false, // ไม่เพิ่มเข้าคลังส่วนตัว
         },
       );
-      return id as Object?;
+      return id as Object?; // ส่ง id กลับ
     } catch (e) {
       debugPrint('เก็บเมนูจาก AI ลงคลังสูตรไม่สำเร็จ: $e');
       return null;
@@ -579,7 +582,7 @@ class RecipeRepository {
     Set<String> useFirstNames = const {},
     bool requireNutrition = false,
   }) async {
-    final fridgeNames = [
+    final fridgeNames = [ // ชื่อของในตู้ที่ใช้ทำอาหารได้
       for (final f in fridgeItems)
         if (!isUsedUp(f) &&
             (f['name'] ?? '').toString().trim().isNotEmpty &&
@@ -587,32 +590,32 @@ class RecipeRepository {
             !NonFoodCheck.isNotForCooking(f['name']))
           f['name'].toString().trim(),
     ];
-    if (fridgeNames.isEmpty) return [];
+    if (fridgeNames.isEmpty) return []; // ตู้ว่าง
 
     // จับคู่ฝั่งฐานข้อมูลด้วย public.match_recipes_by_ingredients() ของทีม
     // (ชื่อตรง, ชื่อเรียกอื่น, ชื่อหนึ่งอยู่ในอีกชื่อ, สะกดคล้าย, ไม่นับ is_staple)
     // ขอเผื่อจำนวนที่ขาดไว้ แล้วกรองของพื้นฐานตามรายการในแอปซ้ำอีกรอบ
-    final matches = await GlobalRecipeService.matchByIngredients(
+    final matches = await GlobalRecipeService.matchByIngredients( // ให้ฐานข้อมูลจับคู่สูตรกับของในตู้
       fridgeNames.toSet().toList(),
-      maxMissing: maxMissing + 3,
+      maxMissing: maxMissing + 3, // เผื่อจำนวนที่ขาดไว้ 3
       minMatchRatio: 0,
-      limit: 50,
+      limit: 50, // ดูมา 50 สูตร
     );
 
-    final exclude = {for (final n in excludeNames) _nameForMatch(n)};
-    final useFirst = useFirstNames.map((e) => e.trim().toLowerCase()).toSet();
+    final exclude = {for (final n in excludeNames) _nameForMatch(n)}; // ชื่อที่ห้ามเอา
+    final useFirst = useFirstNames.map((e) => e.trim().toLowerCase()).toSet(); // ชื่อของที่ควรใช้ก่อน
     final results = <Map<String, dynamic>>[];
-    for (final m in matches) {
-      if (exclude.contains(_nameForMatch(m['recipe_name']))) continue;
+    for (final m in matches) { // ไล่ทีละสูตร
+      if (exclude.contains(_nameForMatch(m['recipe_name']))) continue; // ชื่อที่ห้ามเอา -> ข้าม
       final calories = m['calories_per_serving'];
       final protein = m['protein_per_serving'];
-      if (requireNutrition && (calories == null || protein == null)) continue;
-      final missing = [
+      if (requireNutrition && (calories == null || protein == null)) continue; // ต้องมีโภชนาการแต่ไม่มี -> ข้าม
+      final missing = [ // ของที่ขาด (ไม่นับของพื้นฐาน)
         for (final n in (m['missing_ingredients'] as List? ?? const []))
           if (!ShoppingSuggestion.isStaple(n.toString())) n.toString(),
       ];
-      if (missing.length > maxMissing) continue;
-      final usesFirst = ingredientsOf(m).any((ing) {
+      if (missing.length > maxMissing) continue; // ขาดเกินที่ยอม -> ข้าม
+      final usesFirst = ingredientsOf(m).any((ing) { // ใช้ของที่ควรใช้ก่อนไหม
         final n = (ing['name'] ?? '').toString().trim().toLowerCase();
         return useFirst.any((u) => u == n || u.contains(n) || n.contains(u));
       });
@@ -631,7 +634,7 @@ class RecipeRepository {
     }
     // ผลจากฐานข้อมูลเรียงขาดน้อยก่อนอยู่แล้ว -> ดันสูตรที่ใช้ของที่ควรใช้ก่อนขึ้นมา
     final order = {for (var i = 0; i < results.length; i++) results[i]: i};
-    results.sort((a, b) {
+    results.sort((a, b) { // เรียง: ขาดน้อยก่อน -> ใช้ของควรใช้ก่อน -> ลำดับเดิม
       final byMissing = (a['missing'] as List).length.compareTo(
         (b['missing'] as List).length,
       );
@@ -641,12 +644,12 @@ class RecipeRepository {
       if (byFirst != 0) return byFirst;
       return order[a]!.compareTo(order[b]!);
     });
-    return results.take(limit).toList();
+    return results.take(limit).toList(); // เอาแค่ limit สูตร
   }
 
   /// แปลงแถว recipes (+ recipe_ingredients) ให้เป็น Map รูปแบบที่หน้าจอใช้
   static Map<String, dynamic> _recipeToMap(Map<String, dynamic> r) {
-    final rawIngs =
+    final rawIngs = // วัตถุดิบเรียงตามลำดับที่บันทึก
         (r['recipe_ingredients'] as List? ?? [])
             .whereType<Map>()
             .map((e) => Map<String, dynamic>.from(e))
@@ -654,7 +657,7 @@ class RecipeRepository {
           ..sort(
             (a, b) => toNum(a['sort_order']).compareTo(toNum(b['sort_order'])),
           );
-    final ingredients = [
+    final ingredients = [ // แปลงชื่อคอลัมน์ให้ตรงกับที่หน้าจอใช้
       for (final i in rawIngs)
         {
           'name': i['display_name'],
@@ -669,7 +672,7 @@ class RecipeRepository {
         },
     ];
 
-    return {
+    return { // ประกอบเป็น Map สูตร
       'recipe_id': r['id'],
       'source': r['source'],
       'recipe_name': r['name'],
@@ -685,7 +688,7 @@ class RecipeRepository {
 
   /// แปลงแถว user_saved_recipes + recipes ให้เป็น Map รูปแบบที่หน้าจอใช้
   static Map<String, dynamic> _flatten(Map<String, dynamic> saved) {
-    final out = <String, dynamic>{
+    final out = <String, dynamic>{ // เริ่มจากตัวสูตร แล้วเพิ่มข้อมูลของคลังผู้ใช้
       ..._recipeToMap(
         Map<String, dynamic>.from(saved['recipes'] as Map? ?? {}),
       ),
@@ -695,10 +698,10 @@ class RecipeRepository {
       'created_at': saved['created_at'],
     };
 
-    final overrides = saved['overrides'];
+    final overrides = saved['overrides']; // ส่วนที่ผู้ใช้แก้เอง
     if (overrides is Map) {
       for (final key in _overrideKeys) {
-        if (overrides.containsKey(key)) out[key] = overrides[key];
+        if (overrides.containsKey(key)) out[key] = overrides[key]; // มีค่าที่แก้ -> ใช้แทนของต้นฉบับ
       }
     }
     return out;
@@ -706,6 +709,7 @@ class RecipeRepository {
 
   // -------------------------------------------------------------------- Save
 
+  // ชื่อเมนู (ว่าง = "ไม่มีชื่อเมนู")
   static String _nameOf(Map<String, dynamic> recipe) {
     final name = (recipe['recipe_name'] ?? '').toString().trim();
     return name.isEmpty ? 'ไม่มีชื่อเมนู' : name;
@@ -757,14 +761,14 @@ class RecipeRepository {
   /// วัตถุดิบ (ชื่อ จำนวน หน่วย) และวิธีทำเหมือนกันทุกอย่างไหม
   /// ไม่สนชื่อเมนู เวลา จำนวนที่ — ต่างกันแค่นั้นยังถือเป็นสูตรเดียวกัน
   static bool isSameRecipeBody(Map<String, dynamic> a, Map<String, dynamic> b) {
-    String key(Map<String, dynamic> r) => jsonEncode({
+    String key(Map<String, dynamic> r) => jsonEncode({ // แปลงเนื้อหาสูตรเป็นข้อความ JSON ไว้เทียบ
       'ingredients': [
         for (final i in ingredientsOf(r))
           [
-            _nameForMatch(i['name']),
-            parseQuantity(i['use_quantity']) ??
+            _nameForMatch(i['name']), // ชื่อแบบปรับรูป
+            parseQuantity(i['use_quantity']) ?? // จำนวน
                 (i['use_quantity'] ?? '').toString().trim(),
-            (i['unit'] ?? '').toString().trim(),
+            (i['unit'] ?? '').toString().trim(), // หน่วย
           ],
       ],
       'steps': [
@@ -772,7 +776,7 @@ class RecipeRepository {
           t.trim().replaceAll(RegExp(r'\s+'), ' '),
       ],
     });
-    return key(a) == key(b);
+    return key(a) == key(b); // ข้อความเหมือนกันทุกตัว = สูตรเดียวกัน
   }
 
   /// สูตรไม่ถูกแก้อะไรเลยไหม (ชื่อ เวลา จำนวนที่ วัตถุดิบ วิธีทำ ต้องเหมือนเดิมทั้งหมด)
@@ -806,9 +810,9 @@ class RecipeRepository {
     Uint8List? scanImageBytes,
   }) async {
     final user = _db.auth.currentUser;
-    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่'; // ยังไม่ล็อกอิน
 
-    if (!isSameRecipeBody(recipe, original)) {
+    if (!isSameRecipeBody(recipe, original)) { // วัตถุดิบ/วิธีทำถูกแก้ -> บันทึกเป็นสูตรใหม่
       return saveRecipe(
         recipe,
         source: source,
@@ -821,22 +825,22 @@ class RecipeRepository {
       );
     }
 
-    if (await _isInLibrary(user.id, recipeId)) {
+    if (await _isInLibrary(user.id, recipeId)) { // อยู่ในคลังแล้ว -> ไม่บันทึกซ้ำ
       return [alreadyInLibraryWarning];
     }
-    final content = _contentOf(recipe);
-    final edited = jsonEncode(content) != jsonEncode(_contentOf(original));
-    final scanPath = await _uploadScanImage(user.id, scanImageBytes);
+    final content = _contentOf(recipe); // เนื้อหาที่จะเก็บ
+    final edited = jsonEncode(content) != jsonEncode(_contentOf(original)); // มีการแก้ไหม
+    final scanPath = await _uploadScanImage(user.id, scanImageBytes); // อัปโหลดรูปที่ใช้สแกน
     final overrides = <String, dynamic>{
       if (edited) ...content,
       if (scanPath != null) 'scan_image_path': scanPath,
     };
-    await _db.from('user_saved_recipes').upsert({
+    await _db.from('user_saved_recipes').upsert({ // บันทึกเข้าคลังผู้ใช้ (มีอยู่แล้วก็อัปเดต)
       'user_id': user.id,
       'recipe_id': recipeId,
       'overrides': overrides.isEmpty ? null : overrides,
-    }, onConflict: 'user_id,recipe_id');
-    await _bumpUseCount(recipeId);
+    }, onConflict: 'user_id,recipe_id'); // ถ้าซ้ำ user+สูตร ให้อัปเดตแทนเพิ่มใหม่
+    await _bumpUseCount(recipeId); // นับคนใช้เพิ่ม 1
     return [];
   }
 
@@ -847,8 +851,8 @@ class RecipeRepository {
         .select('id')
         .eq('user_id', userId)
         .eq('recipe_id', recipeId)
-        .maybeSingle();
-    return row != null;
+        .maybeSingle(); // เอาแถวเดียว (ไม่มีก็ได้)
+    return row != null; // มีแถว = อยู่ในคลังแล้ว
   }
 
   /// +1 ที่ recipes.use_count (มีคนบันทึกสูตรนี้เพิ่มอีกคน) ผ่านฟังก์ชันในฐานข้อมูล
@@ -856,7 +860,7 @@ class RecipeRepository {
   /// เพราะการนับไม่ควรทำให้การบันทึกสูตรล้มเหลว
   static Future<void> _bumpUseCount(Object recipeId) async {
     try {
-      await _db.rpc(
+      await _db.rpc( // เรียกฟังก์ชันในฐานข้อมูล
         'increment_recipe_use_count',
         params: {'p_recipe_id': recipeId},
       );
@@ -870,14 +874,14 @@ class RecipeRepository {
   /// ปักหมุด/เลิกปักหมุดสูตรโปรด ([id] = id ของแถวใน user_saved_recipes)
   static Future<void> setFavorite(Object id, bool isFavorite) async {
     final user = _db.auth.currentUser;
-    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่'; // ยังไม่ล็อกอิน
     final updated = await _db
         .from('user_saved_recipes')
-        .update({'is_favorite': isFavorite})
+        .update({'is_favorite': isFavorite}) // ตั้งค่าสูตรโปรด
         .eq('id', id)
-        .eq('user_id', user.id)
-        .select('id');
-    if (updated.isEmpty) throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข';
+        .eq('user_id', user.id) // ต้องเป็นของผู้ใช้คนนี้
+        .select('id'); // ขอ id กลับมาเพื่อเช็คว่าอัปเดตจริง
+    if (updated.isEmpty) throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข'; // ไม่ได้แถวกลับ = ไม่สำเร็จ
   }
 
   /// เรียงคลังสูตร: สูตรโปรดอยู่บนสุด แล้วเรียงตามจำนวนวัตถุดิบที่มีในตู้เย็น
@@ -886,14 +890,14 @@ class RecipeRepository {
     List<Map<String, dynamic>> recipes,
     List<Map<String, dynamic>> inventory,
   ) {
-    final have = {for (final r in recipes) r: completeness(r, inventory).$1};
-    final order = {for (var i = 0; i < recipes.length; i++) recipes[i]: i};
+    final have = {for (final r in recipes) r: completeness(r, inventory).$1}; // จำนวนวัตถุดิบที่มีของแต่ละสูตร
+    final order = {for (var i = 0; i < recipes.length; i++) recipes[i]: i}; // ลำดับเดิม
     return [...recipes]..sort((a, b) {
-      final fav =
+      final fav = // โปรดก่อน
           (b['is_favorite'] == true ? 1 : 0) -
           (a['is_favorite'] == true ? 1 : 0);
       if (fav != 0) return fav;
-      final byHave = have[b]!.compareTo(have[a]!);
+      final byHave = have[b]!.compareTo(have[a]!); // มีของมากก่อน
       if (byHave != 0) return byHave;
       return order[a]!.compareTo(order[b]!); // คงลำดับเดิม (ใหม่สุดก่อน)
     });
@@ -912,18 +916,18 @@ class RecipeRepository {
     Uint8List? scanImageBytes,
   }) async {
     final user = _db.auth.currentUser;
-    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่'; // ยังไม่ล็อกอิน
 
     // ชื่อที่เก็บในตาราง recipes (ที่คนอื่นเห็น) = ชื่อเมนูก่อนผู้ใช้เปลี่ยน
     // ส่วนชื่อที่ผู้ใช้ตั้งเอง (เช่น "คั่วไก่ 2") เก็บไว้ใน overrides ของคลังตัวเอง
-    final myName = _nameOf(recipe);
+    final myName = _nameOf(recipe); // ชื่อที่ผู้ใช้ตั้ง
     final baseName = (sharedName ?? '').trim();
     final storedName = baseName.isEmpty ? myName : baseName;
-    final renamed = storedName != myName;
+    final renamed = storedName != myName; // ผู้ใช้เปลี่ยนชื่อไหม
 
-    final warnings = <String>[];
+    final warnings = <String>[]; // คำเตือนที่จะคืนกลับ
     String? imageUrl;
-    if (imageBytes != null) {
+    if (imageBytes != null) { // มีรูป -> อัปโหลด
       imageUrl = await _uploadImage(user.id, imageBytes);
       if (imageUrl == null) warnings.add('อัปโหลดรูปไม่สำเร็จ');
     }
@@ -931,7 +935,7 @@ class RecipeRepository {
     // สูตรที่ AI สร้าง แชร์ให้คนอื่นใช้ซ้ำได้ ส่วนสูตรที่ผู้ใช้สแกนจากตำรา/ลายมือ
     // หรือเขียนเอง เก็บเป็นส่วนตัว (ไม่เปิดให้คนอื่นเห็นโดยไม่ได้ขออนุญาต —
     // ตามแนวทางของทีม) ส่ง [isPublic] มาเพื่อกำหนดเองได้
-    final shared = isPublic ?? source == 'ai_generated';
+    final shared = isPublic ?? source == 'ai_generated'; // สาธารณะไหม
 
     // บันทึกเข้าคลังกลางผ่าน public.save_recipe() ของทีม (p_bookmark = false ก่อน
     // เพื่อเช็กว่าอยู่ในคลังของผู้ใช้แล้วหรือยัง) — ฐานข้อมูลจัดการเพิ่มวัตถุดิบใหม่,
@@ -939,7 +943,7 @@ class RecipeRepository {
     final Object recipeId;
     try {
       recipeId =
-          await _db.rpc(
+          await _db.rpc( // เรียกฟังก์ชันบันทึกสูตรของทีม
                 'save_recipe',
                 params: {
                   'p_recipe': {
@@ -955,7 +959,7 @@ class RecipeRepository {
               )
               as Object;
     } on PostgrestException catch (e) {
-      if (e.code == '54000') {
+      if (e.code == '54000') { // 54000 = เกินโควตาบันทึกต่อวัน
         throw 'บันทึกสูตรใหม่ครบโควตาของวันนี้แล้ว ลองใหม่พรุ่งนี้';
       }
       rethrow;
@@ -968,15 +972,15 @@ class RecipeRepository {
 
     // สูตรที่ได้ตรงกับที่ผู้ใช้บันทึกทุกอย่างไหม (ฐานข้อมูลอาจคืนสูตรเดิมที่ชื่อ +
     // ชุดวัตถุดิบตรงกัน แต่ปริมาณ/วิธีทำต่างกัน) — ต่างกัน = เก็บฉบับของผู้ใช้ใน overrides
-    final stored = await _fetchRecipe(recipeId);
-    final sameBody = stored != null && isSameRecipeBody(stored, recipe);
+    final stored = await _fetchRecipe(recipeId); // โหลดสูตรที่ฐานข้อมูลเก็บ
+    final sameBody = stored != null && isSameRecipeBody(stored, recipe); // เหมือนที่ผู้ใช้บันทึกทุกอย่างไหม
 
     // รูปที่ใช้สแกน -> เก็บในคลังของผู้ใช้ (ไม่ผูกกับสูตรกลาง)
     final scanPath = await _uploadScanImage(user.id, scanImageBytes);
-    await _db.from('user_saved_recipes').upsert({
+    await _db.from('user_saved_recipes').upsert({ // บันทึกเข้าคลังผู้ใช้
       'user_id': user.id,
       'recipe_id': recipeId,
-      'overrides': sameBody
+      'overrides': sameBody // เหมือนกัน -> เก็บแค่ส่วนเล็กน้อย, ต่างกัน -> เก็บเนื้อหาทั้งหมดของผู้ใช้
           ? _newRecipeOverrides(
               recipe,
               renamed ? myName : null,
@@ -1002,35 +1006,35 @@ class RecipeRepository {
     bool removeImage = false,
   }) async {
     final user = _db.auth.currentUser;
-    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่'; // ยังไม่ล็อกอิน
 
-    final current = await _db
+    final current = await _db // โหลดส่วนที่เคยแก้ไว้
         .from('user_saved_recipes')
         .select('overrides')
         .eq('id', id)
         .eq('user_id', user.id)
         .maybeSingle();
-    if (current == null) throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข';
+    if (current == null) throw 'ไม่พบสูตรนี้ หรือไม่มีสิทธิ์แก้ไข'; // ไม่เจอ/ไม่มีสิทธิ์
 
-    final overrides = <String, dynamic>{
+    final overrides = <String, dynamic>{ // รวมของเดิม + เนื้อหาใหม่
       if (current['overrides'] is Map)
         ...Map<String, dynamic>.from(current['overrides'] as Map),
       ..._contentOf(recipe),
     };
 
     final warnings = <String>[];
-    if (imageBytes != null) {
+    if (imageBytes != null) { // มีรูปใหม่ -> อัปโหลด
       final url = await _uploadImage(user.id, imageBytes);
       if (url == null) {
         warnings.add('อัปโหลดรูปใหม่ไม่สำเร็จ (ยังใช้รูปเดิม)');
       } else {
         overrides['image_url'] = url;
       }
-    } else if (removeImage) {
+    } else if (removeImage) { // ลบรูปเดิม
       overrides['image_url'] = null;
     }
 
-    final updated = await _db
+    final updated = await _db // บันทึกลงฐานข้อมูล
         .from('user_saved_recipes')
         .update({'overrides': overrides})
         .eq('id', id)
@@ -1047,8 +1051,8 @@ class RecipeRepository {
   /// ตัวสูตรใน recipes ยังอยู่ เผื่อผู้ใช้คนอื่นใช้ร่วมกัน)
   static Future<void> deleteSavedRecipe(Object id) async {
     final user = _db.auth.currentUser;
-    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่';
-    final deleted = await _db
+    if (user == null) throw 'ไม่พบผู้ใช้งาน กรุณาเข้าสู่ระบบใหม่'; // ยังไม่ล็อกอิน
+    final deleted = await _db // ลบแถวในคลังผู้ใช้
         .from('user_saved_recipes')
         .delete()
         .eq('id', id)
@@ -1065,9 +1069,10 @@ class RecipeRepository {
       ? Future.value(null)
       : uploadPrivateImage(recipeScanImageBucket, uid, bytes);
 
+  // อัปโหลดรูปเมนู (ถังสาธารณะ) คืนลิงก์รูป
   static Future<String?> _uploadImage(String uid, Uint8List bytes) async {
     try {
-      final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.jpg'; // ตั้งชื่อไฟล์ = เวลาปัจจุบัน
       await _db.storage
           .from(imageBucket)
           .uploadBinary(
@@ -1075,7 +1080,7 @@ class RecipeRepository {
             bytes,
             fileOptions: const FileOptions(contentType: 'image/jpeg'),
           );
-      return _db.storage.from(imageBucket).getPublicUrl(path);
+      return _db.storage.from(imageBucket).getPublicUrl(path); // ขอลิงก์สาธารณะของรูป
     } catch (e) {
       debugPrint('อัปโหลดรูปเมนูไม่สำเร็จ: $e');
       return null;

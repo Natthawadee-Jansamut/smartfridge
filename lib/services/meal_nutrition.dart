@@ -1,9 +1,9 @@
-import 'dart:convert';
+import 'dart:convert'; // ใช้ jsonDecode แปลงข้อความ JSON จาก AI เป็นข้อมูล
 
-import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_generative_ai/google_generative_ai.dart'; // ไลบรารี Gemini
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล
 
-import 'package:test_app/config/api_keys.dart';
+import 'package:test_app/config/api_keys.dart'; // คีย์ AI
 import 'package:test_app/services/ai_request_log.dart';
 import 'package:test_app/services/gemini_retry.dart';
 
@@ -14,17 +14,19 @@ import 'package:test_app/services/gemini_retry.dart';
 /// วัตถุดิบแต่ละรายการใน weekly_meals.ingredients (jsonb เดิม ไม่ต้องแก้ตาราง)
 /// แล้วให้ผู้ใช้กด "คำนวณใหม่" เอง (เรียก AI เฉพาะตอนกด ประหยัด token)
 class MealNutrition {
-  MealNutrition._();
+  MealNutrition._(); // ห้ามสร้างตัวแปรจากคลาสนี้
 
+  // ชื่อธงที่ติดไว้ในวัตถุดิบ = ค่าโภชนาการไม่ตรงแล้ว ต้องคำนวณใหม่
   static const staleKey = 'nutrition_stale';
 
   /// "ค่าเดิม" ก่อนแก้วัตถุดิบครั้งแรก: {calories, protein, ingredients: [ข้อความ]}
   /// เก็บซ้ำไว้ในทุกรายการ (ลบรายการไหนทิ้งก็ยังมีค่าเดิมเหลือ)
   static const baseKey = 'nutrition_base';
 
+  // ดึงรายการวัตถุดิบของมื้อออกมาเป็นลิสต์ (ข้อมูลผิดรูปแบบ = ลิสต์ว่าง)
   static List<Map<String, dynamic>> _ingredientsOf(Map<String, dynamic> meal) {
     final raw = meal['ingredients'];
-    if (raw is! List) return [];
+    if (raw is! List) return []; // ไม่ใช่ลิสต์ = ไม่มีวัตถุดิบ
     return raw
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
@@ -38,13 +40,14 @@ class MealNutrition {
   /// ค่าเดิมที่จำไว้ (null = ไม่มี เช่น แก้วัตถุดิบไปก่อนมีฟีเจอร์นี้)
   static Map<String, dynamic>? baseOf(Map<String, dynamic>? meal) {
     if (meal == null) return null;
-    for (final e in _ingredientsOf(meal)) {
+    for (final e in _ingredientsOf(meal)) { // หาในวัตถุดิบทีละรายการ
       final base = e[baseKey];
-      if (base is Map) return Map<String, dynamic>.from(base);
+      if (base is Map) return Map<String, dynamic>.from(base); // เจอค่าเดิมแล้ว ส่งกลับเลย
     }
     return null;
   }
 
+  // แปลงวัตถุดิบเป็นข้อความ เช่น "ไข่ไก่ 2 ฟอง"
   static String _describe(Map<String, dynamic> e) {
     final qty = (e['quantity'] ?? '').toString().trim();
     return '${e['name']}${qty.isEmpty ? '' : ' $qty'}';
@@ -58,8 +61,8 @@ class MealNutrition {
     if (meal == null) return null;
     final calories = meal['calories'];
     final protein = meal['protein'];
-    if (calories == null || protein == null) return null;
-    return {
+    if (calories == null || protein == null) return null; // ไม่มีค่าเดิมให้จำ
+    return { // จำแคลอรี/โปรตีน และรายการวัตถุดิบก่อนแก้
       'calories': calories,
       'protein': protein,
       'ingredients': ingredientsBefore.map(_describe).toList(),
@@ -79,6 +82,7 @@ class MealNutrition {
       'protein': meal['protein'],
       'ingredients': before,
     };
+    // ติดธง "ต้องคำนวณใหม่" + ค่าเดิม ให้วัตถุดิบทุกรายการ
     final flagged = {
       ...meal,
       'ingredients': [
@@ -88,12 +92,12 @@ class MealNutrition {
     };
     await Supabase.instance.client
         .from('weekly_meals')
-        .update({'ingredients': flagged['ingredients']})
+        .update({'ingredients': flagged['ingredients']}) // บันทึกธงลงฐานข้อมูลก่อน
         .eq('id', meal['id']);
     try {
-      return await recalculate(flagged);
+      return await recalculate(flagged); // ให้ AI คำนวณใหม่ทันที
     } catch (_) {
-      return flagged;
+      return flagged; // AI ไม่สำเร็จ ส่งมื้อที่ติดธงกลับไป (ผู้ใช้กดคำนวณใหม่เองได้)
     }
   }
 
@@ -102,9 +106,9 @@ class MealNutrition {
   static Future<Map<String, dynamic>> recalculate(
     Map<String, dynamic> meal,
   ) async {
-    final ingredients = _ingredientsOf(meal);
-    final list = ingredients.map((e) => '- ${_describe(e)}').join('\n');
-    final base = baseOf(meal);
+    final ingredients = _ingredientsOf(meal); // วัตถุดิบปัจจุบัน
+    final list = ingredients.map((e) => '- ${_describe(e)}').join('\n'); // ทำเป็นรายการทีละบรรทัดสำหรับ prompt
+    final base = baseOf(meal); // ค่าเดิมก่อนแก้ (ถ้ามี)
     final baseList = base?['ingredients'] is List
         ? (base!['ingredients'] as List).map((e) => '- $e').join('\n')
         : null;
@@ -146,50 +150,54 @@ $list
 - protein = โปรตีน (กรัม) เป็นจำนวนเต็ม
 ''';
 
+    // ส่ง prompt ไปให้ Gemini
     final res = await generateGemini(
       apiKey: ApiKeys.mealPlanScreen,
-      logEvent: AiEvent.mealPlan,
+      logEvent: AiEvent.mealPlan, // บันทึกประวัติการใช้ AI
       content: [Content.text(prompt)],
       generationConfig: GenerationConfig(
-        responseMimeType: 'application/json',
-        temperature: 0.2,
+        responseMimeType: 'application/json', // บังคับให้ตอบเป็น JSON
+        temperature: 0.2, // ความสุ่มของคำตอบ (ต่ำ = ตอบนิ่ง ตรงไปตรงมา)
       ),
-      timeout: const Duration(seconds: 45),
+      timeout: const Duration(seconds: 45), // รอนานสุด 45 วินาที
     );
 
+    // ล้างเครื่องหมาย ``` ที่ AI อาจใส่มา
     final text = (res.text ?? '')
         .replaceAll('```json', '')
         .replaceAll('```', '')
         .trim();
-    final start = text.indexOf('{');
-    final end = text.lastIndexOf('}');
+    final start = text.indexOf('{'); // หาจุดเริ่ม JSON
+    final end = text.lastIndexOf('}'); // หาจุดจบ JSON
     if (start == -1 || end <= start) {
       throw 'อ่านผลการคำนวณจาก AI ไม่ได้ กรุณาลองใหม่';
     }
-    final json = jsonDecode(text.substring(start, end + 1));
+    final json = jsonDecode(text.substring(start, end + 1)); // แปลงข้อความเป็นข้อมูล
+    // ตัวช่วยแปลงค่าเป็นตัวเลข (ตัดลูกน้ำออกก่อน เช่น "1,200")
     num? toNum(Object? v) =>
         v is num ? v : num.tryParse(v?.toString().replaceAll(',', '') ?? '');
     final calories = toNum(json is Map ? json['calories'] : null);
     final protein = toNum(json is Map ? json['protein'] : null);
-    if (calories == null || protein == null || calories < 0 || protein < 0) {
+    if (calories == null || protein == null || calories < 0 || protein < 0) { // ค่าผิดปกติ
       throw 'อ่านผลการคำนวณจาก AI ไม่ได้ กรุณาลองใหม่';
     }
 
+    // ลบธงและค่าเดิมออกจากวัตถุดิบ (คำนวณใหม่แล้ว ไม่ต้องเตือนอีก)
     final cleaned = [
       for (final e in ingredients)
         {...e}
           ..remove(staleKey)
           ..remove(baseKey),
     ];
-    final update = {
+    final update = { // ค่าที่จะบันทึก (ปัดเป็นจำนวนเต็ม)
       'calories': calories.round(),
       'protein': protein.round(),
       'ingredients': cleaned,
     };
     await Supabase.instance.client
         .from('weekly_meals')
-        .update(update)
+        .update(update) // บันทึกลงฐานข้อมูล
         .eq('id', meal['id']);
-    return {...meal, ...update};
+    return {...meal, ...update}; // ส่งมื้อที่อัปเดตแล้วกลับ
   }
 }

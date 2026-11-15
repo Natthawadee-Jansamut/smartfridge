@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:test_app/screens/auth/verify_email_otp_screen.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ระบบสมัครสมาชิก/ล็อกอิน
+import 'package:test_app/screens/auth/verify_email_otp_screen.dart'; // หน้ากรอก OTP (ไปต่อหลังสมัคร)
 
+// หน้าสมัครสมาชิก
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -10,41 +11,41 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>(); // กุญแจฟอร์ม ใช้สั่งตรวจทุกช่อง
 
   final supabase = Supabase.instance.client;
 
-  final firstNameController = TextEditingController();
+  final firstNameController = TextEditingController(); // ช่องชื่อ
 
-  final lastNameController = TextEditingController();
+  final lastNameController = TextEditingController(); // ช่องนามสกุล
 
-  final emailController = TextEditingController();
+  final emailController = TextEditingController(); // ช่องอีเมล
 
-  final passwordController = TextEditingController();
+  final passwordController = TextEditingController(); // ช่องรหัสผ่าน
 
-  final confirmPasswordController = TextEditingController();
+  final confirmPasswordController = TextEditingController(); // ช่องยืนยันรหัส
 
-  final phoneController = TextEditingController();
+  final phoneController = TextEditingController(); // ช่องเบอร์โทร
 
-  bool obscurePassword = true;
+  bool obscurePassword = true; // ซ่อนรหัสไหม
 
-  bool obscureConfirm = true;
+  bool obscureConfirm = true; // ซ่อนรหัสยืนยันไหม
 
-  bool isLoading = false;
+  bool isLoading = false; // กำลังสมัครอยู่ไหม
 
-  bool get _hasMinLength => passwordController.text.length >= 8;
+  bool get _hasMinLength => passwordController.text.length >= 8; // กฎ: ยาว 8 ตัวขึ้นไป
 
-  bool get _hasUppercase => RegExp(r'[A-Z]').hasMatch(passwordController.text);
+  bool get _hasUppercase => RegExp(r'[A-Z]').hasMatch(passwordController.text); // กฎ: มีตัวพิมพ์ใหญ่
 
-  bool get _hasLowercase => RegExp(r'[a-z]').hasMatch(passwordController.text);
+  bool get _hasLowercase => RegExp(r'[a-z]').hasMatch(passwordController.text); // กฎ: มีตัวพิมพ์เล็ก
 
-  bool get _hasNumber => RegExp(r'[0-9]').hasMatch(passwordController.text);
+  bool get _hasNumber => RegExp(r'[0-9]').hasMatch(passwordController.text); // กฎ: มีตัวเลข
 
-  bool get _hasSpecialChar =>
+  bool get _hasSpecialChar => // กฎ: มีอักขระพิเศษ
       RegExp(r'[!@#$%^&*]').hasMatch(passwordController.text);
 
   @override
-  void dispose() {
+  void dispose() { // ปิดหน้า คืนหน่วยความจำของทุกช่อง
     firstNameController.dispose();
 
     lastNameController.dispose();
@@ -60,6 +61,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  // ตรวจรหัสผ่าน คืนข้อความ error ข้อแรกที่ไม่ผ่าน (null = ผ่าน)
   String? validatePassword(String? value) {
     final password = value ?? '';
 
@@ -87,25 +89,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return "Add special character !@#\$%^&*";
     }
 
-    return null;
+    return null; // ผ่านทุกข้อ
   }
 
+  // กดปุ่ม Register
   Future<void> _register() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) return; // ตรวจทุกช่อง มีช่องผิดก็หยุด
 
     setState(() {
       isLoading = true;
     });
 
     try {
-      final response = await supabase.auth.signUp(
+      final response = await supabase.auth.signUp( // สมัครสมาชิกกับ Supabase
         email: emailController.text.trim(),
 
         password: passwordController.text.trim(),
 
-        emailRedirectTo: 'smartfridge://login-callback/',
+        emailRedirectTo: 'smartfridge://login-callback/', // ลิงก์ยืนยันในอีเมลให้เด้งกลับเข้าแอป
 
-        data: {
+        data: { // ข้อมูลเพิ่มเติมของผู้ใช้
           'first_name': firstNameController.text.trim(),
 
           'last_name': lastNameController.text.trim(),
@@ -116,7 +119,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      if (response.user != null) {
+      if (response.user != null) { // สมัครสำเร็จ -> ไปหน้ากรอก OTP
         Navigator.push(
           context,
 
@@ -126,7 +129,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
         );
       }
-    } on AuthException catch (e) {
+    } on AuthException catch (e) { // error จากระบบ (เช่น อีเมลซ้ำ)
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
@@ -143,18 +146,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // แถวกฎรหัสผ่าน 1 ข้อ (ผ่าน = ติ๊กฟ้า)
   Widget buildPasswordRequirement(String text, bool isPassed) {
     return Padding(
-      padding: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.only(top: 4), // [UI] ระยะห่างบนแต่ละแถว
 
       child: Row(
         children: [
           Icon(
             isPassed ? Icons.check_circle : Icons.radio_button_unchecked,
 
-            size: 16,
+            size: 16, // [UI] ขนาดไอคอน
 
-            color: isPassed ? const Color(0xff5189C9) : Colors.grey,
+            color: isPassed ? const Color(0xff5189C9) : Colors.grey, // [UI] ผ่าน = ฟ้า ไม่ผ่าน = เทา
           ),
 
           const SizedBox(width: 8),
@@ -164,7 +168,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
               text,
 
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 12, // [UI] ขนาดตัวอักษร
 
                 color: isPassed
                     ? const Color(0xff5189C9)
@@ -177,6 +181,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // รายการกฎรหัสผ่านทั้งหมด
   Widget buildPasswordRequirements() {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -211,14 +216,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
+      body: Container( // [UI] พื้นหลังเต็มจอ
         width: double.infinity,
 
         height: double.infinity,
 
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xffD8EEFF), Colors.white],
+          gradient: LinearGradient( // [UI] พื้นหลังไล่สี
+            colors: [Color(0xffD8EEFF), Colors.white], // [UI] ฟ้าอ่อน (บน) -> ขาว (ล่าง)
 
             begin: Alignment.topCenter,
 
@@ -227,17 +232,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
 
         child: SafeArea(
-          child: LayoutBuilder(
+          child: LayoutBuilder( // รู้ขนาดจอ
             builder: (context, constraints) {
-              return SingleChildScrollView(
+              return SingleChildScrollView( // เลื่อนได้ (ฟอร์มยาว)
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight), // [UI] สูงอย่างน้อยเท่าจอ
 
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
+                      horizontal: 24, // [UI] ระยะซ้ายขวา
 
-                      vertical: 32,
+                      vertical: 32, // [UI] ระยะบนล่าง
                     ),
 
                     child: Form(
@@ -246,9 +251,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       child: Column(
                         children: [
                           const Icon(
-                            Icons.person_add,
+                            Icons.person_add, // [UI] ไอคอนคน + บวก
 
-                            size: 70,
+                            size: 70, // [UI] ขนาดไอคอน
 
                             color: Color(0xff5189C9),
                           ),
@@ -259,7 +264,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             "Create Account",
 
                             style: TextStyle(
-                              fontSize: 26,
+                              fontSize: 26, // [UI] ขนาดหัวข้อ
 
                               fontWeight: FontWeight.bold,
 
@@ -267,9 +272,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
                           ),
 
-                          const SizedBox(height: 30),
+                          const SizedBox(height: 30), // [UI] ระยะหัวข้อกับช่องแรก
 
-                          Row(
+                          Row( // ชื่อ + นามสกุล อยู่แถวเดียวกัน
                             children: [
                               Expanded(
                                 child: buildTextField(
@@ -280,12 +285,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                   icon: Icons.person_outline,
 
                                   validator: (value) {
-                                    return value!.isEmpty ? "Required" : null;
+                                    return value!.isEmpty ? "Required" : null; // ว่าง = ต้องกรอก
                                   },
                                 ),
                               ),
 
-                              const SizedBox(width: 12),
+                              const SizedBox(width: 12), // [UI] ระยะระหว่างช่องชื่อกับนามสกุล
 
                               Expanded(
                                 child: buildTextField(
@@ -303,7 +308,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ],
                           ),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 16), // [UI] ระยะระหว่างแถวช่องกรอก
 
                           buildTextField(
                             controller: emailController,
@@ -312,12 +317,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                             icon: Icons.email_outlined,
 
-                            keyboardType: TextInputType.emailAddress,
+                            keyboardType: TextInputType.emailAddress, // [UI] คีย์บอร์ดแบบอีเมล
 
                             validator: (value) {
                               if (value == null ||
                                   !RegExp(
-                                    r'^[^@]+@[^@]+\.[^@]+',
+                                    r'^[^@]+@[^@]+\.[^@]+', // รูปแบบ xxx@xxx.xxx
                                   ).hasMatch(value)) {
                                 return "Enter valid email";
                               }
@@ -338,7 +343,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             obscureText: obscurePassword,
 
                             onChanged: (value) {
-                              setState(() {});
+                              setState(() {}); // พิมพ์ทุกตัว วาดใหม่ให้รายการกฎอัปเดต
                             },
 
                             suffix: IconButton(
@@ -355,10 +360,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               },
                             ),
 
-                            validator: validatePassword,
+                            validator: validatePassword, // ใช้ฟังก์ชันตรวจรหัสด้านบน
                           ),
 
-                          buildPasswordRequirements(),
+                          buildPasswordRequirements(), // แสดงรายการกฎใต้ช่องรหัส
 
                           const SizedBox(height: 16),
 
@@ -386,7 +391,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             ),
 
                             validator: (value) {
-                              if (value != passwordController.text) {
+                              if (value != passwordController.text) { // ต้องตรงกับช่องรหัสผ่าน
                                 return "Passwords do not match";
                               }
 
@@ -403,28 +408,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                             icon: Icons.phone_outlined,
 
-                            keyboardType: TextInputType.phone,
+                            keyboardType: TextInputType.phone, // [UI] คีย์บอร์ดแบบเบอร์โทร
                           ),
 
                           const SizedBox(height: 30),
 
                           SizedBox(
-                            width: double.infinity,
+                            width: double.infinity, // [UI] ปุ่มกว้างเต็ม
 
-                            height: 55,
+                            height: 55, // [UI] ความสูงปุ่ม
 
                             child: ElevatedButton(
-                              onPressed: isLoading ? null : _register,
+                              onPressed: isLoading ? null : _register, // กำลังสมัคร = กดไม่ได้
 
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xffffd84d),
+                                backgroundColor: const Color(0xffffd84d), // [UI] สีปุ่มเหลือง
 
-                                foregroundColor: const Color(0xff5189C9),
+                                foregroundColor: const Color(0xff5189C9), // [UI] สีตัวอักษรฟ้า
 
-                                elevation: 6,
+                                elevation: 6, // [UI] เงาปุ่ม
 
                                 shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
+                                  borderRadius: BorderRadius.circular(25), // [UI] มุมโค้ง
                                 ),
                               ),
 
@@ -448,7 +453,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                           TextButton(
                             onPressed: () {
-                              Navigator.pop(context);
+                              Navigator.pop(context); // กลับหน้า Login
                             },
 
                             child: const Text(
@@ -470,6 +475,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // สร้างช่องกรอก 1 ช่อง (ใช้ซ้ำทุกช่องในหน้านี้)
   Widget buildTextField({
     required TextEditingController controller,
 
@@ -477,15 +483,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     required IconData icon,
 
-    TextInputType keyboardType = TextInputType.text,
+    TextInputType keyboardType = TextInputType.text, // ชนิดคีย์บอร์ด (ค่าเริ่มต้น = ข้อความ)
 
-    bool obscureText = false,
+    bool obscureText = false, // ซ่อนข้อความไหม (ใช้กับรหัส)
 
-    Widget? suffix,
+    Widget? suffix, // ปุ่มท้ายช่อง (เช่นปุ่มตา)
 
-    String? Function(String?)? validator,
+    String? Function(String?)? validator, // ฟังก์ชันตรวจความถูกต้อง
 
-    void Function(String)? onChanged,
+    void Function(String)? onChanged, // พิมพ์แล้วทำอะไร
   }) {
     return TextFormField(
       controller: controller,
@@ -499,7 +505,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       onChanged: onChanged,
 
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: const Color(0xff5189C9)),
+        prefixIcon: Icon(icon, color: const Color(0xff5189C9)), // [UI] ไอคอนหน้าช่องสีฟ้า
 
         suffixIcon: suffix,
 
@@ -507,18 +513,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
         filled: true,
 
-        fillColor: Colors.white,
+        fillColor: Colors.white, // [UI] พื้นช่องขาว
 
         contentPadding: const EdgeInsets.symmetric(
-          vertical: 18,
+          vertical: 18, // [UI] ระยะในบนล่าง (ความสูงช่อง)
 
-          horizontal: 20,
+          horizontal: 20, // [UI] ระยะในซ้ายขวา
         ),
 
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง 20
 
-          borderSide: BorderSide.none,
+          borderSide: BorderSide.none, // [UI] ไม่มีเส้นขอบ
         ),
       ),
     );

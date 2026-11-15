@@ -2,6 +2,7 @@
 /// ทุกจุดในแอปต้องใช้ร่วมกัน ห้ามให้ AI (ตอนสแกน) หรือผู้ใช้ (ตอนแก้ไข) พิมพ์ชื่อ
 /// หมวดหมู่เป็นข้อความอิสระได้อีก เพราะจะทำให้เกิดหมวดหมู่แปลกๆ ซ้ำซ้อนไม่มีที่สิ้นสุด
 /// ในหน้าคลัง (ปัญหาที่เจอมาก่อนแก้ไขนี้)
+// [UI] ลำดับในลิสต์นี้ = ลำดับที่แสดงในตัวเลือกหมวดหมู่ เพิ่ม/ลบ/สลับได้ที่นี่ที่เดียว
 const List<String> fixedCategories = [
   'ผัก',
   'ผลไม้',
@@ -16,10 +17,11 @@ const List<String> fixedCategories = [
 /// ก่อนแก้ไขนี้ที่ยังเป็นข้อความอิสระ) ให้เข้าเซ็ตที่กำหนดไว้เสมอ เป็นตัวกันเหนียว
 /// ชั้นสุดท้ายก่อนบันทึกลง Supabase หรือแสดงผล
 String normalizeCategory(String raw) {
-  final c = raw.trim();
-  if (fixedCategories.contains(c)) return c;
-  if (c.contains('ผลไม้')) return 'ผลไม้';
+  final c = raw.trim(); // ตัดช่องว่างหัวท้าย
+  if (fixedCategories.contains(c)) return c; // ตรงกับหมวดที่มีอยู่แล้ว ใช้ได้เลย
+  if (c.contains('ผลไม้')) return 'ผลไม้'; // เช็คผลไม้ก่อนผัก (กันคำที่มีทั้งสองคำ)
   if (c.contains('ผัก')) return 'ผัก';
+  // มีคำเกี่ยวกับเนื้อสัตว์คำไหนก็ได้ -> หมวดเนื้อสัตว์
   if (c.contains('เนื้อ') ||
       c.contains('หมู') ||
       c.contains('ไก่') ||
@@ -33,27 +35,28 @@ String normalizeCategory(String raw) {
     return 'นม/เครื่องดื่ม';
   }
   if (c.contains('ขนม')) return 'ขนม';
-  return 'อื่นๆ';
+  return 'อื่นๆ'; // ไม่เข้าเงื่อนไขไหนเลย -> อื่นๆ
 }
 
 /// อิโมจิของแต่ละหมวดหมู่วัตถุดิบ — ให้ตรงกันทุกหน้า (ตามหน้า "คลัง"/Inventory
 /// ซึ่งเป็นต้นแบบ) ห้ามให้แต่ละหน้ามีชุด mapping ของตัวเองแยกกันอีก
 /// ใช้: หน้าคลัง, หน้าผลลัพธ์หลังสแกน, หน้าถ่ายภาพวัตถุดิบ (วัตถุดิบที่เพิ่มล่าสุด)
+// [UI] อยากเปลี่ยนไอคอนของหมวดไหน แก้อิโมจิในบรรทัดนั้นได้เลย มีผลทุกหน้า
 String categoryEmoji(String category) {
-  if (category.contains('ผลไม้')) return '🍎';
-  if (category.contains('ผัก')) return '🥕';
+  if (category.contains('ผลไม้')) return '🍎'; // ไอคอนผลไม้
+  if (category.contains('ผัก')) return '🥕'; // ไอคอนผัก
   if (category.contains('เนื้อ') ||
       category.contains('หมู') ||
       category.contains('ไก่')) {
-    return '🥩';
+    return '🥩'; // ไอคอนเนื้อสัตว์
   }
-  if (category.contains('แป้ง') || category.contains('ข้าว')) return '🍞';
+  if (category.contains('แป้ง') || category.contains('ข้าว')) return '🍞'; // ไอคอนแป้ง/ข้าว
   // เช็ค "ขนม" ก่อน "นม" เพราะคำว่า ขนม มีตัว นม อยู่ข้างใน
-  if (category.contains('ขนม')) return '🍬';
+  if (category.contains('ขนม')) return '🍬'; // ไอคอนขนม
   if (category.contains('เครื่องดื่ม') ||
       category.contains('น้ำ') ||
       category.contains('นม')) {
-    return '🥛';
+    return '🥛'; // ไอคอนนม/เครื่องดื่ม
   }
-  return '📦';
+  return '📦'; // ไอคอนหมวดอื่นๆ
 }

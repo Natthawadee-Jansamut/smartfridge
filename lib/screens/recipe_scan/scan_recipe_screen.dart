@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:image_picker/image_picker.dart'; // เปิดกล้อง/คลังรูป
+import 'package:supabase_flutter/supabase_flutter.dart'; // ฐานข้อมูล/ผู้ใช้
 
-import 'package:test_app/services/ai_request_log.dart';
-import 'package:test_app/services/recipe_ai_service.dart';
-import 'package:test_app/services/recipe_repository.dart';
+import 'package:test_app/services/ai_request_log.dart'; // บันทึกประวัติการใช้ AI
+import 'package:test_app/services/recipe_ai_service.dart'; // เรียก AI สแกนสูตร
+import 'package:test_app/services/recipe_repository.dart'; // ค้น/บันทึกสูตร
 import 'package:test_app/widgets/add_recipe_widgets.dart';
 import 'package:test_app/widgets/app_bottom_nav.dart';
 import 'package:test_app/widgets/app_icons.dart';
@@ -18,7 +18,7 @@ class ScanRecipeScreen extends StatelessWidget {
   const ScanRecipeScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => const SavedRecipesScreen();
+  Widget build(BuildContext context) => const SavedRecipesScreen(); // เปิดหน้าคลังสูตรแทน
 }
 
 /// หน้าสแกนสูตรอาหาร (ตามดีไซน์ใน Figma: "สแกนสูตรอาหาร")
@@ -33,15 +33,15 @@ class ScanRecipeCaptureScreen extends StatefulWidget {
 }
 
 class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
-  final ImagePicker _picker = ImagePicker();
+  final ImagePicker _picker = ImagePicker(); // ตัวเปิดกล้อง/คลังรูป
 
-  List<Map<String, dynamic>> _recentRecipes = [];
-  bool _isLoadingRecent = true;
+  List<Map<String, dynamic>> _recentRecipes = []; // สูตรล่าสุด
+  bool _isLoadingRecent = true; // กำลังโหลดไหม
 
   @override
   void initState() {
     super.initState();
-    _fetchRecentRecipes();
+    _fetchRecentRecipes(); // เปิดหน้ามาโหลดสูตรล่าสุด
   }
 
   // สูตรที่บันทึกล่าสุด 3 รายการจาก Supabase จริง
@@ -52,7 +52,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         if (mounted) setState(() => _isLoadingRecent = false);
         return;
       }
-      final response = await RecipeRepository.fetchSavedRecipes(limit: 3);
+      final response = await RecipeRepository.fetchSavedRecipes(limit: 3); // ดึงสูตรที่บันทึกล่าสุด 3 สูตร
       if (mounted) {
         setState(() {
           _recentRecipes = response;
@@ -65,27 +65,28 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     }
   }
 
+  // ถ่าย/เลือกรูปสูตร -> ค้นในระบบก่อน -> ให้ AI อ่านเมื่อจำเป็น -> ไปหน้าตรวจผล
   Future<void> _pickAndAnalyzeImage(ImageSource source) async {
-    VoidCallback? closeLoader;
+    VoidCallback? closeLoader; // ฟังก์ชันปิดป๊อปอัปกำลังโหลด
     try {
       // ย่อรูปก่อนส่งให้ AI (รูปความละเอียดสูงอัปโหลดช้าจนเกิน timeout ได้)
       final image = await _picker.pickImage(
         source: source,
-        maxWidth: 1600,
-        imageQuality: 85,
+        maxWidth: 1600, // ย่อรูปกว้างไม่เกิน 1600px
+        imageQuality: 85, // คุณภาพรูป 85%
       );
-      if (image == null || !mounted) return;
+      if (image == null || !mounted) return; // ไม่ได้เลือกรูป
 
       closeLoader = showBlockingLoader(context, 'กำลังค้นหาสูตรอาหารจากรูป...');
-      final bytes = await image.readAsBytes();
-      final imageHash = RecipeRepository.imageHashOf(bytes);
+      final bytes = await image.readAsBytes(); // อ่านรูปเป็นไบต์
+      final imageHash = RecipeRepository.imageHashOf(bytes); // ลายนิ้วมือของรูป (ไว้หารูปซ้ำ)
 
       // 1) รูปนี้เคยสแกนแล้ว (image_hash ตรงกัน) -> ใช้สูตรเดิม ไม่ต้องเรียก Gemini
       Map<String, dynamic>? found;
       try {
-        found = await RecipeRepository.findRecipeByImageHash(imageHash);
+        found = await RecipeRepository.findRecipeByImageHash(imageHash); // ค้นสูตรที่เคยสแกนจากรูปเดียวกัน
         if (found != null) {
-          logAiRequest(
+          logAiRequest( // เจอ -> บันทึกว่าใช้ข้อมูลเดิม ไม่เปลือง AI
             event: AiEvent.scanRecipe,
             result: AiResult.cacheHit,
             recipeId: found['recipe_id'],
@@ -98,9 +99,10 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
 
       // ขั้นตอนอ่านสูตรเต็ม (ขั้นที่ 2) — ใช้ token มากที่สุด เรียกเฉพาะตอนจำเป็น
       final mimeType = image.mimeType ?? 'image/jpeg';
+      // ฟังก์ชันย่อย: ให้ AI อ่านสูตรเต็มจากรูป
       Future<Map<String, dynamic>> readFullRecipe(String message) async {
-        closeLoader?.call();
-        closeLoader = showBlockingLoader(context, message);
+        closeLoader?.call(); // ปิดป๊อปอัปเดิม
+        closeLoader = showBlockingLoader(context, message); // เปิดป๊อปอัปข้อความใหม่
         final recipe = await RecipeAiService.scanRecipeImage(
           bytes,
           mimeType: mimeType,
@@ -111,7 +113,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         return recipe;
       }
 
-      Map<String, dynamic>? scanned;
+      Map<String, dynamic>? scanned; // สูตรที่ AI อ่านได้ (ถ้ามี)
       // สูตรในระบบที่เจอ — ส่งไปหน้าผลลัพธ์ให้สลับกลับมาใช้ได้ แม้เลือก AI ไปแล้ว
       var systemOptions = <Map<String, dynamic>>[if (found != null) found];
       // หน้าต่างให้เลือกสูตร (สูตรจากรูป vs สูตรในระบบ) — null = ไม่ต้องถาม
@@ -120,13 +122,13 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
       chooser;
       if (found == null) {
         // 2) ขั้นที่ 1 (ประหยัด token): ถาม AI สั้นๆ ว่าเมนูอะไร มีวัตถุดิบ/วิธีทำไหม
-        final info = await RecipeAiService.identifyRecipeImage(
+        final info = await RecipeAiService.identifyRecipeImage( // ถาม AI แค่ชื่อเมนู + มีวัตถุดิบ/ขั้นตอนไหม
           bytes,
           mimeType: mimeType,
           imageHash: imageHash,
         );
         // 3) เอาชื่อไปค้นในระบบ: ชื่อตรงกันทั้งชื่อ / ชื่อคล้ายกัน
-        final (exact, similar) = await _searchByName(info.name);
+        final (exact, similar) = await _searchByName(info.name); // ค้นในระบบด้วยชื่อ
         found = exact;
         systemOptions = [if (exact != null) exact, ...similar];
         final similarChooser = (
@@ -167,13 +169,13 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         }
       }
 
-      while (true) {
+      while (true) { // วนจนกว่าผู้ใช้จะบันทึก/ยกเลิก
         closeLoader?.call();
         closeLoader = null;
         if (!mounted) return;
 
         if (chooser != null) {
-          final choice = await _chooseRecipe(
+          final choice = await _chooseRecipe( // เปิดหน้าต่างให้เลือกสูตร
             title: chooser.title,
             subtitle: chooser.subtitle,
             // AI อ่าน/สร้างสูตรไปแล้ว -> แสดงสูตรนั้นเลย (ไม่เรียก AI ซ้ำ)
@@ -187,19 +189,19 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
             _fetchRecentRecipes();
             return;
           }
-          if (identical(choice, _useImage)) {
-            scanned ??= await readFullRecipe('AI กำลังสร้างสูตรอาหาร...');
+          if (identical(choice, _useImage)) { // เลือก "สูตรจากรูป"
+            scanned ??= await readFullRecipe('AI กำลังสร้างสูตรอาหาร...'); // ยังไม่ได้อ่าน -> ให้ AI อ่านตอนนี้
             closeLoader?.call();
             closeLoader = null;
             found = null;
           } else {
-            found = choice;
+            found = choice; // เลือกสูตรในระบบ
           }
           if (!mounted) return;
         }
 
-        final useDatabase = found != null;
-        final saved = await Navigator.push<bool>(
+        final useDatabase = found != null; // ใช้สูตรจากฐานข้อมูลไหม
+        final saved = await Navigator.push<bool>( // ไปหน้าตรวจผล แล้วรอผลว่าบันทึกไหม
           context,
           MaterialPageRoute(
             // ส่งรูปที่อัปโหลดไปด้วย ให้ผู้ใช้เทียบว่า AI อ่านสูตรถูกไหม
@@ -228,17 +230,17 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     } catch (e) {
       closeLoader?.call();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar( // [UI] แถบข้อความ error
         SnackBar(
           content: Text(RecipeAiService.friendlyError(e)),
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red, // [UI] สีแดง
         ),
       );
     }
   }
 
   /// ค่าที่ _chooseRecipe คืนมาเมื่อผู้ใช้เลือก "ใช้สูตรจากรูป / ให้ AI สร้าง"
-  static const Map<String, dynamic> _useImage = {};
+  static const Map<String, dynamic> _useImage = {}; // ค่าพิเศษ (Map ว่าง) ใช้แทน "เลือกสูตรจากรูป"
 
   /// ค้นสูตรในระบบจากชื่อเมนู -> (สูตรที่ชื่อตรงกันทั้งชื่อ, สูตรที่ชื่อคล้ายกัน)
   /// ค้นไม่สำเร็จ (เช่น เน็ตหลุด) -> ถือว่าไม่เจอ แล้วใช้ AI ต่อตามปกติ
@@ -246,9 +248,9 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     String name,
   ) async {
     try {
-      final exact = await RecipeRepository.findRecipeByName(name);
-      if (exact != null) return (exact, <Map<String, dynamic>>[]);
-      final similar = await RecipeRepository.findSimilarRecipesByName(name);
+      final exact = await RecipeRepository.findRecipeByName(name); // ค้นชื่อตรงก่อน
+      if (exact != null) return (exact, <Map<String, dynamic>>[]); // เจอชื่อตรง
+      final similar = await RecipeRepository.findSimilarRecipesByName(name); // ไม่เจอ -> ค้นชื่อคล้าย
       // ชื่อเดียวกันจริงๆ แค่พิมพ์วรรณยุกต์/สระสลับลำดับ -> ถือว่าตรงทั้งชื่อ
       final same = similar
           .where(
@@ -273,25 +275,25 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     required Map<String, dynamic>? scanned,
     required List<Map<String, dynamic>> options,
   }) {
-    return showModalBottomSheet<Map<String, dynamic>>(
+    return showModalBottomSheet<Map<String, dynamic>>( // เปิดแผ่นเลื่อนขึ้นจากด้านล่าง
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
+      isScrollControlled: true, // [UI] ให้สูงได้เกินครึ่งจอ
+      backgroundColor: Colors.white, // [UI] พื้นขาว
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)), // [UI] มุมบนโค้ง 24
       ),
       builder: (ctx) => SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12), // [UI] ระยะในแผ่น
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.stretch, // [UI] ลูกยืดเต็มความกว้าง
             children: [
               Text(
                 title,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 17,
+                  fontSize: 17, // [UI] ขนาดหัวข้อ
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -299,10 +301,10 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700), // [UI] คำอธิบาย ขนาด 13 สีเทา
               ),
               const SizedBox(height: 16),
-              _RecipeChoiceCard(
+              _RecipeChoiceCard( // การ์ดตัวเลือก: สูตรจากรูป
                 icon: scanned == null
                     ? Icons.auto_awesome_outlined
                     : Icons.photo_camera_outlined,
@@ -310,17 +312,17 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
                     ? 'ให้ AI สร้างสูตรจากรูปของคุณ'
                     : 'สูตรจากรูปของคุณ',
                 recipe: scanned,
-                onTap: () => Navigator.pop(ctx, _useImage),
+                onTap: () => Navigator.pop(ctx, _useImage), // เลือก -> ส่งค่า _useImage กลับ
               ),
               for (final option in options) ...[
                 const SizedBox(height: 10),
-                _RecipeChoiceCard(
+                _RecipeChoiceCard( // การ์ดตัวเลือก: สูตรในระบบ
                   icon: Icons.menu_book_rounded,
                   title: 'สูตรในระบบ',
                   // แสดงชื่อเต็มของสูตรในระบบ (อาจต่างจากชื่อที่สแกนได้)
                   name: (option['recipe_name'] ?? '').toString(),
                   recipe: option,
-                  onTap: () => Navigator.pop(ctx, option),
+                  onTap: () => Navigator.pop(ctx, option), // เลือก -> ส่งสูตรนั้นกลับ
                 ),
               ],
             ],
@@ -333,32 +335,32 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kRecipeBg,
-      bottomNavigationBar: const AppBottomNav(current: AppTab.scan),
+      backgroundColor: kRecipeBg, // [UI] สีพื้นหลัง
+      bottomNavigationBar: const AppBottomNav(current: AppTab.scan), // แถบเมนูล่าง
       body: SafeArea(
         child: Column(
           children: [
-            RecipeFlowHeader(title: 'สแกนสูตรอาหาร'),
-            const SizedBox(height: 15),
+            RecipeFlowHeader(title: 'สแกนสูตรอาหาร'), // หัวหน้า
+            const SizedBox(height: 15), // [UI] ระยะใต้หัว
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30), // [UI] ระยะรอบรายการ
                 children: [
-                  _ScanOptionCard(
+                  _ScanOptionCard( // การ์ด: ถ่ายรูป
                     icon: Icons.camera_alt_outlined,
                     title: 'ถ่ายภาพสูตรอาหาร',
                     subtitle: 'เปิดกล้องเพื่อสแกน',
                     onTap: () => _pickAndAnalyzeImage(ImageSource.camera),
                   ),
-                  const SizedBox(height: 14),
-                  _ScanOptionCard(
+                  const SizedBox(height: 14), // [UI] ระยะห่างระหว่างการ์ด
+                  _ScanOptionCard( // การ์ด: เลือกจากคลังรูป
                     icon: Icons.add_photo_alternate_outlined,
                     title: 'เลือกจากคลังรูปภาพ',
                     subtitle: 'อัพโหลดรูปภาพที่มีอยู่',
                     onTap: () => _pickAndAnalyzeImage(ImageSource.gallery),
                   ),
                   const SizedBox(height: 20),
-                  RecipeSectionCard(
+                  RecipeSectionCard( // การ์ดเคล็ดลับ
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -366,7 +368,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
                           'เคล็ดลับการสแกน',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
+                            fontSize: 16, // [UI] ขนาดหัวข้อการ์ด
                             color: Colors.black87,
                           ),
                         ),
@@ -379,7 +381,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  RecipeSectionCard(
+                  RecipeSectionCard( // การ์ดสูตรล่าสุด
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -405,12 +407,13 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     );
   }
 
+  // รายการสูตรล่าสุด: กำลังโหลด / ว่าง / มีรายการ
   Widget _buildRecentList() {
     if (_isLoadingRecent) {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(10),
-          child: CircularProgressIndicator(strokeWidth: 2, color: kRecipeBlue),
+          child: CircularProgressIndicator(strokeWidth: 2, color: kRecipeBlue), // [UI] วงหมุนบาง สีฟ้า
         ),
       );
     }
@@ -419,7 +422,7 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
         padding: EdgeInsets.symmetric(vertical: 10),
         child: Text(
           'ยังไม่มีประวัติการสแกนสูตรอาหาร',
-          style: TextStyle(color: Colors.grey, fontSize: 13),
+          style: TextStyle(color: Colors.grey, fontSize: 13), // [UI] ข้อความสีเทา ขนาด 13
         ),
       );
     }
@@ -427,23 +430,23 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: _recentRecipes.map((r) {
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 0, 4),
+          padding: const EdgeInsets.fromLTRB(16, 8, 0, 4), // [UI] ระยะ ซ้าย 16 บน 8 ล่าง 4
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 (r['recipe_name'] ?? 'ไม่มีชื่อเมนู').toString(),
-                maxLines: 1,
+                maxLines: 1, // [UI] บรรทัดเดียว
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 15,
+                  fontSize: 15, // [UI] ขนาดชื่อสูตร
                   color: Colors.black87,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
-                relativeTimeThai(r['created_at']?.toString()),
+                relativeTimeThai(r['created_at']?.toString()), // เวลาแบบ "5 นาทีที่แล้ว"
                 style: const TextStyle(color: Colors.black54, fontSize: 12),
               ),
             ],
@@ -453,17 +456,18 @@ class _ScanRecipeCaptureScreenState extends State<ScanRecipeCaptureScreen> {
     );
   }
 
+  // แถวเคล็ดลับ 1 ข้อ
   Widget _tip(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 6), // [UI] ระยะใต้แถว
       child: Row(
         children: [
-          const CheckIcon(size: 18),
+          const CheckIcon(size: 18), // [UI] ไอคอนติ๊ก ขนาด 18
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(color: Colors.black87, fontSize: 13),
+              style: const TextStyle(color: Colors.black87, fontSize: 13), // [UI] ขนาดข้อความ
             ),
           ),
         ],
@@ -489,26 +493,26 @@ class _ScanOptionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
-      elevation: 1,
+      color: Colors.white, // [UI] พื้นการ์ด
+      elevation: 1, // [UI] เงาบาง
       shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(24),
+      borderRadius: BorderRadius.circular(24), // [UI] มุมโค้ง 24
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
-        splashColor: kRecipeBlue.withOpacity(0.12),
+        splashColor: kRecipeBlue.withOpacity(0.12), // [UI] สีคลื่นตอนกด
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
+          padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20), // [UI] ระยะใน บนล่าง 26 ซ้ายขวา 20
           child: Column(
             children: [
               Container(
-                height: 64,
+                height: 64, // [UI] ขนาดวงกลมไอคอน
                 width: 64,
                 decoration: const BoxDecoration(
-                  color: kRecipeBg,
+                  color: kRecipeBg, // [UI] สีวงกลม
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 32, color: Colors.black87),
+                child: Icon(icon, size: 32, color: Colors.black87), // [UI] ไอคอนขนาด 32
               ),
               const SizedBox(height: 14),
               Text(
@@ -516,7 +520,7 @@ class _ScanOptionCard extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                  fontSize: 16, // [UI] ขนาดหัวข้อ
                   color: Colors.black87,
                 ),
               ),
@@ -524,7 +528,7 @@ class _ScanOptionCard extends StatelessWidget {
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54, fontSize: 13),
+                style: const TextStyle(color: Colors.black54, fontSize: 13), // [UI] ขนาดคำอธิบาย
               ),
             ],
           ),
@@ -536,15 +540,15 @@ class _ScanOptionCard extends StatelessWidget {
 
 /// การ์ดตัวเลือกสูตร: จำนวนวัตถุดิบ / ขั้นตอน / ขั้นตอนที่ AI คิดเพิ่ม
 class _RecipeChoiceCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
+  final IconData icon; // ไอคอน
+  final String title; // หัวข้อการ์ด
 
   /// ชื่อเมนู (แสดงใต้หัวข้อ) — ใช้กับสูตรในระบบที่ชื่ออาจต่างจากที่สแกนได้
   final String? name;
 
   /// null = ยังไม่ได้ให้ AI อ่านสูตร (ตัวเลือก "ให้ AI สร้างสูตร")
   final Map<String, dynamic>? recipe;
-  final VoidCallback onTap;
+  final VoidCallback onTap; // กดแล้วทำอะไร
 
   const _RecipeChoiceCard({
     required this.icon,
@@ -556,11 +560,11 @@ class _RecipeChoiceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recipe = this.recipe ?? const <String, dynamic>{};
-    final pending = this.recipe == null;
-    final ingredients = RecipeRepository.ingredientsOf(recipe).length;
-    final steps = RecipeRepository.stepTextsOf(recipe).length;
-    final aiSteps = RecipeRepository.aiStepIndexesOf(
+    final recipe = this.recipe ?? const <String, dynamic>{}; // ไม่มีสูตร ใช้ Map ว่างแทน
+    final pending = this.recipe == null; // ยังไม่ได้ให้ AI อ่าน
+    final ingredients = RecipeRepository.ingredientsOf(recipe).length; // จำนวนวัตถุดิบ
+    final steps = RecipeRepository.stepTextsOf(recipe).length; // จำนวนขั้นตอน
+    final aiSteps = RecipeRepository.aiStepIndexesOf( // จำนวนขั้นที่ AI แต่ง
       recipe,
     ).where((i) => i < steps).length;
     final detail = pending
@@ -575,16 +579,16 @@ class _RecipeChoiceCard extends StatelessWidget {
         : 'ไม่มีขั้นตอนที่ AI แต่งเพิ่ม';
 
     return Material(
-      color: kRecipeBg,
-      borderRadius: BorderRadius.circular(16),
+      color: kRecipeBg, // [UI] พื้นการ์ด
+      borderRadius: BorderRadius.circular(16), // [UI] มุมโค้ง 16
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(14), // [UI] ระยะในการ์ด
           child: Row(
             children: [
-              Icon(icon, size: 30, color: Colors.black87),
+              Icon(icon, size: 30, color: Colors.black87), // [UI] ไอคอนขนาด 30
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -593,7 +597,7 @@ class _RecipeChoiceCard extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 15, // [UI] ขนาดหัวข้อ
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -601,26 +605,26 @@ class _RecipeChoiceCard extends StatelessWidget {
                       Text(
                         name!,
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 14, // [UI] ขนาดชื่อเมนู
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF1565C0),
+                          color: Color(0xFF1565C0), // [UI] สีน้ำเงิน
                         ),
                       ),
                     const SizedBox(height: 2),
-                    Text(detail, style: const TextStyle(fontSize: 13)),
+                    Text(detail, style: const TextStyle(fontSize: 13)), // [UI] รายละเอียด ขนาด 13
                     Text(
                       aiText,
                       style: TextStyle(
                         fontSize: 12,
                         color: pending || aiSteps > 0
-                            ? const Color(0xFFD32F2F)
+                            ? const Color(0xFFD32F2F) // [UI] มี AI เกี่ยว = แดง, ไม่มี = เทา
                             : Colors.grey.shade700,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded),
+              const Icon(Icons.chevron_right_rounded), // [UI] ลูกศรขวา
             ],
           ),
         ),

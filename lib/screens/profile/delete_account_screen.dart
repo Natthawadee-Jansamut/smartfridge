@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/material.dart'; // ชุดเครื่องมือสร้างหน้าจอ
+import 'package:supabase_flutter/supabase_flutter.dart'; // ระบบผู้ใช้ / เรียก Edge Function
 
-import 'package:test_app/services/notification_service.dart';
-import 'package:test_app/services/reauth.dart';
-import 'package:test_app/screens/auth/login_screen.dart';
+import 'package:test_app/services/notification_service.dart'; // ยกเลิกแจ้งเตือนหลังลบบัญชี
+import 'package:test_app/services/reauth.dart'; // ตรวจรหัสผ่านซ้ำก่อนลบ
+import 'package:test_app/screens/auth/login_screen.dart'; // กลับหน้า Login หลังลบ
 
+// หน้าลบบัญชีผู้ใช้
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
 
@@ -15,8 +16,9 @@ class DeleteAccountScreen extends StatefulWidget {
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   final supabase = Supabase.instance.client;
 
-  bool loading = false;
+  bool loading = false; // กำลังลบอยู่ไหม
 
+  // ลบบัญชีจริง (เรียกหลังยืนยันรหัสผ่านแล้ว)
   Future<void> deleteAccount() async {
     setState(() {
       loading = true;
@@ -25,9 +27,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     try {
       // เรียก Supabase Edge Function
 
-      final response = await supabase.functions.invoke('delete-user');
+      final response = await supabase.functions.invoke('delete-user'); // ฟังก์ชันฝั่งเซิร์ฟเวอร์ที่ลบผู้ใช้และข้อมูลทั้งหมด
 
-      if (response.status != 200) {
+      if (response.status != 200) { // 200 = สำเร็จ, อย่างอื่น = ล้มเหลว
         throw Exception("Delete account failed");
       }
 
@@ -40,7 +42,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       await NotificationService.notifications.cancelAll();
 
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
+        Navigator.pushAndRemoveUntil( // ไปหน้า Login ล้างหน้าเก่าทั้งหมด
           context,
 
           MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -70,35 +72,37 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   /// ยืนยันการลบด้วยรหัสผ่านปัจจุบัน (กันคนหยิบโทรศัพท์ที่ล็อกอินค้างไว้ลบบัญชี)
   /// รหัสผ่านถูก -> ปิดหน้าต่างแล้วลบบัญชี, ผิด -> เตือนสีแดงใต้ช่อง
   Future<void> confirmDelete() async {
-    final passwordController = TextEditingController();
-    String? error;
-    bool hide = true;
-    bool checking = false;
-    const red = Color(0xffD93025);
+    final passwordController = TextEditingController(); // ช่องรหัสในป๊อปอัป
+    String? error; // ข้อความ error ใต้ช่อง (null = ไม่มี)
+    bool hide = true; // ซ่อนรหัสไหม
+    bool checking = false; // กำลังตรวจรหัสอยู่ไหม
+    const red = Color(0xffD93025); // [UI] สีแดงของเส้นขอบตอน error
 
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showDialog<bool>( // เปิดป๊อปอัป รอผล true/false
       context: context,
 
+      // StatefulBuilder = ทำให้ป๊อปอัปวาดใหม่เองได้ (เช่นตอนแสดง error / สลับซ่อนรหัส)
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
+          // กดยืนยันในป๊อปอัป -> ตรวจรหัส
           Future<void> submit() async {
             final password = passwordController.text.trim();
-            if (password.isEmpty) {
+            if (password.isEmpty) { // ยังไม่กรอก
               setDialogState(() => error = "กรุณากรอกรหัสผ่านเพื่อยืนยัน");
               return;
             }
             setDialogState(() {
-              checking = true;
+              checking = true; // เริ่มตรวจ
               error = null;
             });
             try {
-              final ok = await verifyCurrentPassword(password);
+              final ok = await verifyCurrentPassword(password); // ตรวจรหัสกับเซิร์ฟเวอร์
               if (!dialogContext.mounted) return;
               if (ok) {
-                Navigator.pop(dialogContext, true);
+                Navigator.pop(dialogContext, true); // รหัสถูก ปิดป๊อปอัปพร้อมส่ง true
                 return;
               }
-              setDialogState(() => error = "รหัสผ่านไม่ถูกต้อง");
+              setDialogState(() => error = "รหัสผ่านไม่ถูกต้อง"); // รหัสผิด
             } catch (e) {
               if (!dialogContext.mounted) return;
               setDialogState(
@@ -108,19 +112,19 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               );
             } finally {
               if (dialogContext.mounted) {
-                setDialogState(() => checking = false);
+                setDialogState(() => checking = false); // ตรวจเสร็จ
               }
             }
           }
 
           return AlertDialog(
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(20), // [UI] มุมป๊อปอัปโค้ง
             ),
 
             title: const Row(
               children: [
-                Icon(Icons.warning, color: Colors.red),
+                Icon(Icons.warning, color: Colors.red), // [UI] ไอคอนเตือนสีแดง
 
                 SizedBox(width: 10),
 
@@ -129,7 +133,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             ),
 
             content: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min, // [UI] สูงเท่าเนื้อหา
 
               crossAxisAlignment: CrossAxisAlignment.start,
 
@@ -142,35 +146,35 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
                 const SizedBox(height: 12),
 
-                TextField(
+                TextField( // ช่องกรอกรหัส
                   controller: passwordController,
 
                   obscureText: hide,
 
-                  enabled: !checking,
+                  enabled: !checking, // ระหว่างตรวจ ห้ามแก้
 
                   onChanged: (_) {
-                    if (error != null) setDialogState(() => error = null);
+                    if (error != null) setDialogState(() => error = null); // เริ่มพิมพ์ใหม่ ลบข้อความ error
                   },
 
-                  onSubmitted: (_) => submit(),
+                  onSubmitted: (_) => submit(), // กด Enter บนคีย์บอร์ด = ยืนยัน
 
                   decoration: InputDecoration(
                     labelText: "รหัสผ่าน",
 
-                    errorText: error,
+                    errorText: error, // ข้อความแดงใต้ช่อง
 
                     errorBorder: const OutlineInputBorder(
-                      borderSide: BorderSide(color: red, width: 1.5),
+                      borderSide: BorderSide(color: red, width: 1.5), // [UI] ขอบแดงหนา 1.5 ตอน error
                     ),
 
                     focusedErrorBorder: const OutlineInputBorder(
-                      borderSide: BorderSide(color: red, width: 1.5),
+                      borderSide: BorderSide(color: red, width: 1.5), // [UI] ขอบแดงตอน error และกำลังพิมพ์
                     ),
 
-                    border: const OutlineInputBorder(),
+                    border: const OutlineInputBorder(), // [UI] กรอบปกติ
 
-                    suffixIcon: IconButton(
+                    suffixIcon: IconButton( // ปุ่มรูปตา
                       icon: Icon(
                         hide ? Icons.visibility : Icons.visibility_off,
                       ),
@@ -186,22 +190,22 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               TextButton(
                 onPressed: checking
                     ? null
-                    : () => Navigator.pop(dialogContext, false),
+                    : () => Navigator.pop(dialogContext, false), // ยกเลิก
 
                 child: const Text("ยกเลิก"),
               ),
 
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red), // [UI] ปุ่มสีแดง
 
                 onPressed: checking ? null : submit,
 
                 child: checking
-                    ? const SizedBox(
-                        width: 18,
+                    ? const SizedBox( // กำลังตรวจ -> วงหมุนเล็ก
+                        width: 18, // [UI] ขนาดวงหมุน
                         height: 18,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
+                          strokeWidth: 2, // [UI] ความหนาเส้นวงหมุน
                           color: Colors.white,
                         ),
                       )
@@ -221,19 +225,20 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     // (dispose ตอนนั้นจะ error "used after being disposed")
     Future.delayed(const Duration(seconds: 1), passwordController.dispose);
 
-    if (confirmed == true && mounted) deleteAccount();
+    if (confirmed == true && mounted) deleteAccount(); // ยืนยันแล้ว -> ลบจริง
   }
 
+  // แถวบอกผลของการลบ 1 ข้อ (ไอคอน X แดง + ข้อความ)
   Widget consequenceRow(String text) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
 
       children: [
-        const Icon(Icons.cancel, size: 20, color: Colors.red),
+        const Icon(Icons.cancel, size: 20, color: Colors.red), // [UI] ไอคอน X แดง ขนาด 20
 
         const SizedBox(width: 10),
 
-        Expanded(child: Text(text, style: const TextStyle(fontSize: 15))),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 15))), // [UI] ขนาดข้อความ 15
       ],
     );
   }
@@ -241,18 +246,18 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xffD8EEFF),
+      backgroundColor: const Color(0xffD8EEFF), // [UI] สีพื้นหลัง
 
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(20), // [UI] ระยะจากขอบจอ
 
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
               IconButton(
-                icon: const Icon(Icons.arrow_back, size: 30),
+                icon: const Icon(Icons.arrow_back, size: 30), // [UI] ปุ่มย้อนกลับ
 
                 onPressed: () {
                   Navigator.pop(context);
@@ -262,19 +267,19 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               const SizedBox(height: 30),
 
               Center(
-                child: Container(
-                  width: 100,
+                child: Container( // วงกลมแดงอ่อนรองไอคอนถังขยะ
+                  width: 100, // [UI] ขนาดวงกลม
 
                   height: 100,
 
                   decoration: const BoxDecoration(
-                    color: Color(0xffffdddd),
+                    color: Color(0xffffdddd), // [UI] สีชมพูอ่อน
 
                     shape: BoxShape.circle,
                   ),
 
                   child: const Icon(
-                    Icons.delete_forever,
+                    Icons.delete_forever, // [UI] ไอคอนถังขยะ
 
                     size: 60,
 
@@ -289,21 +294,21 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 child: Text(
                   "ลบบัญชี",
 
-                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold), // [UI] หัวข้อขนาด 30
                 ),
               ),
 
               const SizedBox(height: 25),
 
-              Container(
+              Container( // กล่องขาวอธิบายผลของการลบ
                 width: double.infinity,
 
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20), // [UI] ระยะในกล่อง
 
                 decoration: BoxDecoration(
                   color: Colors.white,
 
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(20), // [UI] มุมโค้ง
                 ),
 
                 child: Column(
@@ -335,18 +340,18 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 ),
               ),
 
-              const Spacer(),
+              const Spacer(), // ดันปุ่มลงล่างสุด
 
               SizedBox(
                 width: double.infinity,
 
-                height: 55,
+                height: 55, // [UI] ความสูงปุ่ม
 
                 child: ElevatedButton(
-                  onPressed: loading ? null : confirmDelete,
+                  onPressed: loading ? null : confirmDelete, // กด -> เปิดป๊อปอัปยืนยันรหัส
 
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
+                    backgroundColor: Colors.red, // [UI] ปุ่มสีแดง (สื่อว่าอันตราย)
 
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),

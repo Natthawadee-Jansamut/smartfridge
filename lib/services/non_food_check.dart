@@ -11,9 +11,10 @@
 /// สุราสำหรับปรุงอาหาร (เหล้าจีน ไวน์ปรุงอาหาร มิริน ฯลฯ) ยังใช้เป็นเครื่องปรุงได้
 /// ข้อจำกัด: ตรวจจากชื่อเท่านั้น ถ้าตั้งชื่อไม่ตรงกับของจริง ระบบตรวจไม่ได้
 class NonFoodCheck {
-  NonFoodCheck._();
+  NonFoodCheck._(); // ห้ามสร้างตัวแปรจากคลาสนี้ ใช้แค่ฟังก์ชัน static
 
   /// สุราที่ใช้เป็นเครื่องปรุงอาหาร — ตรวจก่อนคำต้องห้าม
+  // ถ้าชื่อมีคำในลิสต์นี้ = ใช้ทำอาหารได้ (เพิ่มคำได้)
   static const _cookingAlcohol = [
     'ปรุงอาหาร',
     'ทำอาหาร',
@@ -29,6 +30,7 @@ class NonFoodCheck {
   ];
 
   /// ยา สารเคมี ของใช้ บุหรี่ ยาสูบ และสุราสำหรับดื่ม
+  // ถ้าชื่อมีคำในลิสต์นี้ = ไม่ใช่ของทำอาหาร (เพิ่มคำต้องห้ามได้ที่นี่)
   static const _blocked = [
     // ยา / อาหารเสริมชนิดเม็ด (ชื่อขึ้นต้นด้วย "ยา" ตรวจแยกใน isNotForCooking)
     'พาราเซตามอล',
@@ -130,15 +132,15 @@ class NonFoodCheck {
 
   /// ไม่ใช่วัตถุดิบทำอาหาร (ไม่ส่งให้ AI / ไม่ใช้จับคู่เมนู)
   static bool isNotForCooking(Object? name) {
-    final n = (name ?? '').toString().toLowerCase().replaceAll(RegExp(r'\s+'), '');
-    if (n.isEmpty) return false;
-    if (_cookingAlcohol.any(n.contains)) return false;
+    final n = (name ?? '').toString().toLowerCase().replaceAll(RegExp(r'\s+'), ''); // ทำชื่อเป็นตัวเล็กและตัดช่องว่างออกหมด ให้เทียบง่าย
+    if (n.isEmpty) return false; // ไม่มีชื่อ ถือว่าใช้ได้
+    if (_cookingAlcohol.any(n.contains)) return false; // เป็นสุราสำหรับปรุงอาหาร -> ใช้ได้
     // ชื่อที่ขึ้นต้นด้วย "ยา" เป็นยาแทบทั้งหมด (ยาพารา ยาแก้ไอ ยาหยอดตา ยาดอง ...)
     // ยกเว้นผักที่ชื่อขึ้นต้นด้วย "ยา" เช่น ใบยานาง
     if (n.startsWith('ยา') && !n.startsWith('ยานาง')) return true;
-    for (final w in _blocked) {
-      if (_exactOnly.contains(w) ? n == w : n.contains(w)) return true;
+    for (final w in _blocked) { // ไล่เช็คคำต้องห้ามทีละคำ
+      if (_exactOnly.contains(w) ? n == w : n.contains(w)) return true; // คำสั้นต้องตรงทั้งชื่อ คำอื่นแค่มีอยู่ในชื่อก็พอ
     }
-    return false;
+    return false; // ไม่เจอคำต้องห้าม = ใช้ทำอาหารได้
   }
 }
