@@ -922,7 +922,12 @@ $extraRule
           final have = inFridge(name) || ShoppingSuggestion.isStaple(name);
           return {
             'name': name,
-            'quantity': ing['quantity']?.toString() ?? '',
+            // หน่วยให้ตรงกับของในตู้ (เช่น ผู้ใช้แบ่งเป็นส่วนไว้ แต่ AI บอก "ลูก")
+            'quantity': PlanAllocation.quantityInFridgeUnit(
+              name,
+              ing['quantity']?.toString() ?? '',
+              usableFridge,
+            ),
             'checked': have,
             // ไม่มีในตู้เย็น -> ต้องซื้อ (รวมเป็นรายการซื้อของในแผนรายสัปดาห์)
             // โหมดใช้เฉพาะของในตู้ไม่มีรายการซื้อ (แค่ไม่ติ๊ก)

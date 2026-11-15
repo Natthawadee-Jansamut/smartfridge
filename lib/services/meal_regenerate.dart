@@ -200,9 +200,13 @@ class MealRegenerate {
                     ShoppingSuggestion.isStaple(name);
                 return <String, dynamic>{
                   'name': name,
-                  'quantity':
-                      '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
-                          .trim(),
+                  // หน่วยให้ตรงกับของในตู้ (เช่น ผู้ใช้แบ่งเป็นส่วนไว้)
+                  'quantity': PlanAllocation.quantityInFridgeUnit(
+                    name,
+                    '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
+                        .trim(),
+                    fridge,
+                  ),
                   'checked': have,
                   if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
                 };
@@ -362,7 +366,12 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
             final have = inFridge(name) || ShoppingSuggestion.isStaple(name);
             return <String, dynamic>{
               'name': name,
-              'quantity': (i['quantity'] ?? '').toString().trim(),
+              // หน่วยให้ตรงกับของในตู้ (เช่น ผู้ใช้แบ่งเป็นส่วนไว้)
+              'quantity': PlanAllocation.quantityInFridgeUnit(
+                name,
+                (i['quantity'] ?? '').toString().trim(),
+                fridge,
+              ),
               'checked': have,
               if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
             };

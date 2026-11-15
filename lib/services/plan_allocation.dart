@@ -71,6 +71,51 @@ class PlanAllocation {
 
   /// คืน { meal id: [สถานะวัตถุดิบตามลำดับในมื้อ] } ของทุกมื้อในแพลน
   /// [fridgeItems] ต้องมี name, quantity, unit, use_per_cook (+ คอลัมน์วันที่สำหรับเช็กเกินกำหนด)
+  /// ปริมาณที่ต้องใช้ ในหน่วยของตู้เย็น — หน่วยไม่ตรง (เช่น เมนูบอก "1 ลูก" แต่ตู้
+  /// เก็บเป็น "ส่วน") ใช้ "ใช้ครั้งละ" ที่ผู้ใช้ตั้งไว้ หรือ 1 (ของที่แบ่งเป็นส่วน)
+  static num _needInFridgeUnit(
+    String qtyText,
+    String unit,
+    String fridgeUnit,
+    num perCook,
+  ) {
+    final parsed = RecipeRepository.parseQuantity(
+      RecipeRepository.leadingNumber(qtyText),
+    );
+    final sameUnit = unit.isEmpty || fridgeUnit.isEmpty || unit == fridgeUnit;
+    if (sameUnit && parsed != null && parsed > 0) return parsed;
+    if (fridgeUnit != 'ส่วน' && perCook > 0) return perCook;
+    return 1;
+  }
+
+  /// ข้อความปริมาณของวัตถุดิบในเมนู แปลงเป็นหน่วยเดียวกับของในตู้ถ้าหน่วยไม่ตรง
+  /// (เช่น AI/คลังสูตรบอก "เมลอน 1 ลูก" แต่ผู้ใช้แบ่งเมลอนเป็นส่วนไว้ -> "1 ส่วน")
+  /// ไม่มีในตู้ / ของพื้นฐาน / หน่วยตรงอยู่แล้ว คืนข้อความเดิม
+  static String quantityInFridgeUnit(
+    String name,
+    String qtyText,
+    List<Map<String, dynamic>> fridgeItems,
+  ) {
+    if (ShoppingSuggestion.isStaple(name)) return qtyText;
+    final matches = [
+      for (final f in fridgeItems)
+        if (!isUsedUp(f) && _sameName((f['name'] ?? '').toString(), name)) f,
+    ];
+    if (matches.isEmpty) return qtyText;
+    final fridgeUnit = (matches.first['unit'] ?? '').toString().trim();
+    final unit = _unitOf(qtyText);
+    if (unit.isEmpty || fridgeUnit.isEmpty || unit == fridgeUnit) {
+      return qtyText;
+    }
+    final need = _needInFridgeUnit(
+      qtyText,
+      unit,
+      fridgeUnit,
+      RecipeRepository.toNum(matches.first['use_per_cook']),
+    );
+    return '${RecipeRepository.formatNum(need)} $fridgeUnit';
+  }
+
   static Map<String, List<IngredientStatus>> allocate({
     required List<dynamic> meals,
     required List<Map<String, dynamic>> fridgeItems,
@@ -158,20 +203,8 @@ class PlanAllocation {
         final fridgeUnit = matches.isEmpty
             ? unit
             : matches.first['unit'] as String;
-        final parsed = RecipeRepository.parseQuantity(
-          RecipeRepository.leadingNumber(qtyText),
-        );
         final perCook = matches.isEmpty ? 0 : matches.first['per_cook'] as num;
-        final sameUnit =
-            unit.isEmpty || fridgeUnit.isEmpty || unit == fridgeUnit;
-        num need;
-        if (sameUnit && parsed != null && parsed > 0) {
-          need = parsed;
-        } else if (fridgeUnit != 'ส่วน' && perCook > 0) {
-          need = perCook; // หน่วยไม่ตรง -> ใช้ "ใช้ครั้งละ" ที่ผู้ใช้ตั้งไว้
-        } else {
-          need = 1;
-        }
+        final need = _needInFridgeUnit(qtyText, unit, fridgeUnit, perCook);
 
         // จองจากลอตที่เหลือ (ตามลำดับที่ได้มา)
         var remaining = need;
