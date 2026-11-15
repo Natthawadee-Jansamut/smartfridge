@@ -333,6 +333,8 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
   /// กล่อง "🛒 ต้องซื้อ" ในการ์ดมื้อ — เฉพาะส่วนที่ขาดหลังจองของให้มื้อก่อนหน้าแล้ว
   Widget _toBuyBox(Map<String, dynamic> meal) {
     if (meal['is_cooked'] == true) return const SizedBox.shrink();
+    // แพลนแบบใช้เฉพาะของในตู้ ไม่มีรายการซื้อ ของที่ไม่พอแค่ไม่ติ๊ก
+    if (!MealRegenerate.planAllowsBuying(meals)) return const SizedBox.shrink();
     final pending = [
       for (final s
           in _allocation[meal['id']?.toString()] ?? const <IngredientStatus>[])
@@ -367,7 +369,6 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
   /// แต่ยังไม่ได้ จึงบอกให้ผู้ใช้รู้และแก้เองได้ (กด "เปลี่ยนเมนู"):
   /// 1. วันที่แคลอรี/โปรตีนรวมไม่ตรงเป้า
   /// 2. เมนูที่อาจขัดกับข้อจำกัดอาหาร (ตรวจจากชื่อวัตถุดิบ)
-  /// 3. แพลนแบบใช้เฉพาะของในตู้ แต่ของในตู้ไม่พอ
   Widget _planWarningsCard(
     List<Map<String, String>> weekDays,
     Map<String, List<dynamic>> grouped,
@@ -413,21 +414,6 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
         "\"${m['food_name'] ?? ''}\" (${thaiDay[m['day']] ?? m['day']}) "
         "มี ${wrong.join(', ')} ซึ่งอาจขัดกับข้อจำกัดอาหาร \"$dietType\"",
       );
-    }
-
-    // 3. ใช้เฉพาะของในตู้ (ไม่มีของต้องซื้อตอนสร้าง) แต่ของในตู้ไม่พอ
-    if (!MealRegenerate.planAllowsBuying(meals)) {
-      final short = PlanAllocation.shoppingList(
-        meals: meals,
-        allocation: _allocation,
-        dayLabel: (key) => thaiDay[key] ?? key,
-      );
-      if (short.isNotEmpty) {
-        warnings.add(
-          "แพลนนี้ใช้เฉพาะของในตู้เย็น แต่ของในตู้ไม่พอ ${short.length} รายการ "
-          "(ดูรายการต้องซื้อด้านล่าง)",
-        );
-      }
     }
 
     if (warnings.isEmpty) return const SizedBox.shrink();
@@ -481,6 +467,8 @@ class _WeeklyPlanScreenState extends State<WeeklyPlanScreen> {
   /// การ์ดด้านบน: รายการของที่ต้องซื้อทั้งสัปดาห์ = ส่วนที่ขาดจริงของทุกมื้อ
   /// (ของในตู้จองให้มื้อที่ใกล้ถึงก่อน) — ซื้อมาสแกนเข้าตู้ รายการจะลดลงเอง
   Widget _shoppingListCard(List<Map<String, String>> weekDays) {
+    // แพลนแบบใช้เฉพาะของในตู้ ไม่มีรายการซื้อของ
+    if (!MealRegenerate.planAllowsBuying(meals)) return const SizedBox.shrink();
     final thaiDay = {for (final d in weekDays) d["en"]: d["th"] ?? ''};
     final items = PlanAllocation.shoppingList(
       meals: meals,

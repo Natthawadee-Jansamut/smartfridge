@@ -585,8 +585,8 @@ $diet
 
 
 
-สร้างเมนูเฉพาะสำหรับช่องต่อไปนี้เท่านั้น จำนวน ${slots.length} มื้อ
-(ระบุ day และ meal_type ให้ตรงกับที่กำหนดมาเป๊ะๆ ห้ามเพิ่มหรือลดจำนวน
+สร้างเมนูเฉพาะสำหรับช่องต่อไปนี้เท่านั้น ${fridgeOnly ? "ไม่เกิน" : "จำนวน"} ${slots.length} มื้อ
+(ระบุ day และ meal_type ให้ตรงกับที่กำหนดมาเป๊ะๆ ${fridgeOnly ? "ห้ามเพิ่มช่อง ถ้าวัตถุดิบไม่พอทำครบทุกช่อง ให้ทำเท่าที่ทำได้จริงเรียงจากช่องแรก แล้วข้ามช่องที่เหลือไปเลย" : "ห้ามเพิ่มหรือลดจำนวน"}
 แต่ละช่องมี "kcal" และ "protein" เป็นช่วงที่มื้อนั้นต้องอยู่ ห้ามต่ำกว่าหรือเกินช่วง):
 
 [
@@ -626,7 +626,8 @@ ${fridgeOnly ? '''- ห้ามสร้างวัตถุดิบที่
 - calories และ protein ของแต่ละมื้อต้องอยู่ในช่วง "kcal" และ "protein" ของช่องนั้น ทั้งสองอย่าง
   ปรับปริมาณให้ลงช่วง: แคลอรีเกิน -> ลดข้าว/น้ำมัน/ของทอด, โปรตีนเกิน -> ลดเนื้อสัตว์ เพิ่มข้าว/ผักแทน,
   โปรตีนขาด -> เพิ่มเนื้อสัตว์ไขมันต่ำ (อกไก่ ปลา ไข่ขาว เต้าหู้)
-${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ใช้ปริมาณมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)''' : '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ซื้อเพิ่ม (โดยเฉพาะแหล่งโปรตีน เช่น อกไก่ ไข่ไก่ เต้าหู้ ปลา)
+${fridgeOnly ? '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ใช้ปริมาณมากขึ้นเท่าที่มีจริง (ไม่เกินจำนวนที่มี)
+- รวมทุกมื้อที่สร้างแล้ว ห้ามใช้วัตถุดิบแต่ละอย่างเกินจำนวนที่มี (ไม่ต้องครบทุกวัน ได้กี่มื้อก็เท่านั้น)''' : '''- ถ้าของในตู้ไม่พอถึงช่วง ให้ซื้อเพิ่ม (โดยเฉพาะแหล่งโปรตีน เช่น อกไก่ ไข่ไก่ เต้าหู้ ปลา)
   ใส่ "to_buy": true ห้ามปล่อยมื้อให้ขาดช่วงเพียงเพราะไม่อยากซื้อของ'''}
 $extraRule
 - ระบุ steps เป็นขั้นตอนการทำอาหารแบบละเอียด เรียงเป็นข้อๆ (array ของ string ภาษาไทย)
@@ -850,9 +851,7 @@ $extraRule
             caloriesPerServing: RecipeRepository.toNum(m['calories']),
             proteinPerServing: RecipeRepository.toNum(m['protein']),
             // ติดป้ายข้อจำกัดอาหารเฉพาะเมนูที่วัตถุดิบผ่านการตรวจจริง
-            dietTags: [
-              if (diet != 'ไม่มี' && dietViolations(m).isEmpty) diet,
-            ],
+            dietTags: [if (diet != 'ไม่มี' && dietViolations(m).isEmpty) diet],
           );
           if (id != null) m['recipe_id'] = id;
         }
@@ -860,7 +859,41 @@ $extraRule
 
       // รวมเมนูที่หยิบจากคลังเก่า (ประหยัด token) กับเมนูใหม่จาก Gemini
       // (ถ้ามี) เข้าด้วยกันเป็นแผนอาหารสัปดาห์เดียว
-      final List mealsData = [...reusedMeals, ...libraryMeals, ...geminiMeals];
+      List mealsData = [...reusedMeals, ...libraryMeals, ...geminiMeals];
+
+      // โหมดใช้เฉพาะของในตู้: ไม่มีรายการซื้อของ — เก็บเฉพาะมื้อที่ของในตู้พอจริง
+      // (ไล่จากมื้อแรกของสัปดาห์ จองของแบบเดียวกับหน้าแผนรายสัปดาห์) มื้อที่ของ
+      // ไม่พอหรือใช้ของที่ไม่มีในตู้ ตัดทิ้ง แพลนจึงอาจไม่ครบสัปดาห์ (ได้แค่ไหนแค่นั้น)
+      if (fridgeOnly) {
+        int slotIndex(Map m) => slotGrid.indexWhere(
+          (s) => s['day'] == m['day'] && s['meal_type'] == m['meal_type'],
+        );
+        final ordered = mealsData.whereType<Map>().toList()
+          ..sort((a, b) => slotIndex(a).compareTo(slotIndex(b)));
+        final kept = <Map>[];
+        for (final m in ordered) {
+          final trial = [...kept, m];
+          final alloc = PlanAllocation.allocate(
+            meals: [
+              for (var k = 0; k < trial.length; k++)
+                {...Map<String, dynamic>.from(trial[k]), 'id': '$k'},
+            ],
+            fridgeItems: usableFridge,
+            planStart: planStart,
+          );
+          final allHave = alloc.values.every(
+            (list) => list.every((s) => s.have),
+          );
+          if (allHave) kept.add(m);
+        }
+        mealsData = kept;
+        if (mealsData.isEmpty) {
+          await supabase.from('meal_plans').delete().eq('id', planId);
+          throw Exception(
+            "วัตถุดิบในตู้เย็นไม่พอทำได้แม้แต่ 1 มื้อ ลองปิด \"ใช้เฉพาะของในตู้เย็น\"",
+          );
+        }
+      }
 
       // ===============================
       // บันทึก weekly_meals
@@ -892,7 +925,8 @@ $extraRule
             'quantity': ing['quantity']?.toString() ?? '',
             'checked': have,
             // ไม่มีในตู้เย็น -> ต้องซื้อ (รวมเป็นรายการซื้อของในแผนรายสัปดาห์)
-            if (!have) ShoppingSuggestion.toBuyKey: true,
+            // โหมดใช้เฉพาะของในตู้ไม่มีรายการซื้อ (แค่ไม่ติ๊ก)
+            if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
           };
         }).toList();
 
@@ -1347,9 +1381,7 @@ $extraRule
             decoration: InputDecoration(
               labelText: label,
 
-              labelStyle: showError
-                  ? const TextStyle(color: errorColor)
-                  : null,
+              labelStyle: showError ? const TextStyle(color: errorColor) : null,
 
               suffixText: suffix,
 

@@ -141,7 +141,7 @@ class MealRegenerate {
                       '${RecipeRepository.formatNum(ing['use_quantity'])} ${ing['unit'] ?? ''}'
                           .trim(),
                   'checked': have,
-                  if (!have) ShoppingSuggestion.toBuyKey: true,
+                  if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
                 };
               }(),
           ];
@@ -229,7 +229,8 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
         throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
       }
       final decoded = jsonDecode(text.substring(start, end + 1));
-      if (decoded is! Map || (decoded['food_name'] ?? '').toString().trim().isEmpty) {
+      if (decoded is! Map ||
+          (decoded['food_name'] ?? '').toString().trim().isEmpty) {
         throw 'อ่านเมนูใหม่จาก AI ไม่ได้ กรุณาลองใหม่';
       }
       json = decoded;
@@ -289,7 +290,7 @@ ${fridgeOnly ? '- ใช้เฉพาะวัตถุดิบในตู�
               'name': name,
               'quantity': (i['quantity'] ?? '').toString().trim(),
               'checked': have,
-              if (!have) ShoppingSuggestion.toBuyKey: true,
+              if (!have && !fridgeOnly) ShoppingSuggestion.toBuyKey: true,
             };
           }(),
     ];
