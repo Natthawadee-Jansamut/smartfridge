@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart'; // ใช้ชนิด User (อ่านค่าตั้งค่าแจ้งเตือนของผู้ใช้)
 
+import 'package:test_app/utils/shelf_life.dart'; // ตารางอายุการเก็บ (เช็คว่ามีข้อมูลช่องแช่แข็งไหม)
+
 /// นับว่าวัตถุดิบอยู่ในตู้เย็นมาแล้วกี่วัน ตามวันในปฏิทิน (ใส่วันนี้ = 0,
 /// ใส่เมื่อวาน = 1) — นับแบบเดียวกับวันหมดอายุ (daysUntilExpiry) เพื่อให้
 /// "อยู่มาแล้ว + เก็บได้อีก" เท่ากับ "เก็บได้" เสมอ ผู้ใช้ไม่งง
@@ -214,13 +216,26 @@ Map<String, dynamic> storageMoveFields(
   };
   // ไม่มีข้อมูลช่องแช่แข็ง (ผัก ผลไม้ ไข่ ฯลฯ) แต่ผู้ใช้ยังอยากแช่แข็ง: ไม่ต่อเวลาให้
   // นับวันที่เหลืออยู่เท่าเดิมต่อในช่องแช่แข็ง (ผู้ใช้แก้จำนวนวันเองได้)
+  // ประเภทที่อยู่ในตารางแต่ตารางไม่มีข้อมูลช่องแช่แข็ง: freezer_days ที่บันทึกไว้
+  // เป็นค่าจากการย้ายครั้งก่อน ห้ามใช้ซ้ำ ต้องนับจากวันที่เหลือตอนนี้ใหม่
+  final typeKey = originalShelfSource(item['shelf_type']?.toString(), null).key; // ประเภทเดิม
+  final tableNoFreezer = findShelfType(typeKey) != null && // อยู่ในตาราง
+      tableShelfRange(typeKey, item['food_state']?.toString(), storageFreezer) == null; // แต่ไม่มีข้อมูลช่องแช่แข็ง
+  // ไม่มีข้อมูลช่องแช่แข็ง (ผัก ผลไม้ ไข่ ฯลฯ) แต่ผู้ใช้ยังอยากแช่แข็ง: ไม่ต่อเวลาให้
+  // นับวันที่เหลืออยู่เท่าเดิมต่อในช่องแช่แข็ง (ผู้ใช้แก้จำนวนวันเองได้)
   final noFreezerDays =
+      tableNoFreezer ||
       item['freezer_days'] == null ||
       (num.tryParse('${item['freezer_days']}') ?? 0) <= 0;
   // (ของเก่าที่ไม่มีข้อมูลระยะเก็บเลย ใช้วันหมดอายุเดิมต่อ ไม่ต้องตั้งค่านี้)
   if (target == 'freezer' && noFreezerDays && item['fridge_days'] != null) {
     final left = daysLeft(item);
     if (left != null) fields['freezer_days'] = left < 0 ? 0 : left;
+  }
+  // "คุณกำหนดเอง" ผูกกับจำนวนวันของช่องเดิม ย้ายช่องแล้วคืนเป็นประเภทเดิม ให้ช่องใหม่
+  // คิดค่าแนะนำของตัวเอง (ไม่งั้นค่าแนะนำของช่องปกติจะติดไปช่องแช่แข็ง)
+  if (isCustomShelfType(item['shelf_type']?.toString()) && typeKey != null) {
+    fields['shelf_type'] = typeKey; // เช่น 'custom:bread:25' -> 'bread'
   }
   final moved = {...item, ...fields}; // ข้อมูลหลังย้าย (ใช้คำนวณวันหมดใหม่)
   if (shelfDaysOf(moved) != null) { // มีข้อมูลระยะเก็บ -> คำนวณวันหมดอายุใหม่

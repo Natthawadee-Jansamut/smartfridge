@@ -434,18 +434,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           picked.month,
           picked.day,
         ).difference(DateTime(added.year, added.month, added.day)).inDays;
-        final current = shelfDaysOf(_item!); // ระยะเก็บเดิม
-        final original = originalShelfSource(
-          _item!['shelf_type']?.toString(),
-          current,
-        );
+        final newShelfType = shelfTypeForDays(_item!, days); // ที่มาของค่าใหม่ (คิดก่อนเปลี่ยนจำนวนวัน)
         fields[_item!['storage'] == storageFreezer // บันทึกลงช่องที่เก็บอยู่
                 ? 'freezer_days'
                 : 'fridge_days'] =
             days;
-        fields['shelf_type'] = (original.days != null && days == original.days) // เท่าค่าแนะนำ = ที่มาเดิม, ไม่งั้น = กำหนดเอง
-            ? original.key
-            : customShelfType(original.key, original.days);
+        fields['shelf_type'] = newShelfType; // เท่าค่าแนะนำ = ที่มาเดิม, ไม่งั้น = กำหนดเอง
         // ผู้ใช้เลือกวันเอง ค่านี้แทนจำนวนวันที่จำไว้ตอนแช่แข็ง
         fields['days_left_at_freeze'] = null;
       }

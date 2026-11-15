@@ -14,7 +14,7 @@ Future<bool> editShelfDaysDialog(
   Map<String, dynamic> item, // วัตถุดิบที่จะแก้
 ) async {
   final current = shelfDaysOf(item); // จำนวนวันที่เก็บได้ตอนนี้
-  final original = originalShelfSource(item['shelf_type']?.toString(), current); // ค่าแนะนำเดิม (ก่อนผู้ใช้แก้)
+  final original = recommendedShelf(item); // ค่าแนะนำ (ค่าตายตัวดูจากตาราง)
   final age = daysInFridge(storageStartOf(item)); // อยู่ในตู้มาแล้วกี่วัน
   final controller = TextEditingController( // ตัวควบคุมช่องกรอกตัวเลข
     text: current?.toInt().toString() ?? '', // ใส่ค่าปัจจุบันไว้ให้ก่อน
@@ -73,9 +73,7 @@ Future<bool> editShelfDaysDialog(
   if (days == null) return false; // ผู้ใช้กดยกเลิก
 
   // ถ้ากลับไปเท่าค่าแนะนำ ใช้ที่มาเดิม ไม่งั้นติดป้าย "กำหนดเอง"
-  final newShelfType = (original.days != null && days == original.days)
-      ? original.key
-      : customShelfType(original.key, original.days);
+  final newShelfType = shelfTypeForDays(item, days); // เท่าค่าแนะนำ = ที่มาเดิม, ไม่งั้น = กำหนดเอง
   final added = parseCreatedAt(storageStartOf(item)) ?? DateTime.now(); // วันที่เริ่มเก็บในช่องนี้
 
   try {

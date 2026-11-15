@@ -140,6 +140,78 @@ bool isCustomShelfType(String? value) =>
   return (key: at(1), days: int.tryParse(at(2) ?? ''));
 }
 
+/// ช่วงจำนวนวันตามตาราง ของประเภท/สถานะ/ช่องที่เก็บ — null = ตารางไม่มีข้อมูล
+/// (ไม่อยู่ในตาราง หรือช่องแช่แข็งของประเภทที่ไม่มีข้อมูล)
+({int min, int max})? tableShelfRange(
+  String? typeKey, // รหัสประเภท เช่น 'bread'
+  String? state, // สถานะ เช่น ดิบ/สุก
+  String? storage, // ช่องที่เก็บ
+) {
+  final type = findShelfType(typeKey); // หาประเภทในตาราง
+  if (type == null) return null; // ไม่อยู่ในตาราง
+  final rule = type.states[state] ?? type.states.values.first; // ข้อมูลของสถานะนี้ (ไม่เจอใช้ตัวแรก)
+  if (storage == storageFreezer) { // ช่องแช่แข็ง
+    if (!type.hasFreezerData(state)) return null; // ไม่มีข้อมูลช่องแช่แข็ง
+    return (min: rule.freezer!, max: rule.freezer!); // ค่าตายตัว
+  }
+  if (rule.fridgeMin == null) return null; // ไม่มีข้อมูลช่องปกติ
+  return (min: rule.fridgeMin!, max: rule.fridgeMax!); // ช่วงของช่องปกติ
+}
+
+// จำนวนวันที่เก็บได้ของช่องที่เก็บอยู่ตอนนี้ (ค่าที่บันทึกไว้ ไม่ปรับอะไร)
+int? _savedShelfDays(Map<String, dynamic> item) {
+  final raw = item['storage'] == storageFreezer
+      ? item['freezer_days'] // อยู่ช่องแช่แข็ง
+      : item['fridge_days']; // อยู่ช่องปกติ
+  final v = raw is num ? raw : num.tryParse(raw?.toString() ?? ''); // แปลงเป็นตัวเลข
+  return (v == null || v <= 0) ? null : v.round(); // ไม่มีค่า/ติดลบ = null
+}
+
+/// ค่าแนะนำของวัตถุดิบชิ้นนี้ (key = ประเภท, days = จำนวนวันแนะนำ)
+/// - ตารางมีค่าตายตัว (เช่น ขนมปัง 3 วัน): ใช้ค่าจากตารางเสมอ ไม่เชื่อค่าที่จำไว้
+///   เพราะค่าที่จำไว้อาจเพี้ยนได้หลังแก้วัน/ย้ายช่องหลายรอบ
+/// - ตารางเป็นช่วง (เช่น ผักใบ 3-5 วัน): ใช้ค่าที่ AI เลือกไว้ (จำไว้ตอนผู้ใช้แก้)
+///   แต่ต้องอยู่ในช่วงของตาราง
+/// - ไม่มีในตาราง: ใช้ค่าที่จำไว้ (AI ประเมิน)
+({String? key, int? days}) recommendedShelf(Map<String, dynamic> item) {
+  final value = item['shelf_type']?.toString(); // ค่าที่บันทึกไว้ เช่น 'bread' หรือ 'custom:bread:3'
+  final original = originalShelfSource( // ที่มาเดิม (ค่าที่ไม่ใช่ custom = ค่าตอนนี้คือค่าเดิม)
+    value,
+    isCustomShelfType(value) ? null : _savedShelfDays(item),
+  );
+  final range = tableShelfRange( // ช่วงตามตาราง
+    original.key,
+    item['food_state']?.toString(),
+    item['storage']?.toString(),
+  );
+  if (range == null) { // ตารางไม่มีข้อมูลของช่องนี้
+    // ย้ายเข้าช่องแช่แข็งของประเภทที่ไม่มีข้อมูลช่องแช่แข็ง (เช่น ขนมปัง ผัก):
+    // ค่าแนะนำ = วันที่เหลืออยู่ตอนย้ายเข้า (นับต่อเท่าเดิม ไม่ต่อเวลาให้)
+    // ไม่ใช้ค่าที่จำไว้ เพราะอาจเป็นค่าของช่องปกติ
+    if (item['storage'] == storageFreezer && findShelfType(original.key) != null) {
+      final raw = item['days_left_at_freeze']; // วันที่เหลือตอนย้ายเข้าช่องแช่แข็ง
+      final atFreeze = raw is num ? raw.round() : int.tryParse(raw?.toString() ?? '');
+      if (atFreeze != null) {
+        return (key: original.key, days: atFreeze < 0 ? 0 : atFreeze); // ติดลบ = 0
+      }
+    }
+    return original; // ใช้ค่าที่จำไว้ (AI ประเมิน / ผู้ใช้แก้ในช่องนี้)
+  }
+  if (range.min == range.max) return (key: original.key, days: range.min); // ค่าตายตัว ใช้ค่าตาราง
+  final days = original.days; // ค่าที่ AI เลือกในช่วง
+  if (days == null) return (key: original.key, days: range.min); // ไม่รู้ -> ใช้ค่าต่ำสุดของช่วง (ปลอดภัย)
+  return (key: original.key, days: days.clamp(range.min, range.max)); // บังคับให้อยู่ในช่วง
+}
+
+/// ค่า shelf_type ที่ควรบันทึกเมื่อผู้ใช้ตั้งจำนวนวันเป็น [days]: เท่าค่าแนะนำ =
+/// ใช้ที่มาเดิม (เช่น 'bread'), ไม่เท่า = "คุณกำหนดเอง" โดยจำค่าแนะนำไว้
+String? shelfTypeForDays(Map<String, dynamic> item, int days) {
+  final rec = recommendedShelf(item); // ค่าแนะนำ
+  return (rec.days != null && days == rec.days)
+      ? rec.key // เท่าค่าแนะนำ
+      : customShelfType(rec.key, rec.days); // ผู้ใช้กำหนดเอง
+}
+
 // ชื่อสถานะของวัตถุดิบ (แสดงเป็นตัวเลือกบนจอ)
 const String stateRaw = 'ดิบ';
 const String stateCooked = 'สุก';
@@ -362,14 +434,20 @@ String formatShelfDays(int days) {
 /// ที่มาของระยะที่เก็บได้แบบสั้น สำหรับแสดงบนการ์ดเลยโดยไม่ต้องกดดู
 /// (ใช้คำที่ผู้ใช้เข้าใจ ไม่พูดถึง "ตาราง" ที่เป็นเรื่องภายในระบบ)
 String shelfSourceShort(Map<String, dynamic> item) {
-  final key = item['shelf_type']?.toString();
-  if (isCustomShelfType(key)) { // ผู้ใช้แก้เอง
-    final original = originalShelfSource(key, null).days;
-    return original == null
+  final value = item['shelf_type']?.toString(); // ค่าที่บันทึกไว้ เช่น 'bread' หรือ 'custom:bread:3'
+  final rec = recommendedShelf(item); // ค่าแนะนำ (ค่าตายตัวดูจากตารางเสมอ)
+  final current = _savedShelfDays(item); // จำนวนวันที่ตั้งไว้ตอนนี้
+  // ผู้ใช้กำหนดเอง = จำนวนวันไม่ตรงค่าแนะนำ (แม้ป้ายที่บันทึกไว้จะบอกว่ามาจากตาราง
+  // ก็ตาม) — ถ้าแก้กลับมาเท่าค่าแนะนำ ก็กลับไปแสดงแหล่งข้อมูลเดิม
+  final custom = (current == null || rec.days == null)
+      ? isCustomShelfType(value) // เทียบไม่ได้ ใช้ป้ายที่บันทึกไว้
+      : current != rec.days; // ไม่ตรงค่าแนะนำ = กำหนดเอง
+  if (custom) { // ผู้ใช้แก้เอง
+    return rec.days == null // ส่งผลลัพธ์กลับ (เงื่อนไข/ค่าต่อบรรทัดถัดไป)
         ? 'คุณกำหนดเอง'
-        : 'คุณกำหนดเอง (ค่าแนะนำ ${formatShelfDays(original)})';
+        : 'คุณกำหนดเอง (ค่าแนะนำ ${formatShelfDays(rec.days!)})'; // บอกค่าแนะนำด้วย
   }
-  final type = findShelfType(key);
+  final type = findShelfType(rec.key); // ประเภทเดิม
   if (type != null) {
     final src = type.sourceFor(
       item['food_state']?.toString(),

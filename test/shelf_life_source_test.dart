@@ -122,4 +122,72 @@ void main() {
       'ข้อมูลจาก The Beefchelor',
     );
   });
+
+  group('ค่าแนะนำดูจากตารางเสมอ (ไม่เชื่อค่าที่จำไว้)', () {
+    test('ขนมปัง 25 วันแต่ป้ายบอกว่ามาจากตาราง -> กำหนดเอง ค่าแนะนำ 3 วัน', () {
+      final item = {
+        'shelf_type': 'bread',
+        'storage': storageFridge,
+        'fridge_days': 25,
+      };
+      expect(shelfSourceShort(item), 'คุณกำหนดเอง (ค่าแนะนำ 3 วัน)');
+      expect(recommendedShelf(item).days, 3);
+    });
+
+    test('ค่าแนะนำที่จำไว้เพี้ยน (custom:bread:25) -> ยังแนะนำ 3 วัน', () {
+      final item = {
+        'shelf_type': 'custom:bread:25',
+        'storage': storageFridge,
+        'fridge_days': 3,
+      };
+      expect(shelfSourceShort(item), 'ข้อมูลจาก SUPALAI');
+      expect(shelfTypeForDays(item, 3), 'bread');
+      expect(shelfTypeForDays(item, 25), 'custom:bread:3');
+    });
+
+    test('ตั้ง 3 วัน (เท่าตาราง) -> กลับเป็นข้อมูลจาก SUPALAI', () {
+      final item = {
+        'shelf_type': 'custom:bread:3',
+        'storage': storageFridge,
+        'fridge_days': 3,
+      };
+      expect(shelfSourceShort(item), 'ข้อมูลจาก SUPALAI');
+    });
+
+    test('ตารางเป็นช่วง: ค่าที่ AI เลือกในช่วงไม่นับเป็นกำหนดเอง', () {
+      final item = {
+        'shelf_type': 'leafy_veg',
+        'storage': storageFridge,
+        'fridge_days': 4,
+      };
+      expect(shelfSourceShort(item), 'ข้อมูลจาก Maeban');
+      expect(shelfTypeForDays(item, 10), 'custom:leafy_veg:4');
+    });
+
+    test('ช่องแช่แข็งที่ไม่มีข้อมูล: ใช้ค่าที่จำไว้เหมือนเดิม', () {
+      final item = {
+        'shelf_type': 'bread',
+        'storage': storageFreezer,
+        'freezer_days': 2,
+        'storage_changed_at': '2026-11-07T00:00:00Z',
+      };
+      expect(shelfSourceShort(item), 'นับวันที่เหลือต่อจากช่องปกติ');
+    });
+  });
+
+  test(
+    'ย้ายเข้าช่องแช่แข็ง (ไม่มีข้อมูล): ค่าแนะนำ = วันที่เหลือตอนย้าย ไม่ใช่ค่าที่จำไว้',
+    () {
+      final item = {
+        'shelf_type': 'custom:bread:25',
+        'storage': storageFreezer,
+        'freezer_days': 3,
+        'days_left_at_freeze': 3,
+        'storage_changed_at': '2026-11-15T13:20:00Z',
+      };
+      expect(recommendedShelf(item).days, 3);
+      expect(shelfSourceShort(item), 'นับวันที่เหลือต่อจากช่องปกติ');
+      expect(shelfTypeForDays(item, 10), 'custom:bread:3');
+    },
+  );
 }

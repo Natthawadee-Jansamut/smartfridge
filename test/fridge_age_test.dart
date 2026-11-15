@@ -103,4 +103,32 @@ void main() {
       expect(daysLeft(moved), 5);
     },
   );
+
+  test(
+    'ขนมปังย้ายเข้าช่องแช่แข็งรอบสอง: นับจากวันที่เหลือตอนนี้ ไม่ใช้ค่าจากรอบก่อน',
+    () {
+      final bread = {
+        'shelf_type': 'bread',
+        'storage': 'fridge',
+        'fridge_days': 3,
+        'freezer_days': 30, // ค่าค้างจากการย้ายรอบก่อน
+        'created_at': _daysAgo(1),
+      };
+      final moved = _move(bread, 'freezer');
+      expect(moved['freezer_days'], 2);
+      expect(daysLeft(moved), 2);
+    },
+  );
+
+  test('ย้ายช่องแล้วป้าย "คุณกำหนดเอง" ของช่องเดิมไม่ติดไปด้วย', () {
+    final bread = {
+      'shelf_type': 'custom:bread:3',
+      'storage': 'fridge',
+      'fridge_days': 25,
+      'created_at': _daysAgo(0),
+    };
+    final moved = _move(bread, 'freezer');
+    expect(moved['shelf_type'], 'bread');
+    expect(moved['freezer_days'], 25); // นับวันที่เหลือต่อเท่าเดิม
+  });
 }

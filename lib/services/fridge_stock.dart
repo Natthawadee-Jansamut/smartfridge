@@ -152,17 +152,12 @@ Future<void> extendShelfLife({
   final current = shelfDaysOf(item); // ระยะเก็บได้ปัจจุบัน
   if (current != null && storageStartOf(item) != null) { // มีข้อมูลครบถึงจะปรับระยะเก็บได้
     final newDays = daysInFridge(storageStartOf(item)) + moreDays; // ระยะใหม่ = อยู่มาแล้ว + ต่อเพิ่ม
-    final original = originalShelfSource(
-      item['shelf_type']?.toString(),
-      current,
-    );
+    final newShelfType = shelfTypeForDays(item, newDays); // ที่มาของค่าใหม่
     fields[item['storage'] == storageFreezer ? 'freezer_days' : 'fridge_days'] =
         newDays; // บันทึกลงช่องที่เก็บอยู่ (แช่แข็ง/ช่องเย็น)
     // ผู้ใช้ต่อเวลาเอง ค่าที่กำหนดนี้แทนจำนวนวันที่จำไว้ตอนแช่แข็ง
     fields['days_left_at_freeze'] = null;
-    fields['shelf_type'] = (original.days != null && newDays == original.days)
-        ? original.key // ถ้าบังเอิญเท่าค่าแนะนำ ใช้ที่มาเดิม
-        : customShelfType(original.key, original.days); // ไม่งั้นติดป้าย "กำหนดเอง"
+    fields['shelf_type'] = newShelfType; // เท่าค่าแนะนำ = ที่มาเดิม, ไม่งั้นติดป้าย "กำหนดเอง"
   }
 
   await supabase
