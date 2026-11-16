@@ -157,8 +157,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   color: Color(0xff5189C9), // [UI] สีฟ้า
                 ),
 
-                onPressed: () {
-                  Navigator.pop(context);
+                // หน้านี้เปิดจากลิงก์ในอีเมล ข้างหลังไม่มีหน้าอื่น (pop แล้วจะจอดำ)
+                // จึงออกจากระบบ (ลิงก์รีเซ็ตทำให้ล็อกอินชั่วคราว) แล้วไปหน้า Login แทน
+                onPressed: () async {
+                  final navigator = Navigator.of(context);
+
+                  await supabase.auth.signOut();
+
+                  navigator.pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (route) => false, // ลบทุกหน้าเก่าออก
+                  );
                 },
               ),
 
