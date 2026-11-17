@@ -300,8 +300,13 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         return goalScore(b).compareTo(goalScore(a));
       });
 
-      // ช่องมื้ออาหารทั้งสัปดาห์ (วัน x จำนวนมื้อต่อวัน)
-      final weekDaysEn = [ // ชื่อวัน 7 วัน
+      final planStart = DateTime.now(); // เวลาเริ่มแพลน
+
+      // ช่องมื้ออาหารทั้งสัปดาห์ (วัน x จำนวนมื้อต่อวัน) เรียงโดยเริ่มจาก "วันนี้"
+      // ให้ตรงกับลำดับที่หน้าแผนรายสัปดาห์แสดง (PlanAllocation นับจากวันเริ่มแพลน)
+      // — เดิมเริ่มที่จันทร์เสมอ พอของในตู้ไม่พอทั้งสัปดาห์ เมนูจึงไปลงจันทร์-อังคาร-พุธ
+      // แล้วบนจอวันจันทร์กลายเป็นวันสุดท้าย ดูเหมือนข้ามวัน
+      const allDaysEn = [ // ชื่อวัน 7 วัน (จันทร์ = ลำดับ 0 ตรงกับ DateTime.weekday - 1)
         "Monday",
         "Tuesday",
         "Wednesday",
@@ -309,6 +314,9 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
         "Friday",
         "Saturday",
         "Sunday",
+      ];
+      final weekDaysEn = [ // วนเริ่มจากวันนี้ เช่น วันนี้อังคาร -> อังคาร ... อาทิตย์, จันทร์
+        for (var k = 0; k < 7; k++) allDaysEn[(planStart.weekday - 1 + k) % 7],
       ];
       final slotGrid = <Map<String, String>>[]; // ช่องทั้งหมด = 7 วัน x จำนวนมื้อ
       for (final day in weekDaysEn) {
@@ -322,7 +330,6 @@ class _MealPlanScreenState extends State<MealPlanScreen> {
       // อกไก่ 1 ชิ้นเลยทำให้ทุกเมนูที่ใช้อกไก่ผ่าน) — ใช้วิธีจองเดียวกับหน้าแพลน
       // รายสัปดาห์ (PlanAllocation): มื้อที่ใกล้ถึงก่อนได้ของก่อน
       // ===============================
-      final planStart = DateTime.now(); // เวลาเริ่มแพลน
       final usableFridge = List<Map<String, dynamic>>.from( // ของในตู้ที่ยังไม่เกินกำหนด
         fridgeItems,
       ).where((e) => !isOverdue(e)).toList();
