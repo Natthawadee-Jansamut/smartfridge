@@ -720,9 +720,13 @@ class RecipeRepository {
     Map<String, dynamic> recipe,
     String? customName, {
     String? scanImagePath,
+    String? imageUrl, // รูปเมนูที่แนบเอง (ไม่ส่งก็ได้)
   }) {
     final out = <String, dynamic>{
       if (customName != null) 'recipe_name': customName,
+      // ฐานข้อมูลอาจคืนสูตรเดิมที่ชื่อ + วัตถุดิบตรงกัน (ซึ่งไม่มีรูป) แทนการสร้างใหม่
+      // เก็บลิงก์รูปไว้ในคลังของผู้ใช้ด้วย รูปที่แนบจะได้ไม่หาย
+      if (imageUrl != null) 'image_url': imageUrl,
       if (scanImagePath != null) 'scan_image_path': scanImagePath,
       if (recipe['time_estimated'] == true) 'time_estimated': true,
       if (recipe['servings_estimated'] == true) 'servings_estimated': true,
@@ -984,6 +988,7 @@ class RecipeRepository {
               recipe,
               renamed ? myName : null,
               scanImagePath: scanPath,
+              imageUrl: imageUrl, // ลิงก์รูปเมนูที่แนบ (ถ้ามี)
             )
           : {
               ..._contentOf(recipe),

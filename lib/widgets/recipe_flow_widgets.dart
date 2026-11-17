@@ -492,16 +492,20 @@ class RecipeInfoLine extends StatelessWidget {
 }
 
 /// "รูปที่ใช้สแกน" จากที่เก็บไฟล์ส่วนตัว — ขอลิงก์ชั่วคราวเอง แตะเพื่อดูเต็มจอ/ซูม
+/// ไม่มีรูปสแกน แต่มี [publicUrl] (รูปเมนูที่ผู้ใช้แนบตอนเขียนสูตรเอง เก็บในถัง
+/// สาธารณะ recipe-images) -> แสดงรูปนั้นแทน ในชื่อ "รูปเมนู"
 /// ไม่มีรูป หรือโหลดไม่สำเร็จ = ไม่แสดงอะไรเลย
 class PrivateScanImage extends StatefulWidget {
   final String bucket; // ถังเก็บรูป
   final String? path; // ที่อยู่ไฟล์
+  final String? publicUrl; // ลิงก์รูปเมนูที่แนบเอง (image_url) ใช้เมื่อไม่มีรูปสแกน
   final double height; // [UI] ความสูงรูป
 
   const PrivateScanImage({
     super.key,
     required this.bucket,
     required this.path,
+    this.publicUrl, // ไม่ส่งก็ได้
     this.height = 180, // [UI] ค่าเริ่มต้นสูง 180
   });
 
@@ -557,18 +561,21 @@ class _PrivateScanImageState extends State<PrivateScanImage> {
 
   @override
   Widget build(BuildContext context) {
-    final url = _url;
+    final menuUrl = widget.publicUrl?.trim(); // ลิงก์รูปเมนูที่แนบเอง
+    final isScan = _url != null; // มีรูปสแกน -> ใช้รูปสแกนก่อน
+    final url = _url ?? // ไม่มีรูปสแกน -> ใช้รูปเมนู (ถ้ามี)
+        (menuUrl == null || menuUrl.isEmpty ? null : menuUrl);
     if (url == null) return const SizedBox.shrink(); // ยังไม่มีลิงก์ ไม่แสดงอะไร
     return Padding(
       padding: const EdgeInsets.only(bottom: 20), // [UI] ระยะใต้รูป
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Text(
-              'รูปที่ใช้สแกน',
-              style: TextStyle(
+              isScan ? 'รูปที่ใช้สแกน' : 'รูปเมนู', // [UI] หัวข้อเหนือรูป
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold, // [UI] ขนาดหัวข้อ
                 color: Colors.black87,

@@ -570,6 +570,7 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                 child: PrivateScanImage(
                   bucket: recipeScanImageBucket,
                   path: recipe['scan_image_path']?.toString(),
+                  publicUrl: recipe['image_url']?.toString(), // รูปเมนูที่แนบเอง (ใช้เมื่อไม่มีรูปสแกน)
                   height: 150, // [UI] ความสูงรูปตอนแก้ไข
                 ),
               ),
@@ -589,11 +590,13 @@ class _RecipeDetailScreenState extends State<RecipeDetailScreen> {
                     const SizedBox(height: 20), // [UI] ระยะห่าง
 
                     // รูปสูตรที่ผู้ใช้สแกน (มีเฉพาะสูตรที่สแกนแล้วบันทึกหลังมีฟีเจอร์นี้)
+                    // ไม่มีรูปสแกน -> แสดงรูปเมนูที่แนบตอนเขียนสูตรเอง (image_url) แทน
                     // ตอนแก้ไข รูปย้ายไปตรึงไว้ด้านบนแทน
                     if (!_isEditing)
                       PrivateScanImage(
                         bucket: recipeScanImageBucket,
                         path: recipe['scan_image_path']?.toString(),
+                        publicUrl: recipe['image_url']?.toString(), // รูปเมนูที่แนบเอง (ใช้เมื่อไม่มีรูปสแกน)
                       ),
 
                     // สถานะวัตถุดิบ (ของจริงจากฐานข้อมูล ไม่ใช่ mock)
